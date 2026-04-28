@@ -128,11 +128,13 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId }: Props)
             onValueChange={(v) => handleKindChange(v as 'insumo' | 'receta')}
           >
             <SelectTrigger className="w-28">
-              <SelectValue />
+              <SelectValue>
+                {(v: string | null) => v === 'insumo' ? 'Insumo' : v === 'receta' ? 'Sub-receta' : null}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="insumo">Insumo</SelectItem>
-              <SelectItem value="receta">Sub-receta</SelectItem>
+              <SelectItem value="insumo" label="Insumo">Insumo</SelectItem>
+              <SelectItem value="receta" label="Sub-receta">Sub-receta</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -143,11 +145,17 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId }: Props)
           </p>
           <Select value={newIng.refId} onValueChange={handleRefChange}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Seleccionar..." />
+              <SelectValue placeholder="Seleccionar...">
+                {(v: string | null) => {
+                  if (!v) return null
+                  const list = newIng.kind === 'insumo' ? insumos : availableRecetas
+                  return list.find((i) => i.id === v)?.name ?? v
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {(newIng.kind === 'insumo' ? insumos : availableRecetas).map((item) => (
-                <SelectItem key={item.id} value={item.id}>
+                <SelectItem key={item.id} value={item.id} label={item.name}>
                   {item.name}
                 </SelectItem>
               ))}
@@ -175,11 +183,13 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId }: Props)
             onValueChange={(v) => setNewIng((prev) => ({ ...prev, unit: v as UnitKind }))}
           >
             <SelectTrigger className="w-24">
-              <SelectValue />
+              <SelectValue>
+                {(v: string | null) => v ? UNIT_LABELS[v as UnitKind] ?? v : null}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {UNITS.map((u) => (
-                <SelectItem key={u} value={u}>
+                <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
                   {UNIT_LABELS[u]}
                 </SelectItem>
               ))}

@@ -1,0 +1,5 @@
+-- ============================================================
+-- 0004_suppliers_cash.sql — Compras, pagos a proveedores, caja
+-- (ver apply_migration para la versión aplicada en producción)
+-- ============================================================
+-- contenido idéntico al aplicado via MCP apply_migration

@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 
-import { recetaSchema, UNITS, UNIT_LABELS, type RecetaFormValues } from '../schemas'
+import { recetaSchema, UNITS, UNIT_LABELS, type UnitKind, type RecetaFormValues } from '../schemas'
 import { createReceta, updateReceta } from '../actions'
 import { IngredientesEditor } from './ingredientes-editor'
 import type { RecetaWithIngredientes } from '../queries'
@@ -162,12 +162,14 @@ export function RecetaDialog({ open, onOpenChange, receta, insumos, recetas }: P
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue />
+                            <SelectValue>
+                              {(v: string | null) => v ? UNIT_LABELS[v as UnitKind] ?? v : null}
+                            </SelectValue>
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {UNITS.map((u) => (
-                            <SelectItem key={u} value={u}>
+                            <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
                               {UNIT_LABELS[u]}
                             </SelectItem>
                           ))}

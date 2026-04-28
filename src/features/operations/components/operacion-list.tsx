@@ -15,6 +15,11 @@ const MESES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ]
 
+function formatTime(isoStr: string) {
+  const d = new Date(isoStr)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 function formatFecha(fechaStr: string) {
   const parts = fechaStr.split('-').map(Number)
   const [year, month, day] = [parts[0]!, parts[1]!, parts[2]!]
@@ -56,7 +61,7 @@ export function OperacionList({ dias }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {dias.length === 0 ? 'Sin días registrados.' : `${dias.length} días registrados`}
+          {dias.length === 0 ? 'Sin días registrados.' : `${dias.length} ${dias.length === 1 ? 'día registrado' : 'días registrados'}`}
         </p>
         {!todayExists && (
           <Button onClick={handleAbrirHoy} disabled={opening}>
@@ -93,7 +98,7 @@ export function OperacionList({ dias }: Props) {
                   <p className="font-medium text-sm">{formatFecha(dia.fecha)}</p>
                   {dia.closed_at && (
                     <p className="text-xs text-muted-foreground">
-                      Cerrado {new Date(dia.closed_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                      Cerrado {formatTime(dia.closed_at)}
                     </p>
                   )}
                 </div>

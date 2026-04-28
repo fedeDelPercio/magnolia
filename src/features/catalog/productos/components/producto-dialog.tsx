@@ -166,13 +166,15 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Sin receta" />
+                        <SelectValue placeholder="Sin receta">
+                          {(v: string | null) => (!v || v === '_none') ? 'Sin receta' : (recetas.find((r) => r.id === v)?.name ?? v)}
+                        </SelectValue>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="_none">Sin receta</SelectItem>
+                      <SelectItem value="_none" label="Sin receta">Sin receta</SelectItem>
                       {recetas.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
+                        <SelectItem key={r.id} value={r.id} label={r.name}>
                           {r.name}
                         </SelectItem>
                       ))}

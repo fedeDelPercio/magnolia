@@ -31,7 +31,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
-import { insumoSchema, UNITS, UNIT_LABELS, type InsumoFormValues } from '../schemas'
+import { insumoSchema, UNITS, UNIT_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
 import { createInsumo, updateInsumo } from '../actions'
 import type { InsumoWithProveedor } from '../queries'
 import type { Tables } from '@/types/database'
@@ -121,12 +121,14 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue>
+                            {(v: string | null) => v ? UNIT_LABELS[v as UnitKind] ?? v : null}
+                          </SelectValue>
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {UNITS.map((u) => (
-                          <SelectItem key={u} value={u}>
+                          <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
                             {UNIT_LABELS[u]}
                           </SelectItem>
                         ))}
@@ -170,13 +172,15 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Sin proveedor" />
+                        <SelectValue placeholder="Sin proveedor">
+                          {(v: string | null) => (!v || v === '_none') ? 'Sin proveedor' : (proveedores.find((p) => p.id === v)?.name ?? v)}
+                        </SelectValue>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="_none">Sin proveedor</SelectItem>
+                      <SelectItem value="_none" label="Sin proveedor">Sin proveedor</SelectItem>
                       {proveedores.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
+                        <SelectItem key={p.id} value={p.id} label={p.name}>
                           {p.name}
                         </SelectItem>
                       ))}
