@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '14.5'
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -50,11 +50,55 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'audit_log_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dias_operativos: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          fecha: string
+          id: string
+          notes: string | null
+          status: Database["public"]["Enums"]["dia_status"]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          fecha: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["dia_status"]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          fecha?: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["dia_status"]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dias_operativos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -91,18 +135,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'insumo_price_history_insumo_id_fkey'
-            columns: ['insumo_id']
+            foreignKeyName: "insumo_price_history_insumo_id_fkey"
+            columns: ["insumo_id"]
             isOneToOne: false
-            referencedRelation: 'insumos'
-            referencedColumns: ['id']
+            referencedRelation: "insumos"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'insumo_price_history_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "insumo_price_history_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -117,7 +161,7 @@ export type Database = {
           proveedor_id: string | null
           shelf_life_days: number | null
           tenant_id: string
-          unit: Database['public']['Enums']['unit_kind']
+          unit: Database["public"]["Enums"]["unit_kind"]
           updated_at: string
         }
         Insert: {
@@ -130,7 +174,7 @@ export type Database = {
           proveedor_id?: string | null
           shelf_life_days?: number | null
           tenant_id: string
-          unit: Database['public']['Enums']['unit_kind']
+          unit: Database["public"]["Enums"]["unit_kind"]
           updated_at?: string
         }
         Update: {
@@ -143,23 +187,23 @@ export type Database = {
           proveedor_id?: string | null
           shelf_life_days?: number | null
           tenant_id?: string
-          unit?: Database['public']['Enums']['unit_kind']
+          unit?: Database["public"]["Enums"]["unit_kind"]
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'insumos_proveedor_id_fkey'
-            columns: ['proveedor_id']
+            foreignKeyName: "insumos_proveedor_id_fkey"
+            columns: ["proveedor_id"]
             isOneToOne: false
-            referencedRelation: 'proveedores'
-            referencedColumns: ['id']
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'insumos_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "insumos_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -167,8 +211,8 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          role: Database['public']['Enums']['membership_role']
-          status: Database['public']['Enums']['membership_status']
+          role: Database["public"]["Enums"]["membership_role"]
+          status: Database["public"]["Enums"]["membership_status"]
           tenant_id: string
           updated_at: string
           user_id: string
@@ -176,8 +220,8 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
-          role?: Database['public']['Enums']['membership_role']
-          status?: Database['public']['Enums']['membership_status']
+          role?: Database["public"]["Enums"]["membership_role"]
+          status?: Database["public"]["Enums"]["membership_status"]
           tenant_id: string
           updated_at?: string
           user_id: string
@@ -185,19 +229,82 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
-          role?: Database['public']['Enums']['membership_role']
-          status?: Database['public']['Enums']['membership_status']
+          role?: Database["public"]["Enums"]["membership_role"]
+          status?: Database["public"]["Enums"]["membership_status"]
           tenant_id?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'memberships_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "memberships_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      movimientos_diarios: {
+        Row: {
+          almuerzo: number
+          conteo_fisico: number | null
+          created_at: string
+          desperdicio: number
+          dia_id: string
+          diferencia: number | null
+          id: string
+          produccion: number
+          producto_id: string
+          stock_anterior: number
+          stock_calculado: number | null
+          updated_at: string
+          ventas: number
+        }
+        Insert: {
+          almuerzo?: number
+          conteo_fisico?: number | null
+          created_at?: string
+          desperdicio?: number
+          dia_id: string
+          diferencia?: number | null
+          id?: string
+          produccion?: number
+          producto_id: string
+          stock_anterior?: number
+          stock_calculado?: number | null
+          updated_at?: string
+          ventas?: number
+        }
+        Update: {
+          almuerzo?: number
+          conteo_fisico?: number | null
+          created_at?: string
+          desperdicio?: number
+          dia_id?: string
+          diferencia?: number | null
+          id?: string
+          produccion?: number
+          producto_id?: string
+          stock_anterior?: number
+          stock_calculado?: number | null
+          updated_at?: string
+          ventas?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "movimientos_diarios_dia_id_fkey"
+            columns: ["dia_id"]
+            isOneToOne: false
+            referencedRelation: "dias_operativos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_diarios_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -243,18 +350,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'productos_receta_id_fkey'
-            columns: ['receta_id']
+            foreignKeyName: "productos_receta_id_fkey"
+            columns: ["receta_id"]
             isOneToOne: false
-            referencedRelation: 'recetas'
-            referencedColumns: ['id']
+            referencedRelation: "recetas"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'productos_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "productos_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -300,11 +407,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'proveedores_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "proveedores_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -313,53 +420,53 @@ export type Database = {
           created_at: string
           id: string
           insumo_id: string | null
-          kind: Database['public']['Enums']['ingrediente_kind']
+          kind: Database["public"]["Enums"]["ingrediente_kind"]
           qty: number
           receta_id: string
           sub_receta_id: string | null
-          unit: Database['public']['Enums']['unit_kind']
+          unit: Database["public"]["Enums"]["unit_kind"]
         }
         Insert: {
           created_at?: string
           id?: string
           insumo_id?: string | null
-          kind: Database['public']['Enums']['ingrediente_kind']
+          kind: Database["public"]["Enums"]["ingrediente_kind"]
           qty: number
           receta_id: string
           sub_receta_id?: string | null
-          unit: Database['public']['Enums']['unit_kind']
+          unit: Database["public"]["Enums"]["unit_kind"]
         }
         Update: {
           created_at?: string
           id?: string
           insumo_id?: string | null
-          kind?: Database['public']['Enums']['ingrediente_kind']
+          kind?: Database["public"]["Enums"]["ingrediente_kind"]
           qty?: number
           receta_id?: string
           sub_receta_id?: string | null
-          unit?: Database['public']['Enums']['unit_kind']
+          unit?: Database["public"]["Enums"]["unit_kind"]
         }
         Relationships: [
           {
-            foreignKeyName: 'receta_ingredientes_insumo_id_fkey'
-            columns: ['insumo_id']
+            foreignKeyName: "receta_ingredientes_insumo_id_fkey"
+            columns: ["insumo_id"]
             isOneToOne: false
-            referencedRelation: 'insumos'
-            referencedColumns: ['id']
+            referencedRelation: "insumos"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'receta_ingredientes_receta_id_fkey'
-            columns: ['receta_id']
+            foreignKeyName: "receta_ingredientes_receta_id_fkey"
+            columns: ["receta_id"]
             isOneToOne: false
-            referencedRelation: 'recetas'
-            referencedColumns: ['id']
+            referencedRelation: "recetas"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'receta_ingredientes_sub_receta_id_fkey'
-            columns: ['sub_receta_id']
+            foreignKeyName: "receta_ingredientes_sub_receta_id_fkey"
+            columns: ["sub_receta_id"]
             isOneToOne: false
-            referencedRelation: 'recetas'
-            referencedColumns: ['id']
+            referencedRelation: "recetas"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -374,7 +481,7 @@ export type Database = {
           tenant_id: string
           updated_at: string
           yield_qty: number
-          yield_unit: Database['public']['Enums']['unit_kind']
+          yield_unit: Database["public"]["Enums"]["unit_kind"]
         }
         Insert: {
           active?: boolean
@@ -386,7 +493,7 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           yield_qty?: number
-          yield_unit?: Database['public']['Enums']['unit_kind']
+          yield_unit?: Database["public"]["Enums"]["unit_kind"]
         }
         Update: {
           active?: boolean
@@ -398,15 +505,15 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           yield_qty?: number
-          yield_unit?: Database['public']['Enums']['unit_kind']
+          yield_unit?: Database["public"]["Enums"]["unit_kind"]
         }
         Relationships: [
           {
-            foreignKeyName: 'recetas_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "recetas_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -431,11 +538,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'tenant_config_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "tenant_config_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -488,23 +595,28 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'productos_receta_id_fkey'
-            columns: ['receta_id']
+            foreignKeyName: "productos_receta_id_fkey"
+            columns: ["receta_id"]
             isOneToOne: false
-            referencedRelation: 'recetas'
-            referencedColumns: ['id']
+            referencedRelation: "recetas"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'productos_tenant_id_fkey'
-            columns: ['tenant_id']
+            foreignKeyName: "productos_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
     }
     Functions: {
+      abrir_dia: {
+        Args: { p_fecha: string; p_tenant_id: string }
+        Returns: string
+      }
+      cerrar_dia: { Args: { p_dia_id: string }; Returns: undefined }
       current_tenant_ids: { Args: never; Returns: string[] }
       recipe_cost: { Args: { p_receta_id: string }; Returns: number }
       recipe_has_cycle: {
@@ -513,10 +625,11 @@ export type Database = {
       }
     }
     Enums: {
-      ingrediente_kind: 'insumo' | 'receta'
-      membership_role: 'owner' | 'admin' | 'kitchen' | 'cashier'
-      membership_status: 'active' | 'inactive' | 'invited'
-      unit_kind: 'kg' | 'g' | 'l' | 'ml' | 'u' | 'docena' | 'porcion'
+      dia_status: "abierto" | "cerrado"
+      ingrediente_kind: "insumo" | "receta"
+      membership_role: "owner" | "admin" | "kitchen" | "cashier"
+      membership_status: "active" | "inactive" | "invited"
+      unit_kind: "kg" | "g" | "l" | "ml" | "u" | "docena" | "porcion"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -524,33 +637,33 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])
-    ? (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -559,23 +672,23 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -584,23 +697,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -609,45 +722,46 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
-    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema['CompositeTypes']
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
-    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
   public: {
     Enums: {
-      ingrediente_kind: ['insumo', 'receta'],
-      membership_role: ['owner', 'admin', 'kitchen', 'cashier'],
-      membership_status: ['active', 'inactive', 'invited'],
-      unit_kind: ['kg', 'g', 'l', 'ml', 'u', 'docena', 'porcion'],
+      dia_status: ["abierto", "cerrado"],
+      ingrediente_kind: ["insumo", "receta"],
+      membership_role: ["owner", "admin", "kitchen", "cashier"],
+      membership_status: ["active", "inactive", "invited"],
+      unit_kind: ["kg", "g", "l", "ml", "u", "docena", "porcion"],
     },
   },
 } as const
