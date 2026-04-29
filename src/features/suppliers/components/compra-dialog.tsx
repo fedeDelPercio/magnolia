@@ -88,19 +88,25 @@ export function CompraDialog({
     // depende de la cantidad. La dueña sabe el total que pagó.
   }
 
-  function addItem() {
+  function buildPendingItem(): LineItem | null {
     const insumo = insumos.find((i) => i.id === newInsumoId)
-    if (!insumo || !newQty || !newTotal) return
+    if (!insumo || !newQty || !newTotal) return null
     const qty = parseFloat(newQty)
     const total = parseFloat(newTotal)
-    if (isNaN(qty) || qty <= 0 || isNaN(total) || total <= 0) return
+    if (isNaN(qty) || qty <= 0 || isNaN(total) || total <= 0) return null
+    return {
+      insumo_id: insumo.id,
+      insumo_name: insumo.name,
+      qty,
+      unit: insumo.unit,
+      unit_price: total / qty,
+    }
+  }
 
-    const unitPrice = total / qty
-
-    setItems((prev) => [
-      ...prev,
-      { insumo_id: insumo.id, insumo_name: insumo.name, qty, unit: insumo.unit, unit_price: unitPrice },
-    ])
+  function addItem() {
+    const item = buildPendingItem()
+    if (!item) return
+    setItems((prev) => [...prev, item])
     setNewInsumoId('')
     setNewQty('')
     setNewTotal('')
@@ -111,9 +117,13 @@ export function CompraDialog({
   }
 
   const total = items.reduce((acc, i) => acc + i.qty * i.unit_price, 0)
+  const pendingItem = buildPendingItem()
+  const canSubmit = items.length > 0 || pendingItem !== null
 
   async function handleSubmit() {
-    if (items.length === 0) {
+    // Si quedó un ítem pendiente sin "agregar", lo incluimos automáticamente.
+    const allItems = pendingItem ? [...items, pendingItem] : items
+    if (allItems.length === 0) {
       toast.error('Agregá al menos un ítem')
       return
     }
@@ -123,7 +133,7 @@ export function CompraDialog({
       fecha,
       dueDate || null,
       notes || null,
-      items.map((i) => ({ insumo_id: i.insumo_id, qty: i.qty, unit: i.unit, unit_price: i.unit_price })),
+      allItems.map((i) => ({ insumo_id: i.insumo_id, qty: i.qty, unit: i.unit, unit_price: i.unit_price })),
     )
     setSaving(false)
     if (result.error) {
@@ -151,7 +161,7 @@ export function CompraDialog({
               <Input type="date" value={fecha} onChange={(e) => handleFechaChange(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">Vencimiento</label>
+              <label className="text-sm font-medium">Vencimiento de pago</label>
               <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
           </div>
@@ -261,7 +271,7 @@ export function CompraDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={saving || items.length === 0}>
+          <Button onClick={handleSubmit} disabled={saving || !canSubmit}>
             {saving ? 'Guardando...' : 'Registrar compra'}
           </Button>
         </DialogFooter>
