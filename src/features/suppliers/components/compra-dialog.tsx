@@ -57,10 +57,11 @@ export function CompraDialog({
   const [items, setItems] = useState<LineItem[]>([])
   const [saving, setSaving] = useState(false)
 
-  // New item form state
+  // New item form state. `newTotal` es el monto total pagado por la cantidad
+  // ingresada (no el precio por unidad). Calculamos unit_price al agregar.
   const [newInsumoId, setNewInsumoId] = useState('')
   const [newQty, setNewQty] = useState('')
-  const [newPrice, setNewPrice] = useState('')
+  const [newTotal, setNewTotal] = useState('')
 
   useEffect(() => {
     if (open) {
@@ -71,7 +72,7 @@ export function CompraDialog({
       setItems([])
       setNewInsumoId('')
       setNewQty('')
-      setNewPrice('')
+      setNewTotal('')
     }
   }, [open, paymentTermsDays])
 
@@ -83,24 +84,26 @@ export function CompraDialog({
   function handleSelectInsumo(id: string | null) {
     if (!id) return
     setNewInsumoId(id)
-    const insumo = insumos.find((i) => i.id === id)
-    if (insumo) setNewPrice(String(insumo.current_price || ''))
+    // No pre-llenamos precio porque ahora el campo es el total pagado, que
+    // depende de la cantidad. La dueña sabe el total que pagó.
   }
 
   function addItem() {
     const insumo = insumos.find((i) => i.id === newInsumoId)
-    if (!insumo || !newQty || !newPrice) return
+    if (!insumo || !newQty || !newTotal) return
     const qty = parseFloat(newQty)
-    const price = parseFloat(newPrice)
-    if (isNaN(qty) || qty <= 0 || isNaN(price) || price <= 0) return
+    const total = parseFloat(newTotal)
+    if (isNaN(qty) || qty <= 0 || isNaN(total) || total <= 0) return
+
+    const unitPrice = total / qty
 
     setItems((prev) => [
       ...prev,
-      { insumo_id: insumo.id, insumo_name: insumo.name, qty, unit: insumo.unit, unit_price: price },
+      { insumo_id: insumo.id, insumo_name: insumo.name, qty, unit: insumo.unit, unit_price: unitPrice },
     ])
     setNewInsumoId('')
     setNewQty('')
-    setNewPrice('')
+    setNewTotal('')
   }
 
   function removeItem(idx: number) {
@@ -169,7 +172,8 @@ export function CompraDialog({
                     <div>
                       <span className="font-medium">{item.insumo_name}</span>
                       <span className="ml-2 text-muted-foreground">
-                        {item.qty} {UNIT_LABELS[item.unit]} × {formatCurrency(item.unit_price)}
+                        {item.qty} {UNIT_LABELS[item.unit]}
+                        <span className="ml-1 text-xs">({formatCurrency(item.unit_price)} / {UNIT_LABELS[item.unit]})</span>
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -224,15 +228,15 @@ export function CompraDialog({
                 />
               </div>
               <div className="w-28 space-y-1">
-                <label className="text-xs text-muted-foreground">Precio unit.</label>
+                <label className="text-xs text-muted-foreground">Precio total</label>
                 <Input
                   type="number"
                   min="0"
                   step="0.01"
                   className="h-8 text-sm"
                   placeholder="0"
-                  value={newPrice}
-                  onChange={(e) => setNewPrice(e.target.value)}
+                  value={newTotal}
+                  onChange={(e) => setNewTotal(e.target.value)}
                 />
               </div>
               <Button
@@ -241,11 +245,17 @@ export function CompraDialog({
                 variant="outline"
                 className="size-8 shrink-0"
                 onClick={addItem}
-                disabled={!newInsumoId || !newQty || !newPrice}
+                disabled={!newInsumoId || !newQty || !newTotal}
               >
                 <PlusIcon className="size-4" />
               </Button>
             </div>
+
+            {selectedInsumo && newQty && newTotal && parseFloat(newQty) > 0 && parseFloat(newTotal) > 0 && (
+              <p className="text-xs text-muted-foreground text-right">
+                ≈ {formatCurrency(parseFloat(newTotal) / parseFloat(newQty))} por {UNIT_LABELS[selectedInsumo.unit]}
+              </p>
+            )}
           </div>
         </div>
 

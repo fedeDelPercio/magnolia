@@ -64,6 +64,11 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
 
   const [editing, setEditing] = useState(mode !== 'view')
 
+  // UI-only: la dueña piensa en "compré X cantidad por $Y", no en "$Z por unidad".
+  // Calculamos current_price = packTotal / packQty al guardar.
+  const [packQty, setPackQty] = useState('1')
+  const [packTotal, setPackTotal] = useState('')
+
   const perishable = form.watch('perishable')
 
   useEffect(() => {
@@ -81,8 +86,25 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
           }
         : DEFAULT_VALUES,
     )
+    // Reseteamos el helper de pack al abrir el dialog
+    if (insumo) {
+      setPackQty('1')
+      setPackTotal(String(insumo.current_price || ''))
+    } else {
+      setPackQty('1')
+      setPackTotal('')
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, insumo?.id, mode])
+
+  // Cada vez que cambian cantidad o total, actualizamos el form's current_price
+  useEffect(() => {
+    const qty = parseFloat(packQty)
+    const total = parseFloat(packTotal)
+    if (!isNaN(qty) && qty > 0 && !isNaN(total) && total >= 0) {
+      form.setValue('current_price', total / qty, { shouldValidate: false })
+    }
+  }, [packQty, packTotal, form])
 
   const readOnly = !editing
   const isCreate = mode === 'create'
@@ -123,54 +145,78 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
               )}
             />
 
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unidad</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={readOnly}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue>
-                            {(v: string | null) => v ? UNIT_LABELS[v as UnitKind] ?? v : null}
-                          </SelectValue>
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {UNITS.map((u) => (
-                          <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
-                            {UNIT_LABELS[u]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="current_price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Precio por unidad (ARS)</FormLabel>
+            <FormField
+              control={form.control}
+              name="unit"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Unidad</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={readOnly}>
                     <FormControl>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        disabled={readOnly}
-                        value={field.value}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                      />
+                      <SelectTrigger>
+                        <SelectValue>
+                          {(v: string | null) => v ? UNIT_LABELS[v as UnitKind] ?? v : null}
+                        </SelectValue>
+                      </SelectTrigger>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    <SelectContent>
+                      {UNITS.map((u) => (
+                        <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
+                          {UNIT_LABELS[u]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium leading-none">Precio de referencia</label>
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <label className="text-xs text-muted-foreground">Cantidad</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    placeholder="1"
+                    disabled={readOnly}
+                    value={packQty}
+                    onChange={(e) => setPackQty(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-xs text-muted-foreground">Precio total (ARS)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0"
+                    disabled={readOnly}
+                    value={packTotal}
+                    onChange={(e) => setPackTotal(e.target.value)}
+                  />
+                </div>
+              </div>
+              {(() => {
+                const qty = parseFloat(packQty)
+                const total = parseFloat(packTotal)
+                const unitLabel = form.watch('unit') ? UNIT_LABELS[form.watch('unit') as UnitKind] : 'unidad'
+                if (!isNaN(qty) && qty > 0 && !isNaN(total) && total > 0) {
+                  return (
+                    <p className="text-xs text-muted-foreground">
+                      ≈ {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(total / qty)} por {unitLabel}
+                    </p>
+                  )
+                }
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    Ej: si compraste 100 g de lechuga por $30.000, cargá 100 y 30000.
+                  </p>
+                )
+              })()}
             </div>
 
             <FormField
