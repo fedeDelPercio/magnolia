@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarIcon, ChevronRightIcon } from 'lucide-react'
+import { CalendarIcon, ChevronRightIcon, CalendarPlusIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { CargarDiaDialog } from './cargar-dia-dialog'
 import type { DiaOperativo } from '../queries'
 
 const MESES = [
@@ -27,6 +29,7 @@ type Props = { dias: DiaOperativo[]; today: string }
 
 export function OperacionList({ dias, today }: Props) {
   const router = useRouter()
+  const [cargarOpen, setCargarOpen] = useState(false)
 
   const todayDia = dias.find((d) => d.fecha === today)
 
@@ -36,16 +39,24 @@ export function OperacionList({ dias, today }: Props) {
         <p className="text-sm text-muted-foreground">
           {dias.length === 1 ? '1 día registrado' : `${dias.length} días registrados`}
         </p>
-        {todayDia && (
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/operacion/${todayDia.id}`)}
-          >
-            <CalendarIcon className="size-4" />
-            Ver hoy
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCargarOpen(true)}>
+            <CalendarPlusIcon className="size-4" />
+            Cargar otro día
           </Button>
-        )}
+          {todayDia && (
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/operacion/${todayDia.id}`)}
+            >
+              <CalendarIcon className="size-4" />
+              Ver hoy
+            </Button>
+          )}
+        </div>
       </div>
+
+      <CargarDiaDialog open={cargarOpen} onOpenChange={setCargarOpen} today={today} />
 
       <div className="rounded-lg border divide-y">
         {dias.map((dia) => {

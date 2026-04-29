@@ -8,15 +8,24 @@ export async function abrirDia(fecha: string): Promise<{ id?: string; error?: st
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
+  // Idempotente: si ya existe el día devolvemos su id
+  const { data: existing } = await supabase
+    .from('dias_operativos')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('fecha', fecha)
+    .maybeSingle()
+
+  if (existing) {
+    return { id: existing.id }
+  }
+
   const { data, error } = await supabase.rpc('abrir_dia', {
     p_tenant_id: tenantId,
     p_fecha: fecha,
   })
 
-  if (error) {
-    if (error.message.includes('unique')) return { error: 'Ya existe un día para esa fecha' }
-    return { error: error.message }
-  }
+  if (error) return { error: error.message }
 
   revalidatePath('/operacion')
   return { id: data as string }
