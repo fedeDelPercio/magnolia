@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
+import { PencilIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -36,10 +37,13 @@ import { createProducto, updateProducto } from '../actions'
 import type { ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
 
+type Mode = 'view' | 'edit' | 'create'
+
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   producto: ProductoCost | null
+  mode: Mode
   recetas: Pick<Tables<'recetas'>, 'id' | 'name'>[]
 }
 
@@ -52,28 +56,34 @@ const DEFAULT_VALUES: ProductoFormValues = {
   is_dynamic: false,
 }
 
-export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props) {
+export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: Props) {
   const form = useForm<ProductoFormValues>({
     resolver: zodResolver(productoSchema) as Resolver<ProductoFormValues>,
     defaultValues: DEFAULT_VALUES,
   })
 
+  const [editing, setEditing] = useState(mode !== 'view')
+
   useEffect(() => {
-    if (open) {
-      form.reset(
-        producto
-          ? {
-              name: producto.name ?? '',
-              sale_price: producto.sale_price ?? 0,
-              receta_id: producto.receta_id,
-              descartable_cost: producto.descartable_cost ?? 0,
-              target_margin_pct: producto.target_margin_pct ?? 30,
-              is_dynamic: producto.is_dynamic ?? false,
-            }
-          : DEFAULT_VALUES,
-      )
-    }
-  }, [open, producto, form])
+    if (!open) return
+    setEditing(mode !== 'view')
+    form.reset(
+      producto
+        ? {
+            name: producto.name ?? '',
+            sale_price: producto.sale_price ?? 0,
+            receta_id: producto.receta_id,
+            descartable_cost: producto.descartable_cost ?? 0,
+            target_margin_pct: producto.target_margin_pct ?? 30,
+            is_dynamic: producto.is_dynamic ?? false,
+          }
+        : DEFAULT_VALUES,
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, producto?.id, mode])
+
+  const readOnly = !editing
+  const isCreate = mode === 'create'
 
   async function onSubmit(values: ProductoFormValues) {
     const result = producto
@@ -92,11 +102,13 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{producto ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
+          <DialogTitle>
+            {isCreate ? 'Nuevo producto' : readOnly ? producto?.name ?? 'Producto' : `Editar — ${producto?.name ?? ''}`}
+          </DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form id="producto-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -104,7 +116,7 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
                 <FormItem>
                   <FormLabel>Nombre</FormLabel>
                   <FormControl>
-                    <Input placeholder="Ej: Quiche lorraine" {...field} />
+                    <Input placeholder="Ej: Quiche lorraine" disabled={readOnly} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -123,6 +135,7 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
                         type="number"
                         min="0"
                         step="0.01"
+                        disabled={readOnly}
                         value={field.value}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                       />
@@ -144,6 +157,7 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
                         min="0"
                         max="100"
                         step="0.1"
+                        disabled={readOnly}
                         value={field.value}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                       />
@@ -163,6 +177,7 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
                   <Select
                     onValueChange={(v) => field.onChange(v === '_none' ? null : v)}
                     value={field.value ?? '_none'}
+                    disabled={readOnly}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -197,6 +212,7 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
                         min="0"
                         step="0.01"
                         placeholder="0"
+                        disabled={readOnly}
                         value={field.value}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                       />
@@ -215,6 +231,7 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
                     <Checkbox
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      disabled={readOnly}
                     />
                     <FormLabel className="cursor-pointer">
                       Plato del día (nombre variable)
@@ -225,16 +242,36 @@ export function ProductoDialog({ open, onOpenChange, producto, recetas }: Props)
               )}
             />
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </DialogFooter>
           </form>
         </Form>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (readOnly || isCreate) onOpenChange(false)
+              else setEditing(false)
+            }}
+          >
+            {readOnly ? 'Cerrar' : 'Cancelar'}
+          </Button>
+          {readOnly ? (
+            // Workaround Base UI: ver receta-dialog.tsx
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <PencilIcon className="size-4" />
+              Editar
+            </button>
+          ) : (
+            <Button type="submit" form="producto-form" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Guardando...' : 'Guardar'}
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

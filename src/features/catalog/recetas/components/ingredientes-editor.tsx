@@ -23,6 +23,7 @@ type Props = {
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
   recetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
   currentRecetaId?: string
+  readOnly?: boolean
 }
 
 type NewIngState = {
@@ -39,7 +40,7 @@ const EMPTY_ING: NewIngState = {
   unit: 'kg',
 }
 
-export function IngredientesEditor({ insumos, recetas, currentRecetaId }: Props) {
+export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly = false }: Props) {
   const form = useFormContext<RecetaFormValues>()
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -104,15 +105,17 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId }: Props)
                 <span>
                   {field.qty} {UNIT_LABELS[field.unit]}
                 </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 text-destructive hover:text-destructive"
-                  onClick={() => remove(idx)}
-                >
-                  <TrashIcon className="size-3.5" />
-                </Button>
+                {!readOnly && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 text-destructive hover:text-destructive"
+                    onClick={() => remove(idx)}
+                  >
+                    <TrashIcon className="size-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -120,6 +123,7 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId }: Props)
       )}
 
       {/* Add ingredient row */}
+      {!readOnly && (
       <div className="flex items-end gap-2 rounded-lg border border-dashed p-3">
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">Tipo</p>
@@ -208,6 +212,7 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId }: Props)
           <PlusIcon className="size-4" />
         </Button>
       </div>
+      )}
 
       {form.formState.errors.ingredientes && (
         <p className="text-xs text-destructive">

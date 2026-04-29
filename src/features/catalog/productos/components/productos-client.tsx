@@ -47,10 +47,13 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
   )
 }
 
+type DialogMode = 'view' | 'edit' | 'create'
+
 export function ProductosClient({ productos, recetas }: Props) {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProductoCost | null>(null)
+  const [mode, setMode] = useState<DialogMode>('create')
   const [, startTransition] = useTransition()
 
   const filtered = useMemo(
@@ -61,11 +64,19 @@ export function ProductosClient({ productos, recetas }: Props) {
 
   function openCreate() {
     setEditing(null)
+    setMode('create')
+    setDialogOpen(true)
+  }
+
+  function openView(producto: ProductoCost) {
+    setEditing(producto)
+    setMode('view')
     setDialogOpen(true)
   }
 
   function openEdit(producto: ProductoCost) {
     setEditing(producto)
+    setMode('edit')
     setDialogOpen(true)
   }
 
@@ -121,7 +132,11 @@ export function ProductosClient({ productos, recetas }: Props) {
               </TableRow>
             ) : (
               filtered.map((producto) => (
-                <TableRow key={producto.id} className={!producto.active ? 'opacity-50' : ''}>
+                <TableRow
+                  key={producto.id}
+                  className={`cursor-pointer hover:bg-muted/50 ${!producto.active ? 'opacity-50' : ''}`}
+                  onClick={() => openView(producto)}
+                >
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
                       {producto.name}
@@ -157,7 +172,7 @@ export function ProductosClient({ productos, recetas }: Props) {
                       {producto.active ? 'Activo' : 'Inactivo'}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-7" />}>
                         <MoreHorizontalIcon className="size-4" />
@@ -183,6 +198,7 @@ export function ProductosClient({ productos, recetas }: Props) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         producto={editing}
+        mode={mode}
         recetas={recetas}
       />
     </div>

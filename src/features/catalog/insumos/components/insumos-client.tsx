@@ -34,10 +34,13 @@ type Props = {
   proveedores: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
 }
 
+type DialogMode = 'view' | 'edit' | 'create'
+
 export function InsumosClient({ insumos, proveedores }: Props) {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<InsumoWithProveedor | null>(null)
+  const [mode, setMode] = useState<DialogMode>('create')
   const [, startTransition] = useTransition()
 
   const filtered = useMemo(
@@ -48,11 +51,19 @@ export function InsumosClient({ insumos, proveedores }: Props) {
 
   function openCreate() {
     setEditing(null)
+    setMode('create')
+    setDialogOpen(true)
+  }
+
+  function openView(insumo: InsumoWithProveedor) {
+    setEditing(insumo)
+    setMode('view')
     setDialogOpen(true)
   }
 
   function openEdit(insumo: InsumoWithProveedor) {
     setEditing(insumo)
+    setMode('edit')
     setDialogOpen(true)
   }
 
@@ -107,7 +118,11 @@ export function InsumosClient({ insumos, proveedores }: Props) {
               </TableRow>
             ) : (
               filtered.map((insumo) => (
-                <TableRow key={insumo.id} className={!insumo.active ? 'opacity-50' : ''}>
+                <TableRow
+                  key={insumo.id}
+                  className={`cursor-pointer hover:bg-muted/50 ${!insumo.active ? 'opacity-50' : ''}`}
+                  onClick={() => openView(insumo)}
+                >
                   <TableCell className="font-medium">{insumo.name}</TableCell>
                   <TableCell>{UNIT_LABELS[insumo.unit]}</TableCell>
                   <TableCell className="text-right font-mono">
@@ -133,7 +148,7 @@ export function InsumosClient({ insumos, proveedores }: Props) {
                       {insumo.active ? 'Activo' : 'Inactivo'}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-7" />}>
                         <MoreHorizontalIcon className="size-4" />
@@ -159,6 +174,7 @@ export function InsumosClient({ insumos, proveedores }: Props) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         insumo={editing}
+        mode={mode}
         proveedores={proveedores}
       />
     </div>

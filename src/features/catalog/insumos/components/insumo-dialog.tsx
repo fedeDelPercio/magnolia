@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
+import { PencilIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -36,10 +37,13 @@ import { createInsumo, updateInsumo } from '../actions'
 import type { InsumoWithProveedor } from '../queries'
 import type { Tables } from '@/types/database'
 
+type Mode = 'view' | 'edit' | 'create'
+
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   insumo: InsumoWithProveedor | null
+  mode: Mode
   proveedores: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
 }
 
@@ -52,30 +56,36 @@ const DEFAULT_VALUES: InsumoFormValues = {
   shelf_life_days: null,
 }
 
-export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props) {
+export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: Props) {
   const form = useForm<InsumoFormValues>({
     resolver: zodResolver(insumoSchema) as Resolver<InsumoFormValues>,
     defaultValues: DEFAULT_VALUES,
   })
 
+  const [editing, setEditing] = useState(mode !== 'view')
+
   const perishable = form.watch('perishable')
 
   useEffect(() => {
-    if (open) {
-      form.reset(
-        insumo
-          ? {
-              name: insumo.name,
-              unit: insumo.unit,
-              current_price: insumo.current_price,
-              proveedor_id: insumo.proveedor_id,
-              perishable: insumo.perishable,
-              shelf_life_days: insumo.shelf_life_days,
-            }
-          : DEFAULT_VALUES,
-      )
-    }
-  }, [open, insumo, form])
+    if (!open) return
+    setEditing(mode !== 'view')
+    form.reset(
+      insumo
+        ? {
+            name: insumo.name,
+            unit: insumo.unit,
+            current_price: insumo.current_price,
+            proveedor_id: insumo.proveedor_id,
+            perishable: insumo.perishable,
+            shelf_life_days: insumo.shelf_life_days,
+          }
+        : DEFAULT_VALUES,
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, insumo?.id, mode])
+
+  const readOnly = !editing
+  const isCreate = mode === 'create'
 
   async function onSubmit(values: InsumoFormValues) {
     const result = insumo ? await updateInsumo(insumo.id, values) : await createInsumo(values)
@@ -92,11 +102,13 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{insumo ? 'Editar insumo' : 'Nuevo insumo'}</DialogTitle>
+          <DialogTitle>
+            {isCreate ? 'Nuevo insumo' : readOnly ? insumo?.name ?? 'Insumo' : `Editar — ${insumo?.name ?? ''}`}
+          </DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form id="insumo-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -104,7 +116,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                 <FormItem>
                   <FormLabel>Nombre</FormLabel>
                   <FormControl>
-                    <Input placeholder="Ej: Harina 000" {...field} />
+                    <Input placeholder="Ej: Harina 000" disabled={readOnly} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -118,7 +130,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unidad</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={readOnly}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue>
@@ -150,6 +162,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                         type="number"
                         min="0"
                         step="0.01"
+                        disabled={readOnly}
                         value={field.value}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                       />
@@ -169,6 +182,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                   <Select
                     onValueChange={(v) => field.onChange(v === '_none' ? null : v)}
                     value={field.value ?? '_none'}
+                    disabled={readOnly}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -200,6 +214,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                     <Checkbox
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      disabled={readOnly}
                       id="perishable-check"
                     />
                     <FormLabel htmlFor="perishable-check" className="cursor-pointer">
@@ -223,6 +238,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
                         type="number"
                         min="1"
                         placeholder="Ej: 7"
+                        disabled={readOnly}
                         {...field}
                         value={field.value ?? ''}
                         onChange={(e) =>
@@ -236,16 +252,36 @@ export function InsumoDialog({ open, onOpenChange, insumo, proveedores }: Props)
               />
             )}
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </DialogFooter>
           </form>
         </Form>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (readOnly || isCreate) onOpenChange(false)
+              else setEditing(false)
+            }}
+          >
+            {readOnly ? 'Cerrar' : 'Cancelar'}
+          </Button>
+          {readOnly ? (
+            // Workaround Base UI: ver receta-dialog.tsx
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <PencilIcon className="size-4" />
+              Editar
+            </button>
+          ) : (
+            <Button type="submit" form="insumo-form" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Guardando...' : 'Guardar'}
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

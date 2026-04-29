@@ -33,10 +33,13 @@ type Props = {
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
 }
 
+type DialogMode = 'view' | 'edit' | 'create'
+
 export function RecetasClient({ recetas, insumos }: Props) {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<RecetaWithIngredientes | null>(null)
+  const [mode, setMode] = useState<DialogMode>('create')
   const [, startTransition] = useTransition()
 
   const filtered = useMemo(
@@ -57,11 +60,19 @@ export function RecetasClient({ recetas, insumos }: Props) {
 
   function openCreate() {
     setEditing(null)
+    setMode('create')
+    setDialogOpen(true)
+  }
+
+  function openView(receta: RecetaWithIngredientes) {
+    setEditing(receta)
+    setMode('view')
     setDialogOpen(true)
   }
 
   function openEdit(receta: RecetaWithIngredientes) {
     setEditing(receta)
+    setMode('edit')
     setDialogOpen(true)
   }
 
@@ -115,7 +126,11 @@ export function RecetasClient({ recetas, insumos }: Props) {
               </TableRow>
             ) : (
               filtered.map((receta) => (
-                <TableRow key={receta.id} className={!receta.active ? 'opacity-50' : ''}>
+                <TableRow
+                  key={receta.id}
+                  className={`cursor-pointer hover:bg-muted/50 ${!receta.active ? 'opacity-50' : ''}`}
+                  onClick={() => openView(receta)}
+                >
                   <TableCell className="font-medium">{receta.name}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {receta.category ?? '—'}
@@ -136,7 +151,7 @@ export function RecetasClient({ recetas, insumos }: Props) {
                       {receta.active ? 'Activa' : 'Inactiva'}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-7" />}>
                         <MoreHorizontalIcon className="size-4" />
@@ -162,6 +177,7 @@ export function RecetasClient({ recetas, insumos }: Props) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         receta={editing}
+        mode={mode}
         insumos={insumos}
         recetas={recetasSimple}
       />
