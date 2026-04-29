@@ -1,13 +1,10 @@
 'use client'
 
-import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
-import { PlusIcon, CalendarIcon, ChevronRightIcon } from 'lucide-react'
+import { CalendarIcon, ChevronRightIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { abrirDia } from '../actions'
 import type { DiaOperativo } from '../queries'
 
 const MESES = [
@@ -26,53 +23,23 @@ function formatFecha(fechaStr: string) {
   return `${day} de ${MESES[month - 1]!} de ${year}`
 }
 
-function todayLocal() {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
+type Props = { dias: DiaOperativo[]; today: string }
 
-type Props = { dias: DiaOperativo[] }
-
-export function OperacionList({ dias }: Props) {
+export function OperacionList({ dias, today }: Props) {
   const router = useRouter()
-  const [, startTransition] = useTransition()
-  const [opening, setOpening] = useState(false)
 
-  const today = todayLocal()
-  const todayExists = dias.some((d) => d.fecha === today)
-
-  function handleAbrirHoy() {
-    setOpening(true)
-    startTransition(async () => {
-      const result = await abrirDia(today)
-      setOpening(false)
-      if (result.error) {
-        toast.error(result.error)
-      } else if (result.id) {
-        router.push(`/operacion/${result.id}`)
-      }
-    })
-  }
+  const todayDia = dias.find((d) => d.fecha === today)
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {dias.length === 0 ? 'Sin días registrados.' : `${dias.length} ${dias.length === 1 ? 'día registrado' : 'días registrados'}`}
+          {dias.length === 1 ? '1 día registrado' : `${dias.length} días registrados`}
         </p>
-        {!todayExists && (
-          <Button onClick={handleAbrirHoy} disabled={opening}>
-            <PlusIcon className="size-4" />
-            {opening ? 'Abriendo...' : 'Abrir hoy'}
-          </Button>
-        )}
-        {todayExists && (
+        {todayDia && (
           <Button
             variant="outline"
-            onClick={() => router.push(`/operacion/${dias.find((d) => d.fecha === today)!.id}`)}
+            onClick={() => router.push(`/operacion/${todayDia.id}`)}
           >
             <CalendarIcon className="size-4" />
             Ver hoy
@@ -81,12 +48,9 @@ export function OperacionList({ dias }: Props) {
       </div>
 
       <div className="rounded-lg border divide-y">
-        {dias.length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground">
-            No hay días operativos. Abrí el de hoy para empezar.
-          </div>
-        ) : (
-          dias.map((dia) => (
+        {dias.map((dia) => {
+          const isToday = dia.fecha === today
+          return (
             <button
               key={dia.id}
               onClick={() => router.push(`/operacion/${dia.id}`)}
@@ -95,7 +59,14 @@ export function OperacionList({ dias }: Props) {
               <div className="flex items-center gap-3">
                 <CalendarIcon className="size-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="font-medium text-sm">{formatFecha(dia.fecha)}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-sm">{formatFecha(dia.fecha)}</p>
+                    {isToday && (
+                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                        Hoy
+                      </Badge>
+                    )}
+                  </div>
                   {dia.closed_at && (
                     <p className="text-xs text-muted-foreground">
                       Cerrado {formatTime(dia.closed_at)}
@@ -117,8 +88,8 @@ export function OperacionList({ dias }: Props) {
                 <ChevronRightIcon className="size-4 text-muted-foreground" />
               </div>
             </button>
-          ))
-        )}
+          )
+        })}
       </div>
     </div>
   )
