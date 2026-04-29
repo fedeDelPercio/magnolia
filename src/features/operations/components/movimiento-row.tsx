@@ -14,7 +14,7 @@ type LocalState = {
   ventas: number
   desperdicio: number
   almuerzo: number
-  conteo_fisico: number | null
+  conteo_fisico: number
 }
 
 function numInput(v: number | null | undefined): string {
@@ -22,8 +22,7 @@ function numInput(v: number | null | undefined): string {
   return v === 0 ? '' : String(v)
 }
 
-function DiferenciaCell({ diferencia }: { diferencia: number | null }) {
-  if (diferencia === null) return <span className="text-muted-foreground">—</span>
+function DiferenciaCell({ diferencia }: { diferencia: number }) {
   if (diferencia === 0) return <span className="font-mono text-green-700">0</span>
   if (diferencia > 0)
     return <span className="font-mono text-blue-700">+{diferencia.toFixed(2).replace(/\.?0+$/, '')}</span>
@@ -36,7 +35,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
     ventas: mov.ventas,
     desperdicio: mov.desperdicio,
     almuerzo: mov.almuerzo,
-    conteo_fisico: mov.conteo_fisico,
+    conteo_fisico: mov.conteo_fisico ?? 0,
   })
   const [saving, setSaving] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -44,8 +43,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
   const stockTeorico =
     mov.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
 
-  const diferencia =
-    local.conteo_fisico !== null ? local.conteo_fisico - stockTeorico : null
+  const diferencia = local.conteo_fisico - stockTeorico
 
   const schedulesSave = useCallback(
     (updated: LocalState) => {
@@ -66,8 +64,8 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
   )
 
   function handleChange(field: keyof LocalState, raw: string) {
-    const parsed = raw === '' ? (field === 'conteo_fisico' ? null : 0) : parseFloat(raw)
-    const value = typeof parsed === 'number' && isNaN(parsed) ? (field === 'conteo_fisico' ? null : 0) : parsed
+    const parsed = raw === '' ? 0 : parseFloat(raw)
+    const value = isNaN(parsed) ? 0 : parsed
     const updated = { ...local, [field]: value }
     setLocal(updated)
     schedulesSave(updated)
@@ -87,7 +85,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
       </td>
       {(['produccion', 'ventas', 'desperdicio', 'almuerzo', 'conteo_fisico'] as const).map(
         (field) => (
-          <td key={field} className="px-2 py-2">
+          <td key={field} className="px-2 py-2 text-right">
             <input
               type="number"
               min="0"
