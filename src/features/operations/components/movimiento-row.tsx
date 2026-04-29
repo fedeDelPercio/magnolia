@@ -23,10 +23,10 @@ function numInput(v: number | null | undefined): string {
 }
 
 function DiferenciaCell({ diferencia }: { diferencia: number }) {
-  if (diferencia === 0) return <span className="font-mono text-green-700">0</span>
-  if (diferencia > 0)
-    return <span className="font-mono text-blue-700">+{diferencia.toFixed(2).replace(/\.?0+$/, '')}</span>
-  return <span className="font-mono text-red-600">{diferencia.toFixed(2).replace(/\.?0+$/, '')}</span>
+  const rounded = Math.round(diferencia)
+  if (rounded === 0) return <span className="font-mono text-green-700">0</span>
+  if (rounded > 0) return <span className="font-mono text-blue-700">+{rounded}</span>
+  return <span className="font-mono text-red-600">{rounded}</span>
 }
 
 export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Props) {
@@ -64,8 +64,8 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
   )
 
   function handleChange(field: keyof LocalState, raw: string) {
-    const parsed = raw === '' ? 0 : parseFloat(raw)
-    const value = isNaN(parsed) ? 0 : parsed
+    const parsed = raw === '' ? 0 : parseInt(raw, 10)
+    const value = isNaN(parsed) ? 0 : Math.max(0, parsed)
     const updated = { ...local, [field]: value }
     setLocal(updated)
     schedulesSave(updated)
@@ -89,7 +89,8 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
             <input
               type="number"
               min="0"
-              step="0.5"
+              step="1"
+              inputMode="numeric"
               disabled={readonly}
               className={inputCls}
               value={numInput(local[field])}
@@ -100,7 +101,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
         ),
       )}
       <td className="px-2 py-2 text-right font-mono text-sm">
-        {stockTeorico.toFixed(2).replace(/\.?0+$/, '') || '0'}
+        {Math.round(stockTeorico)}
       </td>
       <td className="px-2 py-2 text-right text-sm">
         <DiferenciaCell diferencia={diferencia} />
