@@ -46,7 +46,8 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
 
   // Si el día está abierto, sincronizamos: agregamos movimientos para
   // productos activos que se crearon después de abrir el día.
-  // Los días cerrados quedan inmutables (snapshot histórico).
+  // Para esos movimientos nuevos, heredamos stock_anterior del último día
+  // cerrado (mismo tenant, fecha anterior). Los días cerrados son inmutables.
   if (data.status === 'abierto') {
     const existingProductIds = new Set(
       (data.movimientos_diarios as Array<{ producto_id: string }>).map((m) => m.producto_id),
@@ -61,11 +62,38 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
     const missing = (activeProducts ?? []).filter((p) => !existingProductIds.has(p.id))
 
     if (missing.length > 0) {
+      // Buscamos el último día cerrado anterior para heredar stock
+      const { data: prevClosed } = await supabase
+        .from('dias_operativos')
+        .select('id')
+        .eq('tenant_id', data.tenant_id)
+        .eq('status', 'cerrado')
+        .lt('fecha', data.fecha)
+        .order('fecha', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      // Mapa producto_id → conteo_fisico del último día cerrado
+      const prevStock = new Map<string, number>()
+      if (prevClosed) {
+        const { data: prevMovs } = await supabase
+          .from('movimientos_diarios')
+          .select('producto_id, conteo_fisico')
+          .eq('dia_id', prevClosed.id)
+          .in(
+            'producto_id',
+            missing.map((p) => p.id),
+          )
+        for (const m of prevMovs ?? []) {
+          prevStock.set(m.producto_id, m.conteo_fisico ?? 0)
+        }
+      }
+
       await supabase.from('movimientos_diarios').insert(
         missing.map((p) => ({
           dia_id: diaId,
           producto_id: p.id,
-          stock_anterior: 0,
+          stock_anterior: prevStock.get(p.id) ?? 0,
           produccion: 0,
           ventas: 0,
           desperdicio: 0,
@@ -73,7 +101,6 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
         })),
       )
 
-      // Re-fetch para incluir los nuevos movimientos
       const { data: refreshed } = await supabase
         .from('dias_operativos')
         .select(`

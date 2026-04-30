@@ -10,7 +10,6 @@ type Props = {
 }
 
 type LocalState = {
-  stock_anterior: number
   produccion: number
   ventas: number
   desperdicio: number
@@ -32,7 +31,6 @@ function DiferenciaCell({ diferencia }: { diferencia: number }) {
 
 export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Props) {
   const [local, setLocal] = useState<LocalState>({
-    stock_anterior: mov.stock_anterior,
     produccion: mov.produccion,
     ventas: mov.ventas,
     desperdicio: mov.desperdicio,
@@ -43,7 +41,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const stockTeorico =
-    local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
+    mov.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
 
   const diferencia = local.conteo_fisico - stockTeorico
 
@@ -53,7 +51,6 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
       timer.current = setTimeout(async () => {
         setSaving(true)
         await saveMovimiento(mov.id, {
-          stock_anterior: updated.stock_anterior,
           produccion: updated.produccion,
           ventas: updated.ventas,
           desperdicio: updated.desperdicio,
@@ -83,18 +80,8 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
         {mov.productos.name}
         {saving && <span className="ml-1 text-xs text-muted-foreground">·</span>}
       </td>
-      <td className="px-2 py-2 text-right">
-        <input
-          type="number"
-          min="0"
-          step="1"
-          inputMode="numeric"
-          disabled={readonly}
-          className={inputCls}
-          value={numInput(local.stock_anterior)}
-          placeholder="0"
-          onChange={(e) => handleChange('stock_anterior', e.target.value)}
-        />
+      <td className="px-2 py-2 text-right tabular-nums text-sm text-muted-foreground">
+        {mov.stock_anterior === 0 ? '—' : Math.round(mov.stock_anterior)}
       </td>
       {(['produccion', 'ventas', 'desperdicio', 'almuerzo', 'conteo_fisico'] as const).map(
         (field) => (
