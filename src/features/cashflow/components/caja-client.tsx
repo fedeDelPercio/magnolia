@@ -84,15 +84,15 @@ export function CajaClient({ movimientos, month }: Props) {
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Ingresos</p>
-          <p className="mt-1 font-mono font-semibold text-green-700">{formatCurrency(totalIngresos)}</p>
+          <p className="mt-1 tabular-nums font-semibold text-green-700">{formatCurrency(totalIngresos)}</p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Egresos</p>
-          <p className="mt-1 font-mono font-semibold text-red-600">{formatCurrency(totalEgresos)}</p>
+          <p className="mt-1 tabular-nums font-semibold text-red-600">{formatCurrency(totalEgresos)}</p>
         </div>
         <div className={`rounded-lg border p-4 ${saldo >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Resultado</p>
-          <p className={`mt-1 font-mono font-semibold text-lg ${saldo >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+          <p className={`mt-1 tabular-nums font-semibold text-lg ${saldo >= 0 ? 'text-green-700' : 'text-red-600'}`}>
             {formatCurrency(saldo)}
           </p>
         </div>

@@ -187,7 +187,7 @@ export function CompraDialog({
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono">{formatCurrency(item.qty * item.unit_price)}</span>
+                      <span className="tabular-nums">{formatCurrency(item.qty * item.unit_price)}</span>
                       <Button
                         type="button"
                         variant="ghost"

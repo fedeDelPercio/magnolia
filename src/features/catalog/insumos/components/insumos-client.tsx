@@ -125,7 +125,7 @@ export function InsumosClient({ insumos, proveedores }: Props) {
                 >
                   <TableCell className="font-medium">{insumo.name}</TableCell>
                   <TableCell>{UNIT_LABELS[insumo.unit]}</TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell className="text-right tabular-nums">
                     {formatCurrency(insumo.current_price)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">

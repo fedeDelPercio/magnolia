@@ -39,8 +39,8 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
     <Badge
       variant="outline"
       className={ok
-        ? 'border-green-200 bg-green-50 font-mono text-xs text-green-700'
-        : 'border-red-200 bg-red-50 font-mono text-xs text-red-600'}
+        ? 'border-green-200 bg-green-50 tabular-nums text-xs text-green-700'
+        : 'border-red-200 bg-red-50 tabular-nums text-xs text-red-600'}
     >
       {formatPct(margin)}
     </Badge>
@@ -150,10 +150,10 @@ export function ProductosClient({ productos, recetas }: Props) {
                   <TableCell className="text-muted-foreground">
                     {producto.receta_name ?? '—'}
                   </TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell className="text-right tabular-nums">
                     {formatCurrency(producto.sale_price ?? 0)}
                   </TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell className="text-right tabular-nums">
                     {formatCurrency(producto.total_cost ?? 0)}
                   </TableCell>
                   <TableCell className="text-center">

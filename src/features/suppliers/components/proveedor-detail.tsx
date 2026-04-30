@@ -71,15 +71,15 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
         <div className="flex flex-wrap gap-6">
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Total compras</p>
-            <p className="mt-0.5 font-mono font-medium">{formatCurrency(proveedor.total_compras)}</p>
+            <p className="mt-0.5 tabular-nums font-medium">{formatCurrency(proveedor.total_compras)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Total pagado</p>
-            <p className="mt-0.5 font-mono font-medium">{formatCurrency(proveedor.total_pagado)}</p>
+            <p className="mt-0.5 tabular-nums font-medium">{formatCurrency(proveedor.total_pagado)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Saldo deudor</p>
-            <p className={`mt-0.5 font-mono font-semibold text-lg ${proveedor.saldo > 0 ? 'text-red-600' : 'text-green-700'}`}>
+            <p className={`mt-0.5 tabular-nums font-semibold text-lg ${proveedor.saldo > 0 ? 'text-red-600' : 'text-green-700'}`}>
               {formatCurrency(proveedor.saldo)}
             </p>
           </div>
@@ -90,25 +90,25 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
             {proveedor.d0_30 > 0 && (
               <div className="rounded border px-3 py-1.5">
                 <span className="text-xs text-muted-foreground block">0-30 días</span>
-                <span className="font-mono">{formatCurrency(proveedor.d0_30)}</span>
+                <span className="tabular-nums">{formatCurrency(proveedor.d0_30)}</span>
               </div>
             )}
             {proveedor.d31_60 > 0 && (
               <div className="rounded border border-yellow-200 bg-yellow-50 px-3 py-1.5">
                 <span className="text-xs text-yellow-700 block">31-60 días</span>
-                <span className="font-mono text-yellow-800">{formatCurrency(proveedor.d31_60)}</span>
+                <span className="tabular-nums text-yellow-800">{formatCurrency(proveedor.d31_60)}</span>
               </div>
             )}
             {proveedor.d61_90 > 0 && (
               <div className="rounded border border-orange-200 bg-orange-50 px-3 py-1.5">
                 <span className="text-xs text-orange-700 block">61-90 días</span>
-                <span className="font-mono text-orange-800">{formatCurrency(proveedor.d61_90)}</span>
+                <span className="tabular-nums text-orange-800">{formatCurrency(proveedor.d61_90)}</span>
               </div>
             )}
             {proveedor.d90plus > 0 && (
               <div className="rounded border border-red-200 bg-red-50 px-3 py-1.5">
                 <span className="text-xs text-red-700 block">+90 días</span>
-                <span className="font-mono text-red-800">{formatCurrency(proveedor.d90plus)}</span>
+                <span className="tabular-nums text-red-800">{formatCurrency(proveedor.d90plus)}</span>
               </div>
             )}
           </div>
@@ -135,7 +135,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
                     {c.notes && <p className="text-xs text-muted-foreground mt-0.5">{c.notes}</p>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="font-mono font-medium">{formatCurrency(c.total)}</span>
+                    <span className="tabular-nums font-medium">{formatCurrency(c.total)}</span>
                     <Badge variant="outline" className={STATUS_CLASSES[c.status] ?? ''}>
                       {STATUS_LABELS[c.status]}
                     </Badge>
@@ -174,7 +174,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
                     {p.descripcion ? ` — ${p.descripcion}` : ''}
                   </p>
                 </div>
-                <span className="font-mono font-medium text-green-700">{formatCurrency(p.monto)}</span>
+                <span className="tabular-nums font-medium text-green-700">{formatCurrency(p.monto)}</span>
               </div>
             ))}
           </div>

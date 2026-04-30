@@ -88,7 +88,7 @@ export function ProveedoresClient({ proveedores }: Props) {
                   <TableCell className="text-center text-muted-foreground">
                     {p.payment_terms_days === 0 ? 'Contado' : `${p.payment_terms_days} días`}
                   </TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell className="text-right tabular-nums">
                     {p.saldo > 0 ? (
                       <span className="text-red-600">{formatCurrency(p.saldo)}</span>
                     ) : (
