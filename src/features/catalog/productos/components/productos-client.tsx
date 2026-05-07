@@ -27,10 +27,15 @@ import { toggleProductoActive } from '../actions'
 import { ProductoDialog } from './producto-dialog'
 import type { ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
+import type { RecetaParaProducto, DescartableParaProducto } from '../../recetas/queries'
 
 type Props = {
   productos: ProductoCost[]
-  recetas: Pick<Tables<'recetas'>, 'id' | 'name'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  recetasParaProductos: RecetaParaProducto[]
+  descartablesParaProductos: DescartableParaProducto[]
+  subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
 }
 
 function MarginBadge({ margin, target }: { margin: number; target: number }) {
@@ -49,12 +54,22 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
 
 type DialogMode = 'view' | 'edit' | 'create'
 
-export function ProductosClient({ productos, recetas }: Props) {
+export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas }: Props) {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProductoCost | null>(null)
   const [mode, setMode] = useState<DialogMode>('create')
   const [, startTransition] = useTransition()
+
+  const recetaMap = useMemo(
+    () => new Map(recetasParaProductos.map((r) => [r.id, r])),
+    [recetasParaProductos],
+  )
+
+  const descartablesMap = useMemo(
+    () => new Map(descartablesParaProductos.map((d) => [d.producto_id, d.descartables])),
+    [descartablesParaProductos],
+  )
 
   const filtered = useMemo(
     () =>
@@ -92,6 +107,9 @@ export function ProductosClient({ productos, recetas }: Props) {
     })
   }
 
+  const currentRecetaData = editing?.receta_id ? (recetaMap.get(editing.receta_id) ?? null) : null
+  const currentDescartables = editing?.id ? (descartablesMap.get(editing.id) ?? []) : []
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -115,7 +133,6 @@ export function ProductosClient({ productos, recetas }: Props) {
           <TableHeader>
             <TableRow>
               <TableHead>Nombre</TableHead>
-              <TableHead>Receta</TableHead>
               <TableHead className="text-right">Precio venta</TableHead>
               <TableHead className="text-right">Costo total</TableHead>
               <TableHead className="text-center">Margen</TableHead>
@@ -126,7 +143,7 @@ export function ProductosClient({ productos, recetas }: Props) {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                   {search ? 'No se encontraron productos' : 'Sin productos. Creá el primero.'}
                 </TableCell>
               </TableRow>
@@ -146,9 +163,6 @@ export function ProductosClient({ productos, recetas }: Props) {
                         </Badge>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {producto.receta_name ?? '—'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatCurrency(producto.sale_price ?? 0)}
@@ -198,8 +212,12 @@ export function ProductosClient({ productos, recetas }: Props) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         producto={editing}
+        recetaData={currentRecetaData}
+        descartables={currentDescartables}
         mode={mode}
-        recetas={recetas}
+        insumos={insumos}
+        insumosDescartables={insumosDescartables}
+        subRecetas={subRecetas}
       />
     </div>
   )

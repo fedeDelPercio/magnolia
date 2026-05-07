@@ -7,7 +7,7 @@ import { PlusIcon, TrashIcon } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import { formatCurrency } from '@/lib/format'
 import { UNIT_LABELS } from '@/features/catalog/insumos/schemas'
@@ -210,18 +210,12 @@ export function CompraDialog({
             <div className="flex gap-2 items-end">
               <div className="flex-1 space-y-1">
                 <label className="text-xs text-muted-foreground">Insumo</label>
-                <Select onValueChange={handleSelectInsumo} value={newInsumoId}>
-                  <SelectTrigger className="w-full h-8 text-sm">
-                    <SelectValue placeholder="Seleccioná...">
-                      {(v: string | null) => v ? (insumos.find((i) => i.id === v)?.name ?? v) : null}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {insumos.map((i) => (
-                      <SelectItem key={i.id} value={i.id} label={i.name}>{i.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  options={insumos.map((i) => ({ value: i.id, label: i.name }))}
+                  value={newInsumoId}
+                  onValueChange={handleSelectInsumo}
+                  triggerClassName="h-8 text-sm"
+                />
               </div>
               <div className="w-20 space-y-1">
                 <label className="text-xs text-muted-foreground">

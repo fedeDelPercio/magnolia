@@ -32,7 +32,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
-import { insumoSchema, UNITS, UNIT_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
+import { insumoSchema, UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
 import { createInsumo, updateInsumo } from '../actions'
 import type { InsumoWithProveedor } from '../queries'
 import type { Tables } from '@/types/database'
@@ -49,11 +49,14 @@ type Props = {
 
 const DEFAULT_VALUES: InsumoFormValues = {
   name: '',
+  kind: 'ingrediente',
   unit: 'kg',
   current_price: 0,
   proveedor_id: null,
   perishable: false,
   shelf_life_days: null,
+  track_stock: false,
+  stock_inicial: 0,
 }
 
 export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: Props) {
@@ -70,6 +73,8 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
   const [packTotal, setPackTotal] = useState('')
 
   const perishable = form.watch('perishable')
+  const trackStock = form.watch('track_stock')
+  const selectedUnit = form.watch('unit')
 
   useEffect(() => {
     if (!open) return
@@ -78,11 +83,14 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
       insumo
         ? {
             name: insumo.name,
+            kind: (insumo.kind ?? 'ingrediente') as InsumoFormValues['kind'],
             unit: insumo.unit,
             current_price: insumo.current_price,
             proveedor_id: insumo.proveedor_id,
             perishable: insumo.perishable,
             shelf_life_days: insumo.shelf_life_days,
+            track_stock: insumo.track_stock,
+            stock_inicial: insumo.stock_inicial,
           }
         : DEFAULT_VALUES,
     )
@@ -130,7 +138,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
         </DialogHeader>
 
         <Form {...form}>
-          <form id="insumo-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form id="insumo-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-h-[65vh] overflow-y-auto pr-0.5">
             <FormField
               control={form.control}
               name="name"
@@ -140,6 +148,33 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                   <FormControl>
                     <Input placeholder="Ej: Harina 000" disabled={readOnly} {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="kind"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={readOnly}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue>
+                          {(v: string | null) => v ? INSUMO_KIND_LABELS[v as InsumoFormValues['kind']] ?? v : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {INSUMO_KINDS.map((k) => (
+                        <SelectItem key={k} value={k} label={INSUMO_KIND_LABELS[k]}>
+                          {INSUMO_KIND_LABELS[k]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -292,6 +327,57 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                         }
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            <FormField
+              control={form.control}
+              name="track_stock"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={readOnly}
+                      id="track-stock-check"
+                    />
+                    <FormLabel htmlFor="track-stock-check" className="cursor-pointer">
+                      Controlar stock
+                    </FormLabel>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {trackStock && (
+              <FormField
+                control={form.control}
+                name="stock_inicial"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Stock inicial</FormLabel>
+                    <div className="flex w-fit items-center overflow-hidden rounded-md border border-input text-sm shadow-xs">
+                      <FormControl>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          placeholder="0"
+                          disabled={readOnly}
+                          value={field.value}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          className="w-24 bg-background px-3 py-1.5 tabular-nums outline-none disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        />
+                      </FormControl>
+                      <span className="border-l border-input bg-muted/50 px-2.5 py-1.5 text-muted-foreground select-none">
+                        {UNIT_LABELS[selectedUnit as UnitKind] ?? selectedUnit}
+                      </span>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

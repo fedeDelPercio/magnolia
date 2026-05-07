@@ -50,7 +50,7 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
   // cerrado (mismo tenant, fecha anterior). Los días cerrados son inmutables.
   if (data.status === 'abierto') {
     const existingProductIds = new Set(
-      (data.movimientos_diarios as Array<{ producto_id: string }>).map((m) => m.producto_id),
+      (data.movimientos_diarios as unknown as Array<{ producto_id: string }>).map((m) => m.producto_id),
     )
 
     const { data: activeProducts } = await supabase

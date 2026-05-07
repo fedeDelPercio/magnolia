@@ -17,11 +17,14 @@ export async function createInsumo(values: InsumoFormValues): Promise<{ error?: 
 
     const { error } = await supabase.from('insumos').insert({
       name: values.name,
+      kind: values.kind,
       unit: values.unit,
       current_price: values.current_price,
       proveedor_id: values.proveedor_id ?? null,
       perishable: values.perishable,
       shelf_life_days: values.perishable ? (values.shelf_life_days ?? null) : null,
+      track_stock: values.track_stock,
+      stock_inicial: values.track_stock ? (values.stock_inicial ?? 0) : 0,
       tenant_id: tenantId,
     })
 
@@ -44,11 +47,14 @@ export async function updateInsumo(
       .from('insumos')
       .update({
         name: values.name,
+        kind: values.kind,
         unit: values.unit,
         current_price: values.current_price,
         proveedor_id: values.proveedor_id ?? null,
         perishable: values.perishable,
         shelf_life_days: values.perishable ? (values.shelf_life_days ?? null) : null,
+        track_stock: values.track_stock,
+        stock_inicial: values.track_stock ? (values.stock_inicial ?? 0) : 0,
       })
       .eq('id', id)
 

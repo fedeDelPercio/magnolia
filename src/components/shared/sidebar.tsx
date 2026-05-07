@@ -14,7 +14,6 @@ import {
   BarChart2,
   Settings,
   LogOut,
-  ChefHat,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -42,7 +41,6 @@ const navSections: NavSection[] = [
     section: 'Catálogo',
     items: [
       { href: '/catalogo/insumos', label: 'Insumos', icon: Package },
-      { href: '/catalogo/recetas', label: 'Recetas', icon: ChefHat },
       { href: '/catalogo/productos', label: 'Productos', icon: ShoppingBag },
     ],
   },

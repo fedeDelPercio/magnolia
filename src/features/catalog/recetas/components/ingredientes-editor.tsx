@@ -14,10 +14,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import { UNITS, UNIT_LABELS, type UnitKind } from '../../insumos/schemas'
-import type { RecetaFormValues } from '../schemas'
+import type { IngredienteFormValues } from '../schemas'
 import type { Tables } from '@/types/database'
+
+type FormWithIngredientes = { ingredientes: IngredienteFormValues[] }
 
 type Props = {
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
@@ -41,7 +44,7 @@ const EMPTY_ING: NewIngState = {
 }
 
 export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly = false }: Props) {
-  const form = useFormContext<RecetaFormValues>()
+  const form = useFormContext<FormWithIngredientes>()
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: 'ingredientes',
@@ -79,7 +82,7 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
     setNewIng(EMPTY_ING)
   }
 
-  function getLabel(field: RecetaFormValues['ingredientes'][number]): string {
+  function getLabel(field: IngredienteFormValues): string {
     if (field.kind === 'insumo') {
       return insumos.find((i) => i.id === field.insumo_id)?.name ?? '—'
     }
@@ -124,93 +127,88 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
 
       {/* Add ingredient row */}
       {!readOnly && (
-      <div className="flex items-end gap-2 rounded-lg border border-dashed p-3">
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Tipo</p>
-          <Select
-            value={newIng.kind}
-            onValueChange={(v) => handleKindChange(v as 'insumo' | 'receta')}
+      <div className="space-y-2 rounded-lg border border-dashed p-3">
+        {/* Row 1: Tipo + selector */}
+        <div className="flex items-end gap-2">
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Tipo</p>
+            <Select
+              value={newIng.kind}
+              onValueChange={(v) => handleKindChange(v as 'insumo' | 'receta')}
+            >
+              <SelectTrigger className="w-28">
+                <SelectValue>
+                  {(v: string | null) => v === 'insumo' ? 'Insumo' : v === 'receta' ? 'Sub-receta' : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="insumo" label="Insumo">Insumo</SelectItem>
+                <SelectItem value="receta" label="Sub-receta">Sub-receta</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex-1 space-y-1">
+            <p className="text-xs text-muted-foreground">
+              {newIng.kind === 'insumo' ? 'Insumo' : 'Receta'}
+            </p>
+            <SearchableSelect
+              options={(newIng.kind === 'insumo' ? insumos : availableRecetas).map((item) => ({
+                value: item.id,
+                label: item.name,
+              }))}
+              value={newIng.refId}
+              onValueChange={handleRefChange}
+            />
+          </div>
+        </div>
+
+        {/* Row 2: Cantidad + Unidad + agregar */}
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-1">
+            <p className="text-xs text-muted-foreground">Cantidad</p>
+            <Input
+              type="number"
+              min="0"
+              step="any"
+              placeholder="0"
+              value={newIng.qty}
+              onChange={(e) => setNewIng((prev) => ({ ...prev, qty: e.target.value }))}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Unidad</p>
+            <Select
+              value={newIng.unit}
+              onValueChange={(v) => setNewIng((prev) => ({ ...prev, unit: v as UnitKind }))}
+            >
+              <SelectTrigger className="w-28">
+                <SelectValue>
+                  {(v: string | null) => v ? UNIT_LABELS[v as UnitKind] ?? v : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {UNITS.map((u) => (
+                  <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
+                    {UNIT_LABELS[u]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={handleAdd}
+            disabled={!newIng.refId || !newIng.qty}
+            className="shrink-0"
           >
-            <SelectTrigger className="w-28">
-              <SelectValue>
-                {(v: string | null) => v === 'insumo' ? 'Insumo' : v === 'receta' ? 'Sub-receta' : null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="insumo" label="Insumo">Insumo</SelectItem>
-              <SelectItem value="receta" label="Sub-receta">Sub-receta</SelectItem>
-            </SelectContent>
-          </Select>
+            <PlusIcon className="size-4" />
+          </Button>
         </div>
-
-        <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-xs text-muted-foreground">
-            {newIng.kind === 'insumo' ? 'Insumo' : 'Receta'}
-          </p>
-          <Select value={newIng.refId} onValueChange={handleRefChange}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Seleccionar...">
-                {(v: string | null) => {
-                  if (!v) return null
-                  const list = newIng.kind === 'insumo' ? insumos : availableRecetas
-                  return list.find((i) => i.id === v)?.name ?? v
-                }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {(newIng.kind === 'insumo' ? insumos : availableRecetas).map((item) => (
-                <SelectItem key={item.id} value={item.id} label={item.name}>
-                  {item.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Cantidad</p>
-          <Input
-            type="number"
-            min="0"
-            step="any"
-            placeholder="0"
-            value={newIng.qty}
-            onChange={(e) => setNewIng((prev) => ({ ...prev, qty: e.target.value }))}
-            className="w-24"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Unidad</p>
-          <Select
-            value={newIng.unit}
-            onValueChange={(v) => setNewIng((prev) => ({ ...prev, unit: v as UnitKind }))}
-          >
-            <SelectTrigger className="w-24">
-              <SelectValue>
-                {(v: string | null) => v ? UNIT_LABELS[v as UnitKind] ?? v : null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {UNITS.map((u) => (
-                <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
-                  {UNIT_LABELS[u]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={handleAdd}
-          disabled={!newIng.refId || !newIng.qty}
-          className="shrink-0"
-        >
-          <PlusIcon className="size-4" />
-        </Button>
       </div>
       )}
 

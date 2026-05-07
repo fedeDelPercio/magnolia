@@ -36,6 +36,10 @@ import { productoSchema, type ProductoFormValues } from '../schemas'
 import { createProducto, updateProducto } from '../actions'
 import type { ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
+import { IngredientesEditor } from '../../recetas/components/ingredientes-editor'
+import { DescartablesEditor } from './descartables-editor'
+import { UNITS, UNIT_LABELS } from '../../recetas/schemas'
+import type { RecetaParaProducto } from '../../recetas/queries'
 
 type Mode = 'view' | 'edit' | 'create'
 
@@ -43,20 +47,37 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   producto: ProductoCost | null
+  recetaData: RecetaParaProducto | null
+  descartables: { insumo_id: string; qty: number }[]
   mode: Mode
-  recetas: Pick<Tables<'recetas'>, 'id' | 'name'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
 }
 
 const DEFAULT_VALUES: ProductoFormValues = {
   name: '',
   sale_price: 0,
   receta_id: null,
-  descartable_cost: 0,
   target_margin_pct: 30,
   is_dynamic: false,
+  yield_qty: 1,
+  yield_unit: 'u',
+  ingredientes: [],
+  descartables: [],
 }
 
-export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: Props) {
+export function ProductoDialog({
+  open,
+  onOpenChange,
+  producto,
+  recetaData,
+  descartables,
+  mode,
+  insumos,
+  insumosDescartables,
+  subRecetas,
+}: Props) {
   const form = useForm<ProductoFormValues>({
     resolver: zodResolver(productoSchema) as Resolver<ProductoFormValues>,
     defaultValues: DEFAULT_VALUES,
@@ -72,15 +93,18 @@ export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: 
         ? {
             name: producto.name ?? '',
             sale_price: producto.sale_price ?? 0,
-            receta_id: producto.receta_id,
-            descartable_cost: producto.descartable_cost ?? 0,
+            receta_id: producto.receta_id ?? null,
             target_margin_pct: producto.target_margin_pct ?? 30,
             is_dynamic: producto.is_dynamic ?? false,
+            yield_qty: recetaData?.yield_qty ?? 1,
+            yield_unit: (recetaData?.yield_unit ?? 'u') as ProductoFormValues['yield_unit'],
+            ingredientes: recetaData?.ingredientes ?? [],
+            descartables: descartables,
           }
         : DEFAULT_VALUES,
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, producto?.id, mode])
+  }, [open, producto?.id, recetaData, mode])
 
   const readOnly = !editing
   const isCreate = mode === 'create'
@@ -100,15 +124,24 @@ export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {isCreate ? 'Nuevo producto' : readOnly ? producto?.name ?? 'Producto' : `Editar — ${producto?.name ?? ''}`}
+            {isCreate
+              ? 'Nuevo producto'
+              : readOnly
+                ? (producto?.name ?? 'Producto')
+                : `Editar — ${producto?.name ?? ''}`}
           </DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form id="producto-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            id="producto-form"
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4 max-h-[70vh] overflow-y-auto pr-1"
+          >
+            {/* Nombre */}
             <FormField
               control={form.control}
               name="name"
@@ -123,6 +156,7 @@ export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: 
               )}
             />
 
+            {/* Precio y margen */}
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -168,60 +202,62 @@ export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: 
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="receta_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Receta (opcional)</FormLabel>
-                  <Select
-                    onValueChange={(v) => field.onChange(v === '_none' ? null : v)}
-                    value={field.value ?? '_none'}
-                    disabled={readOnly}
-                  >
+            {/* Rendimiento */}
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="yield_qty"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rendimiento (unidades)</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sin receta">
-                          {(v: string | null) => (!v || v === '_none') ? 'Sin receta' : (recetas.find((r) => r.id === v)?.name ?? v)}
-                        </SelectValue>
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="_none" label="Sin receta">Sin receta</SelectItem>
-                      {recetas.map((r) => (
-                        <SelectItem key={r.id} value={r.id} label={r.name}>
-                          {r.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="descartable_cost"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Costo descartable (ARS)</FormLabel>
-                  <FormControl>
-                    <Input
+                      <Input
                         type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
+                        min="0.001"
+                        step="any"
                         disabled={readOnly}
                         value={field.value}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 1)}
                       />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
+              <FormField
+                control={form.control}
+                name="yield_unit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unidad</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={readOnly}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue>
+                            {(v: string | null) => (v ? UNIT_LABELS[v as keyof typeof UNIT_LABELS] ?? v : null)}
+                          </SelectValue>
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {UNITS.map((u) => (
+                          <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
+                            {UNIT_LABELS[u]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Plato del día */}
             <FormField
               control={form.control}
               name="is_dynamic"
@@ -242,6 +278,20 @@ export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: 
               )}
             />
 
+            {/* Ingredientes */}
+            <div className="border-t pt-4">
+              <IngredientesEditor
+                insumos={insumos}
+                recetas={subRecetas}
+                currentRecetaId={producto?.receta_id ?? undefined}
+                readOnly={readOnly}
+              />
+            </div>
+
+            {/* Descartables */}
+            <div className="border-t pt-4">
+              <DescartablesEditor insumos={insumosDescartables} readOnly={readOnly} />
+            </div>
           </form>
         </Form>
 
@@ -257,7 +307,6 @@ export function ProductoDialog({ open, onOpenChange, producto, mode, recetas }: 
             {readOnly ? 'Cerrar' : 'Cancelar'}
           </Button>
           {readOnly ? (
-            // Workaround Base UI: ver receta-dialog.tsx
             <button
               type="button"
               onClick={() => setEditing(true)}

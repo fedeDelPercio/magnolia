@@ -13,14 +13,24 @@ export const UNIT_LABELS: Record<UnitKind, string> = {
   porcion: 'porción',
 }
 
+export const INSUMO_KINDS = ['ingrediente', 'descartable'] as const
+export type InsumoKind = (typeof INSUMO_KINDS)[number]
+export const INSUMO_KIND_LABELS: Record<InsumoKind, string> = {
+  ingrediente: 'Ingrediente',
+  descartable: 'Descartable',
+}
+
 export const insumoSchema = z
   .object({
     name: z.string().min(1, 'El nombre es requerido'),
+    kind: z.enum(INSUMO_KINDS).default('ingrediente'),
     unit: z.enum(UNITS),
     current_price: z.number().min(0, 'El precio debe ser 0 o mayor'),
     proveedor_id: z.string().uuid().nullable().optional(),
     perishable: z.boolean().default(false),
     shelf_life_days: z.number().int().positive().nullable().optional(),
+    track_stock: z.boolean().default(false),
+    stock_inicial: z.number().min(0).default(0),
   })
   .refine(
     (data) => !data.perishable || (data.shelf_life_days != null && data.shelf_life_days > 0),
