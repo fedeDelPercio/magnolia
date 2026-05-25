@@ -24,6 +24,8 @@ export type DashboardOverview = {
   facturacionDeltaPct: number | null
   cubiertosSalon: number
   ticketPromedioSalon: number
+  cantidadVentas: number
+  ticketPromedio: number
   foodCostPct: number | null
   foodCostMonto: number
   laborCostPct: number | null
@@ -75,6 +77,7 @@ export type ProductoRentable = {
   cantidad: number
   margen_unitario: number
   margen_total: number
+  margin_pct: number
 }
 
 export type InsumoCritico = {
@@ -97,7 +100,7 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
   const [cierresRes, cierresPrevRes, productosRes, sueldosRes] = await Promise.all([
     supabase
       .from('cierres_caja')
-      .select('total_vendido, monto_salon, cubiertos')
+      .select('total_vendido, monto_salon, cubiertos, cantidad_ventas')
       .eq('tenant_id', tenantId)
       .gte('fecha_cierre', from)
       .lt('fecha_cierre', to),
@@ -138,6 +141,11 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
   const montoSalon = (cierresRes.data ?? []).reduce((s, c) => s + (Number(c.monto_salon) || 0), 0)
   const cubiertosSalon = (cierresRes.data ?? []).reduce((s, c) => s + (Number(c.cubiertos) || 0), 0)
   const ticketPromedioSalon = cubiertosSalon > 0 ? montoSalon / cubiertosSalon : 0
+  const cantidadVentas = (cierresRes.data ?? []).reduce(
+    (s, c) => s + (Number(c.cantidad_ventas) || 0),
+    0,
+  )
+  const ticketPromedio = cantidadVentas > 0 ? facturacion / cantidadVentas : 0
 
   // Food cost: necesita join con product_costs
   const productosIds = Array.from(
@@ -182,6 +190,8 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
     facturacionDeltaPct,
     cubiertosSalon,
     ticketPromedioSalon,
+    cantidadVentas,
+    ticketPromedio,
     foodCostPct,
     foodCostMonto,
     laborCostPct,
@@ -189,6 +199,134 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
     primeCostPct,
     margenPonderadoPct,
   }
+}
+
+export type Granularity = 'dia' | 'semana' | 'mes'
+
+export type EvolucionPunto = {
+  period: string         // ISO date inicio del bin (yyyy-mm-dd)
+  label: string          // label legible (ej: "12-may" o "Sem 19" o "May 26")
+  efectivo: number
+  digital: number
+  total: number
+}
+
+function startOfWeek(d: Date): Date {
+  const day = d.getDay() // 0 = domingo
+  const diff = day === 0 ? 6 : day - 1 // ajustamos para que arranque lunes
+  const r = new Date(d)
+  r.setDate(d.getDate() - diff)
+  r.setHours(0, 0, 0, 0)
+  return r
+}
+
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+
+function isoDate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+
+function binStart(date: Date, gran: Granularity): Date {
+  if (gran === 'dia') {
+    const r = new Date(date)
+    r.setHours(0, 0, 0, 0)
+    return r
+  }
+  if (gran === 'semana') return startOfWeek(date)
+  return startOfMonth(date)
+}
+
+function nextBin(d: Date, gran: Granularity): Date {
+  const r = new Date(d)
+  if (gran === 'dia') r.setDate(d.getDate() + 1)
+  else if (gran === 'semana') r.setDate(d.getDate() + 7)
+  else r.setMonth(d.getMonth() + 1)
+  return r
+}
+
+const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+function binLabel(d: Date, gran: Granularity): string {
+  if (gran === 'dia') return `${d.getDate()}-${MES_CORTO[d.getMonth()]}`
+  if (gran === 'semana') {
+    // ISO week number
+    const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+    const dayNum = tmp.getUTCDay() || 7
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1))
+    const week = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+    return `S${week}`
+  }
+  return `${MES_CORTO[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`
+}
+
+export async function getFacturacionEvolution(
+  from: string,
+  to: string,
+  gran: Granularity,
+): Promise<EvolucionPunto[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+
+  const { data, error } = await supabase
+    .from('cierres_caja')
+    .select(
+      'fecha_cierre, monto_efectivo, monto_tarjetas, monto_qr, monto_online, monto_cuenta_cliente',
+    )
+    .eq('tenant_id', tenantId)
+    .gte('fecha_cierre', from)
+    .lt('fecha_cierre', to)
+
+  if (error) throw new Error(error.message)
+
+  // Agregar por bin
+  const bins = new Map<string, EvolucionPunto>()
+  for (const c of data ?? []) {
+    const d = new Date(c.fecha_cierre)
+    const start = binStart(d, gran)
+    const key = isoDate(start)
+    const efectivo = Number(c.monto_efectivo) || 0
+    const digital =
+      (Number(c.monto_tarjetas) || 0) +
+      (Number(c.monto_qr) || 0) +
+      (Number(c.monto_online) || 0) +
+      (Number(c.monto_cuenta_cliente) || 0)
+    const cur = bins.get(key) ?? {
+      period: key,
+      label: binLabel(start, gran),
+      efectivo: 0,
+      digital: 0,
+      total: 0,
+    }
+    cur.efectivo += efectivo
+    cur.digital += digital
+    cur.total += efectivo + digital
+    bins.set(key, cur)
+  }
+
+  // Rellenar los bins vacíos para mantener la continuidad temporal
+  const fromDate = binStart(new Date(from), gran)
+  const toDate = new Date(to)
+  const result: EvolucionPunto[] = []
+  for (let d = fromDate; d < toDate; d = nextBin(d, gran)) {
+    const key = isoDate(d)
+    result.push(
+      bins.get(key) ?? {
+        period: key,
+        label: binLabel(d, gran),
+        efectivo: 0,
+        digital: 0,
+        total: 0,
+      },
+    )
+  }
+
+  return result
 }
 
 export async function getDailyVentas(month: string): Promise<DailyVentas[]> {
@@ -378,6 +516,7 @@ export async function getProductosMasRentables(
       c.id,
       {
         name: c.name,
+        sale_price: Number(c.sale_price) || 0,
         margen: (Number(c.sale_price) || 0) - (Number(c.total_cost) || 0),
       },
     ]),
@@ -394,6 +533,7 @@ export async function getProductosMasRentables(
       cantidad: 0,
       margen_unitario: info.margen,
       margen_total: 0,
+      margin_pct: info.sale_price > 0 ? (info.margen / info.sale_price) * 100 : 0,
     }
     cur.cantidad += Number(row.cantidad) || 0
     cur.margen_total += info.margen * (Number(row.cantidad) || 0)
