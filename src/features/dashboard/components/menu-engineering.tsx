@@ -28,10 +28,10 @@ export function MenuEngineeringMatrix({ data }: Props) {
     )
   }
 
-  // SVG layout
-  const width = 800
-  const height = 460
-  const padding = { top: 36, right: 32, bottom: 48, left: 72 }
+  // SVG layout — aspect ratio wide para desktop, cap de altura
+  const width = 1000
+  const height = 380
+  const padding = { top: 30, right: 28, bottom: 42, left: 64 }
   const innerW = width - padding.left - padding.right
   const innerH = height - padding.top - padding.bottom
 
@@ -94,7 +94,11 @@ export function MenuEngineeringMatrix({ data }: Props) {
       </div>
 
       <div className="mt-4 overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full min-w-[640px]">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="h-auto max-h-[380px] w-full min-w-[640px]"
+        >
           {/* Cuadrantes de fondo */}
           {quadRects.map((q) => (
             <rect key={q.kind} x={q.x} y={q.y} width={q.w} height={q.h} fill={CUADRANTE_INFO[q.kind].tint} />
