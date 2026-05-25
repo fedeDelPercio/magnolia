@@ -2,7 +2,7 @@ import { formatCurrency } from '@/lib/format'
 import type { MenuEngineeringPoint } from '../queries'
 
 type Props = {
-  data: { points: MenuEngineeringPoint[]; medianCantidad: number; medianMargen: number }
+  data: { points: MenuEngineeringPoint[]; thresholdCantidad: number; thresholdMargen: number }
 }
 
 const CUADRANTE_INFO = {
@@ -13,7 +13,7 @@ const CUADRANTE_INFO = {
 } as const
 
 export function MenuEngineeringMatrix({ data }: Props) {
-  const { points, medianCantidad, medianMargen } = data
+  const { points, thresholdCantidad, thresholdMargen } = data
 
   if (points.length === 0) {
     return (
@@ -46,15 +46,15 @@ export function MenuEngineeringMatrix({ data }: Props) {
   const xScale = (v: number) => padding.left + (v / maxCantidad) * innerW
   const yScale = (v: number) => padding.top + innerH - ((v - yMin) / (yMax - yMin || 1)) * innerH
 
-  const xMedian = xScale(medianCantidad)
-  const yMedian = yScale(medianMargen)
+  const xMid = xScale(thresholdCantidad)
+  const yMid = yScale(thresholdMargen)
 
-  // Cuadrantes (rectángulos de fondo, con tinte)
+  // Cuadrantes (rectángulos de fondo, con tinte) — visualmente iguales (50/50)
   const quadRects = [
-    { kind: 'acertijo' as const, x: padding.left, y: padding.top, w: xMedian - padding.left, h: yMedian - padding.top },
-    { kind: 'estrella' as const, x: xMedian, y: padding.top, w: padding.left + innerW - xMedian, h: yMedian - padding.top },
-    { kind: 'perro' as const, x: padding.left, y: yMedian, w: xMedian - padding.left, h: padding.top + innerH - yMedian },
-    { kind: 'caballito' as const, x: xMedian, y: yMedian, w: padding.left + innerW - xMedian, h: padding.top + innerH - yMedian },
+    { kind: 'acertijo' as const, x: padding.left, y: padding.top, w: xMid - padding.left, h: yMid - padding.top },
+    { kind: 'estrella' as const, x: xMid, y: padding.top, w: padding.left + innerW - xMid, h: yMid - padding.top },
+    { kind: 'perro' as const, x: padding.left, y: yMid, w: xMid - padding.left, h: padding.top + innerH - yMid },
+    { kind: 'caballito' as const, x: xMid, y: yMid, w: padding.left + innerW - xMid, h: padding.top + innerH - yMid },
   ]
 
   // Contar productos por cuadrante para el resumen
@@ -115,10 +115,10 @@ export function MenuEngineeringMatrix({ data }: Props) {
             strokeOpacity={0.08}
           />
 
-          {/* Líneas de mediana */}
+          {/* Líneas divisorias (50/50 visual) */}
           <line
-            x1={xMedian}
-            x2={xMedian}
+            x1={xMid}
+            x2={xMid}
             y1={padding.top}
             y2={padding.top + innerH}
             stroke="currentColor"
@@ -128,8 +128,8 @@ export function MenuEngineeringMatrix({ data }: Props) {
           <line
             x1={padding.left}
             x2={padding.left + innerW}
-            y1={yMedian}
-            y2={yMedian}
+            y1={yMid}
+            y2={yMid}
             stroke="currentColor"
             strokeOpacity={0.3}
             strokeDasharray="3 4"
@@ -153,8 +153,8 @@ export function MenuEngineeringMatrix({ data }: Props) {
           <text x={padding.left - 8} y={padding.top + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
             ${compact(yMax)}
           </text>
-          <text x={padding.left - 8} y={yMedian + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
-            ${compact(medianMargen)}
+          <text x={padding.left - 8} y={yMid + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
+            ${compact(thresholdMargen)}
           </text>
           <text x={padding.left - 8} y={padding.top + innerH + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
             ${compact(yMin)}
@@ -173,8 +173,8 @@ export function MenuEngineeringMatrix({ data }: Props) {
           <text x={padding.left} y={padding.top + innerH + 18} className="fill-muted-foreground text-[10px] tabular-nums">
             0
           </text>
-          <text x={xMedian} y={padding.top + innerH + 18} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
-            {medianCantidad}
+          <text x={xMid} y={padding.top + innerH + 18} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
+            {Math.round(thresholdCantidad)}
           </text>
           <text x={padding.left + innerW} y={padding.top + innerH + 18} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
             {Math.round(maxCantidad)}

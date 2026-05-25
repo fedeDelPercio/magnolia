@@ -417,8 +417,8 @@ export type MenuEngineeringPoint = {
 
 export async function getMenuEngineering(month: string): Promise<{
   points: MenuEngineeringPoint[]
-  medianCantidad: number
-  medianMargen: number
+  thresholdCantidad: number
+  thresholdMargen: number
 }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -468,17 +468,19 @@ export async function getMenuEngineering(month: string): Promise<{
   }
 
   const arr = Array.from(agg.values()).filter((p) => p.cantidad > 0 && p.margen_unitario !== 0)
-  if (arr.length === 0) return { points: [], medianCantidad: 0, medianMargen: 0 }
+  if (arr.length === 0) return { points: [], thresholdCantidad: 0, thresholdMargen: 0 }
 
-  // Medianas para definir cuadrantes
-  const cantidadesSorted = [...arr].map((p) => p.cantidad).sort((a, b) => a - b)
-  const margenesSorted = [...arr].map((p) => p.margen_unitario).sort((a, b) => a - b)
-  const medianCantidad = cantidadesSorted[Math.floor(cantidadesSorted.length / 2)] ?? 0
-  const medianMargen = margenesSorted[Math.floor(margenesSorted.length / 2)] ?? 0
+  // Visual 50/50: threshold = mitad del rango visible. Garantiza que el cuadrante
+  // donde cae el punto coincida con el cuadrante coloreado donde lo dibujamos.
+  const maxCantidad = Math.max(...arr.map((p) => p.cantidad))
+  const maxMargen = Math.max(...arr.map((p) => p.margen_unitario))
+  const minMargen = Math.min(0, ...arr.map((p) => p.margen_unitario))
+  const thresholdCantidad = maxCantidad / 2
+  const thresholdMargen = (maxMargen + minMargen) / 2
 
   const points: MenuEngineeringPoint[] = arr.map((p) => {
-    const altaCantidad = p.cantidad >= medianCantidad
-    const altoMargen = p.margen_unitario >= medianMargen
+    const altaCantidad = p.cantidad >= thresholdCantidad
+    const altoMargen = p.margen_unitario >= thresholdMargen
     let cuadrante: MenuEngineeringPoint['cuadrante']
     if (altaCantidad && altoMargen) cuadrante = 'estrella'
     else if (altaCantidad && !altoMargen) cuadrante = 'caballito'
@@ -487,7 +489,7 @@ export async function getMenuEngineering(month: string): Promise<{
     return { ...p, cuadrante }
   })
 
-  return { points, medianCantidad, medianMargen }
+  return { points, thresholdCantidad, thresholdMargen }
 }
 
 export type InsumoGasto = {
