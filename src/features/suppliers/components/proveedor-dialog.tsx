@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -9,8 +9,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { proveedorSchema, type ProveedorFormValues } from '../schemas'
+import { proveedorSchema, type ProveedorFormValues, type PaymentRule, DOW_LABELS, NTH_LABELS } from '../schemas'
 import { createProveedor, updateProveedor } from '../actions'
 import type { Tables } from '@/types/database'
 
@@ -27,6 +29,15 @@ const DEFAULT: ProveedorFormValues = {
   contact_email: '',
   payment_terms_days: 0,
   notes: '',
+  discrimina_iva: false,
+  payment_rule: null,
+}
+
+type RuleKind = 'none' | 'boletas' | 'monto' | 'fecha_dia_mes' | 'fecha_nth_dow'
+
+function ruleToKind(rule: PaymentRule | null | undefined): RuleKind {
+  if (!rule) return 'none'
+  return rule.kind
 }
 
 export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
@@ -35,22 +46,51 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
     defaultValues: DEFAULT,
   })
 
+  const [ruleKind, setRuleKind] = useState<RuleKind>('none')
+  const [ruleParams, setRuleParams] = useState<{
+    n: number
+    umbral: number
+    dia_mes: number
+    nth: number
+    dow: number
+  }>({ n: 4, umbral: 50000, dia_mes: 10, nth: 2, dow: 2 })
+
   useEffect(() => {
-    if (open) {
-      form.reset(
-        proveedor
-          ? {
-              name: proveedor.name,
-              contact_name: proveedor.contact_name ?? '',
-              contact_phone: proveedor.contact_phone ?? '',
-              contact_email: proveedor.contact_email ?? '',
-              payment_terms_days: proveedor.payment_terms_days,
-              notes: proveedor.notes ?? '',
-            }
-          : DEFAULT,
-      )
+    if (!open) return
+    const initial = proveedor
+      ? {
+          name: proveedor.name,
+          contact_name: proveedor.contact_name ?? '',
+          contact_phone: proveedor.contact_phone ?? '',
+          contact_email: proveedor.contact_email ?? '',
+          payment_terms_days: proveedor.payment_terms_days,
+          notes: proveedor.notes ?? '',
+          discrimina_iva: proveedor.discrimina_iva ?? false,
+          payment_rule: (proveedor.payment_rule as PaymentRule | null) ?? null,
+        }
+      : DEFAULT
+    form.reset(initial)
+    const rule = initial.payment_rule
+    const kind = ruleToKind(rule)
+    setRuleKind(kind)
+    if (rule) {
+      if (rule.kind === 'boletas') setRuleParams((p) => ({ ...p, n: rule.n }))
+      else if (rule.kind === 'monto') setRuleParams((p) => ({ ...p, umbral: rule.umbral }))
+      else if (rule.kind === 'fecha_dia_mes') setRuleParams((p) => ({ ...p, dia_mes: rule.dia_mes }))
+      else setRuleParams((p) => ({ ...p, nth: rule.nth, dow: rule.dow }))
     }
   }, [open, proveedor, form])
+
+  useEffect(() => {
+    let next: PaymentRule | null = null
+    if (ruleKind === 'boletas') next = { kind: 'boletas', n: ruleParams.n }
+    else if (ruleKind === 'monto') next = { kind: 'monto', umbral: ruleParams.umbral }
+    else if (ruleKind === 'fecha_dia_mes')
+      next = { kind: 'fecha_dia_mes', dia_mes: ruleParams.dia_mes }
+    else if (ruleKind === 'fecha_nth_dow')
+      next = { kind: 'fecha_nth_dow', nth: ruleParams.nth, dow: ruleParams.dow }
+    form.setValue('payment_rule', next, { shouldValidate: false })
+  }, [ruleKind, ruleParams, form])
 
   async function onSubmit(values: ProveedorFormValues) {
     const result = proveedor
@@ -71,8 +111,9 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
         <DialogHeader>
           <DialogTitle>{proveedor ? 'Editar proveedor' : 'Nuevo proveedor'}</DialogTitle>
         </DialogHeader>
+        <div className="max-h-[72vh] overflow-y-auto pr-1">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form id="proveedor-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -143,6 +184,162 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
 
             <FormField
               control={form.control}
+              name="discrimina_iva"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      id="discrimina-iva-check"
+                    />
+                    <div className="space-y-0.5">
+                      <FormLabel htmlFor="discrimina-iva-check" className="cursor-pointer">
+                        Discrimina IVA
+                      </FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Las compras a este proveedor cuentan como IVA crédito en la balanza.
+                      </p>
+                    </div>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="rounded-xl border bg-card p-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Regla de pago</p>
+                <p className="text-xs text-muted-foreground">Cómo decidimos cuándo es momento de pagar.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 text-sm">
+                {([
+                  ['none', 'Sin regla'],
+                  ['boletas', 'Cada N boletas'],
+                  ['monto', 'Al alcanzar monto'],
+                  ['fecha_dia_mes', 'Día del mes'],
+                  ['fecha_nth_dow', 'N-ésimo día'],
+                ] as [RuleKind, string][]).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setRuleKind(value)}
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                      ruleKind === value
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'bg-background text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {ruleKind === 'boletas' && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Cantidad de boletas</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={ruleParams.n}
+                    onChange={(e) =>
+                      setRuleParams((p) => ({ ...p, n: parseInt(e.target.value) || 1 }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Alerta cuando hay {ruleParams.n} compras pendientes.
+                  </p>
+                </div>
+              )}
+
+              {ruleKind === 'monto' && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Umbral en ARS</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={ruleParams.umbral}
+                    onChange={(e) =>
+                      setRuleParams((p) => ({ ...p, umbral: parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Alerta cuando la deuda pendiente llega a ${ruleParams.umbral.toLocaleString('es-AR')}.
+                  </p>
+                </div>
+              )}
+
+              {ruleKind === 'fecha_dia_mes' && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Día del mes</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={ruleParams.dia_mes}
+                    onChange={(e) =>
+                      setRuleParams((p) => ({ ...p, dia_mes: parseInt(e.target.value) || 1 }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Pago el día {ruleParams.dia_mes} de cada mes.
+                  </p>
+                </div>
+              )}
+
+              {ruleKind === 'fecha_nth_dow' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">N-ésimo</label>
+                    <Select
+                      value={String(ruleParams.nth)}
+                      onValueChange={(v) => {
+                        if (v) setRuleParams((p) => ({ ...p, nth: parseInt(v) }))
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue>{(v: string | null) => (v ? NTH_LABELS[parseInt(v)] : null)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <SelectItem key={n} value={String(n)} label={NTH_LABELS[n]}>
+                            {NTH_LABELS[n]}{n === 5 ? ' (último)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Día de la semana</label>
+                    <Select
+                      value={String(ruleParams.dow)}
+                      onValueChange={(v) => {
+                        if (v) setRuleParams((p) => ({ ...p, dow: parseInt(v) }))
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue>{(v: string | null) => (v ? DOW_LABELS[parseInt(v)] : null)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                          <SelectItem key={d} value={String(d)} label={DOW_LABELS[d]}>
+                            {DOW_LABELS[d]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="col-span-2 text-xs text-muted-foreground">
+                    Pago el {NTH_LABELS[ruleParams.nth]} {DOW_LABELS[ruleParams.dow]} del mes.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <FormField
+              control={form.control}
               name="notes"
               render={({ field }) => (
                 <FormItem>
@@ -152,15 +349,16 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
                 </FormItem>
               )}
             />
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </DialogFooter>
           </form>
         </Form>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button type="submit" form="proveedor-form" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? 'Guardando...' : 'Guardar'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

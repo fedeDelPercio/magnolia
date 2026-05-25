@@ -47,18 +47,20 @@ export async function getProveedores(): Promise<Pick<Tables<'proveedores'>, 'id'
 export type PriceHistoryEntry = Pick<
   Tables<'insumo_price_history'>,
   'id' | 'price' | 'source' | 'valid_from'
->
+> & {
+  proveedores: Pick<Tables<'proveedores'>, 'id' | 'name'> | null
+}
 
 export async function getInsumoHistory(insumoId: string): Promise<PriceHistoryEntry[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('insumo_price_history')
-    .select('id, price, source, valid_from')
+    .select('id, price, source, valid_from, proveedores(id, name)')
     .eq('insumo_id', insumoId)
     .order('valid_from', { ascending: false })
     .limit(30)
   if (error) throw error
-  return data ?? []
+  return (data ?? []) as unknown as PriceHistoryEntry[]
 }
 
 export type StockAjusteEntry = {

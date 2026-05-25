@@ -371,9 +371,16 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                       const prev = priceHistory[idx + 1]
                       const changePct = prev ? ((entry.price - prev.price) / prev.price) * 100 : null
                       const isLarge = changePct !== null && Math.abs(changePct) >= 20
+                      const proveedorName = entry.proveedores?.name
                       return (
                         <div key={entry.id} className="grid grid-cols-[1fr_auto_5.5rem] items-center gap-3 px-4 py-3">
-                          <span className="text-muted-foreground">{formatDate(entry.valid_from.slice(0, 10))}</span>
+                          <div className="space-y-0.5">
+                            <p className="text-muted-foreground">{formatDate(entry.valid_from.slice(0, 10))}</p>
+                            <p className="text-xs text-muted-foreground/80">
+                              {proveedorName ?? 'Sin proveedor'}
+                              {entry.source === 'compra' && <span className="ml-1 text-[10px] uppercase tracking-wide text-muted-foreground/60">· compra</span>}
+                            </p>
+                          </div>
                           <span className="tabular-nums font-medium text-right">{formatCurrency(entry.price)}</span>
                           <div className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
                             {changePct !== null ? (

@@ -403,6 +403,7 @@ export type Database = {
           id: string
           insumo_id: string
           price: number
+          proveedor_id: string | null
           source: string
           source_id: string | null
           tenant_id: string
@@ -413,6 +414,7 @@ export type Database = {
           id?: string
           insumo_id: string
           price: number
+          proveedor_id?: string | null
           source: string
           source_id?: string | null
           tenant_id: string
@@ -423,6 +425,7 @@ export type Database = {
           id?: string
           insumo_id?: string
           price?: number
+          proveedor_id?: string | null
           source?: string
           source_id?: string | null
           tenant_id?: string
@@ -441,6 +444,13 @@ export type Database = {
             columns: ["insumo_id"]
             isOneToOne: false
             referencedRelation: "insumos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumo_price_history_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
             referencedColumns: ["id"]
           },
           {
@@ -930,9 +940,11 @@ export type Database = {
           contact_name: string | null
           contact_phone: string | null
           created_at: string
+          discrimina_iva: boolean
           id: string
           name: string
           notes: string | null
+          payment_rule: Json | null
           payment_terms_days: number
           tenant_id: string
           updated_at: string
@@ -943,9 +955,11 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          discrimina_iva?: boolean
           id?: string
           name: string
           notes?: string | null
+          payment_rule?: Json | null
           payment_terms_days?: number
           tenant_id: string
           updated_at?: string
@@ -956,9 +970,11 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          discrimina_iva?: boolean
           id?: string
           name?: string
           notes?: string | null
+          payment_rule?: Json | null
           payment_terms_days?: number
           tenant_id?: string
           updated_at?: string

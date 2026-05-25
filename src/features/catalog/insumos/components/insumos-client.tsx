@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import { toast } from 'sonner'
-import { PlusIcon, MoreHorizontalIcon, SearchIcon } from 'lucide-react'
+import { PlusIcon, MoreHorizontalIcon, SearchIcon, BoxIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -75,6 +75,7 @@ type KindFilter = 'todos' | 'ingrediente' | 'descartable'
 export function InsumosClient({ insumos, proveedores }: Props) {
   const [search, setSearch] = useState('')
   const [kindFilter, setKindFilter] = useState<KindFilter>('todos')
+  const [onlyTrackStock, setOnlyTrackStock] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<InsumoWithProveedor | null>(null)
   const [mode, setMode] = useState<DialogMode>('create')
@@ -84,9 +85,10 @@ export function InsumosClient({ insumos, proveedores }: Props) {
     () =>
       insumos.filter((i) => {
         if (kindFilter !== 'todos' && i.kind !== kindFilter) return false
+        if (onlyTrackStock && !i.track_stock) return false
         return i.name.toLowerCase().includes(search.toLowerCase())
       }),
-    [insumos, search, kindFilter],
+    [insumos, search, kindFilter, onlyTrackStock],
   )
 
   function openCreate() {
@@ -153,6 +155,18 @@ export function InsumosClient({ insumos, proveedores }: Props) {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => setOnlyTrackStock((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+              onlyTrackStock
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <BoxIcon className="size-3.5" />
+            Con stock
+          </button>
         </div>
         <Button onClick={openCreate}>
           <PlusIcon className="size-4" />
@@ -178,7 +192,7 @@ export function InsumosClient({ insumos, proveedores }: Props) {
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                  {search || kindFilter !== 'todos' ? 'No se encontraron insumos' : 'Sin insumos. Creá el primero.'}
+                  {search || kindFilter !== 'todos' || onlyTrackStock ? 'No se encontraron insumos' : 'Sin insumos. Creá el primero.'}
                 </TableCell>
               </TableRow>
             ) : (

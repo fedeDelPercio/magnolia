@@ -60,6 +60,13 @@ export async function updateInsumo(
 ): Promise<{ error?: string }> {
   try {
     const supabase = await createClient()
+    const tenantId = await getActiveTenantId()
+
+    const { data: existing } = await supabase
+      .from('insumos')
+      .select('current_price')
+      .eq('id', id)
+      .single()
 
     const { error } = await supabase
       .from('insumos')
@@ -77,6 +84,20 @@ export async function updateInsumo(
       .eq('id', id)
 
     if (error) return { error: mapError(error.message) }
+
+    const priceChanged = existing && Number(existing.current_price) !== Number(values.current_price)
+    if (priceChanged && values.current_price > 0) {
+      const { data: { user } } = await supabase.auth.getUser()
+      await supabase.from('insumo_price_history').insert({
+        insumo_id: id,
+        tenant_id: tenantId,
+        price: values.current_price,
+        source: 'manual',
+        proveedor_id: values.proveedor_id ?? null,
+        created_by: user?.id ?? null,
+      })
+    }
+
     revalidatePath('/catalogo/insumos')
     return {}
   } catch (e) {

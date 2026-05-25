@@ -21,6 +21,8 @@ export async function createProveedor(
     contact_email: values.contact_email || null,
     payment_terms_days: values.payment_terms_days,
     notes: values.notes || null,
+    discrimina_iva: values.discrimina_iva,
+    payment_rule: values.payment_rule ?? null,
   })
 
   if (error) {
@@ -29,6 +31,7 @@ export async function createProveedor(
   }
 
   revalidatePath('/proveedores')
+  revalidatePath('/alertas')
   return {}
 }
 
@@ -47,6 +50,8 @@ export async function updateProveedor(
       contact_email: values.contact_email || null,
       payment_terms_days: values.payment_terms_days,
       notes: values.notes || null,
+      discrimina_iva: values.discrimina_iva,
+      payment_rule: values.payment_rule ?? null,
     })
     .eq('id', id)
 
@@ -54,6 +59,7 @@ export async function updateProveedor(
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${id}`)
+  revalidatePath('/alertas')
   return {}
 }
 
@@ -72,13 +78,34 @@ export async function toggleProveedorActive(
 
 async function updateInsumoPrices(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  compraId: string,
+  proveedorId: string,
   items: CompraItemFormValues[],
 ) {
   for (const item of items) {
+    const { data: existing } = await supabase
+      .from('insumos')
+      .select('current_price')
+      .eq('id', item.insumo_id)
+      .single()
+
     await supabase
       .from('insumos')
       .update({ current_price: item.unit_price })
       .eq('id', item.insumo_id)
+
+    const priceChanged = existing && Number(existing.current_price) !== Number(item.unit_price)
+    if (priceChanged) {
+      await supabase.from('insumo_price_history').insert({
+        insumo_id: item.insumo_id,
+        tenant_id: tenantId,
+        price: item.unit_price,
+        source: 'compra',
+        source_id: compraId,
+        proveedor_id: proveedorId,
+      })
+    }
   }
 }
 
@@ -118,7 +145,7 @@ export async function createCompra(
 
   if (itemsErr) return { error: itemsErr.message }
 
-  await updateInsumoPrices(supabase, items)
+  await updateInsumoPrices(supabase, tenantId, compra.id, proveedorId, items)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
@@ -135,6 +162,7 @@ export async function updateCompra(
   items: CompraItemFormValues[],
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
 
   const { error: compraErr } = await supabase
     .from('compras')
@@ -162,7 +190,7 @@ export async function updateCompra(
 
   if (itemsErr) return { error: itemsErr.message }
 
-  await updateInsumoPrices(supabase, items)
+  await updateInsumoPrices(supabase, tenantId, compraId, proveedorId, items)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
