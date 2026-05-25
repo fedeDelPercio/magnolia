@@ -1,12 +1,17 @@
-import { TrendingUpIcon, TrendingDownIcon, UsersIcon, ReceiptIcon, ChefHatIcon } from 'lucide-react'
+import {
+  TrendingUpIcon,
+  TrendingDownIcon,
+  ReceiptIcon,
+  ChefHatIcon,
+  ActivityIcon,
+} from 'lucide-react'
 import { formatCurrency } from '@/lib/format'
 import type { DashboardOverview } from '../queries'
 
-function pctTone(pct: number, kind: 'higher_better' | 'lower_better'): {
-  text: string
-  Icon: typeof TrendingUpIcon
-  cls: string
-} {
+function pctTone(
+  pct: number,
+  kind: 'higher_better' | 'lower_better',
+): { text: string; Icon: typeof TrendingUpIcon; cls: string } {
   const positive = pct > 0
   const goodDirection = kind === 'higher_better' ? positive : !positive
   return {
@@ -24,64 +29,67 @@ function foodCostTone(pct: number | null): { label: string; cls: string } {
   return { label: 'crítico', cls: 'text-rose-700' }
 }
 
-type Props = {
-  overview: DashboardOverview
-}
-
-export function HeroCards({ overview }: Props) {
+export function HeroCards({ overview }: { overview: DashboardOverview }) {
   const facturacionDelta =
-    overview.facturacionDeltaPct !== null ? pctTone(overview.facturacionDeltaPct, 'higher_better') : null
+    overview.facturacionDeltaPct !== null
+      ? pctTone(overview.facturacionDeltaPct, 'higher_better')
+      : null
   const fc = foodCostTone(overview.foodCostPct)
 
   return (
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {/* Facturación */}
+      {/* Facturación del mes */}
       <div className="rounded-xl border bg-card p-5">
         <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           <ReceiptIcon className="size-3.5" />
           Facturación del mes
         </div>
-        <p className="mt-2 text-2xl font-semibold tabular-nums">{formatCurrency(overview.facturacion)}</p>
-        {facturacionDelta && (
+        <p className="mt-2 text-2xl font-semibold tabular-nums">
+          {formatCurrency(overview.facturacion)}
+        </p>
+        {facturacionDelta ? (
           <p className={`mt-1 flex items-center gap-1 text-xs tabular-nums ${facturacionDelta.cls}`}>
             <facturacionDelta.Icon className="size-3" />
             {facturacionDelta.text} vs. mes anterior
           </p>
-        )}
-        {!facturacionDelta && (
+        ) : (
           <p className="mt-1 text-xs text-muted-foreground">Sin datos del mes anterior</p>
         )}
       </div>
 
-      {/* Cubiertos */}
+      {/* Movimiento del mes */}
       <div className="rounded-xl border bg-card p-5">
         <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          <UsersIcon className="size-3.5" />
-          Cubiertos en salón
+          <ActivityIcon className="size-3.5" />
+          Movimiento del mes
         </div>
         <p className="mt-2 text-2xl font-semibold tabular-nums">
-          {overview.cubiertosSalon.toLocaleString('es-AR')}
+          {overview.cantidadVentas.toLocaleString('es-AR')}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">personas que se sentaron</p>
+        <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+          ventas totales · {overview.cubiertosSalon} cubiertos en salón
+        </p>
       </div>
 
-      {/* Ticket promedio salón */}
+      {/* Ticket promedio general */}
       <div className="rounded-xl border bg-card p-5">
         <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           <ReceiptIcon className="size-3.5" />
-          Ticket promedio salón
+          Ticket promedio
         </div>
         <p className="mt-2 text-2xl font-semibold tabular-nums">
-          {formatCurrency(overview.ticketPromedioSalon)}
+          {formatCurrency(overview.ticketPromedio)}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">por cubierto</p>
+        <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+          por venta · salón {formatCurrency(overview.ticketPromedioSalon)}
+        </p>
       </div>
 
       {/* Food cost % */}
       <div className="rounded-xl border bg-card p-5">
         <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           <ChefHatIcon className="size-3.5" />
-          Food cost %
+          Costo de comida
         </div>
         <p className="mt-2 text-2xl font-semibold tabular-nums">
           {overview.foodCostPct !== null ? `${overview.foodCostPct.toFixed(1)}%` : '—'}

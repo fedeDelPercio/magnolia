@@ -30,6 +30,7 @@ function primeTone(pct: number | null): Tone {
 
 type Row = {
   label: string
+  sublabel: string
   Icon: typeof ChefHatIcon
   pct: number | null
   monto: number | null
@@ -40,7 +41,8 @@ type Row = {
 export function CostosCard({ overview }: { overview: DashboardOverview }) {
   const rows: Row[] = [
     {
-      label: 'Food Cost',
+      label: 'Costo de comida',
+      sublabel: 'Food Cost',
       Icon: ChefHatIcon,
       pct: overview.foodCostPct,
       monto: overview.foodCostMonto,
@@ -48,7 +50,8 @@ export function CostosCard({ overview }: { overview: DashboardOverview }) {
       benchmark: 'benchmark 28-35%',
     },
     {
-      label: 'Labor Cost',
+      label: 'Costo de personal',
+      sublabel: 'Labor Cost',
       Icon: UsersIcon,
       pct: overview.laborCostPct,
       monto: overview.laborCostMonto,
@@ -56,7 +59,8 @@ export function CostosCard({ overview }: { overview: DashboardOverview }) {
       benchmark: 'benchmark 25-32%',
     },
     {
-      label: 'Prime Cost',
+      label: 'Costo primario',
+      sublabel: 'Prime Cost = comida + personal',
       Icon: ActivityIcon,
       pct: overview.primeCostPct,
       monto:
@@ -84,6 +88,7 @@ export function CostosCard({ overview }: { overview: DashboardOverview }) {
               <div className="flex items-center gap-1.5 text-sm">
                 <r.Icon className="size-3.5 text-muted-foreground" />
                 <span className="font-medium">{r.label}</span>
+                <span className="text-xs text-muted-foreground/70">· {r.sublabel}</span>
                 <span className="text-xs text-muted-foreground">· {r.benchmark}</span>
               </div>
               <div className="shrink-0 text-right">

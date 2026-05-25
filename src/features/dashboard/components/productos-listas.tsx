@@ -77,6 +77,9 @@ export function ProductosMasRentables({ productos }: { productos: ProductoRentab
               <div className="shrink-0 text-right">
                 <p className="text-sm tabular-nums font-medium text-emerald-700">
                   {formatCurrency(p.margen_total)}
+                  <span className="ml-1.5 text-xs font-normal">
+                    · {p.margin_pct.toFixed(0)}%
+                  </span>
                 </p>
                 <p className="text-[11px] text-muted-foreground tabular-nums">
                   {Math.round(p.cantidad)} unid. × {formatCurrency(p.margen_unitario)}

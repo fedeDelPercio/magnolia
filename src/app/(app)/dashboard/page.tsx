@@ -1,6 +1,6 @@
 import {
   getDashboardOverview,
-  getDailyVentas,
+  getFacturacionEvolution,
   getMixData,
   getMediosPago,
   getTopProductos,
@@ -10,9 +10,10 @@ import {
   getMenuEngineering,
   getTopInsumosGasto,
   getInsumosConSuba,
+  type Granularity,
 } from '@/features/dashboard/queries'
 import { HeroCards } from '@/features/dashboard/components/hero-cards'
-import { DailyChart } from '@/features/dashboard/components/daily-chart'
+import { EvolucionChart } from '@/features/dashboard/components/evolucion-chart'
 import { MixCard } from '@/features/dashboard/components/mix-card'
 import { MediosPagoCard } from '@/features/dashboard/components/medios-pago-card'
 import { TopProductosCard } from '@/features/dashboard/components/top-productos'
@@ -29,17 +30,46 @@ import {
   InsumosSubasCard,
 } from '@/features/dashboard/components/insumos-cards'
 
+function defaultEvolutionRange(gran: Granularity): { from: string; to: string } {
+  const now = new Date()
+  const to = new Date(now)
+  to.setDate(to.getDate() + 1)
+  const from = new Date(now)
+  if (gran === 'dia') from.setDate(now.getDate() - 30)
+  else if (gran === 'semana') from.setDate(now.getDate() - 7 * 12)
+  else {
+    from.setMonth(now.getMonth() - 11)
+    from.setDate(1)
+  }
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { from: iso(from), to: iso(to) }
+}
+
 export const dynamic = 'force-dynamic'
 
-type Props = { searchParams: Promise<{ month?: string }> }
+type Props = {
+  searchParams: Promise<{
+    month?: string
+    evFrom?: string
+    evTo?: string
+    evGran?: string
+  }>
+}
 
 export default async function DashboardPage({ searchParams }: Props) {
-  const { month: rawMonth } = await searchParams
-  const month = rawMonth ?? new Date().toISOString().slice(0, 7)
+  const sp = await searchParams
+  const month = sp.month ?? new Date().toISOString().slice(0, 7)
+
+  const granularity: Granularity =
+    sp.evGran === 'dia' || sp.evGran === 'semana' || sp.evGran === 'mes' ? sp.evGran : 'mes'
+  const defaults = defaultEvolutionRange(granularity)
+  const evFrom = sp.evFrom ?? defaults.from
+  const evTo = sp.evTo ?? defaults.to
 
   const [
     overview,
-    daily,
+    evolution,
     mix,
     mediosPago,
     topProductos,
@@ -51,7 +81,7 @@ export default async function DashboardPage({ searchParams }: Props) {
     insumosSubas,
   ] = await Promise.all([
     getDashboardOverview(month),
-    getDailyVentas(month),
+    getFacturacionEvolution(evFrom, evTo, granularity),
     getMixData(month),
     getMediosPago(month),
     getTopProductos(month, 10),
@@ -79,7 +109,7 @@ export default async function DashboardPage({ searchParams }: Props) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <DailyChart data={daily} month={month} />
+          <EvolucionChart data={evolution} from={evFrom} to={evTo} granularity={granularity} />
         </div>
         <CostosCard overview={overview} />
       </div>
