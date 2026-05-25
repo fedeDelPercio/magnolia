@@ -1,8 +1,8 @@
 import { RangePicker } from './range-picker'
 
 const MES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
 
 function rangeHeadline(from: string, to: string): { eyebrow: string; headline: string; trail: string } {

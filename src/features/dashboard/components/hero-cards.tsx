@@ -34,20 +34,22 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
   return (
     <section className="grid grid-cols-1 gap-3 md:grid-cols-12">
       {/* === Featured: Facturación (col 6) === */}
-      <div className="card-editorial relative overflow-hidden p-7 md:col-span-6">
+      <div className="card-editorial relative flex flex-col justify-between overflow-hidden p-7 md:col-span-6">
         <div
           aria-hidden
           className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full opacity-[0.05]"
           style={{ background: 'radial-gradient(circle, oklch(0.34 0.07 138) 0%, transparent 70%)' }}
         />
-        <div className="relative space-y-4">
+        <div className="relative">
           <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
             Facturación del período
           </p>
-          <p className="num-editorial text-6xl leading-[0.95] text-foreground">
+          <p className="mt-4 num-editorial text-[2.75rem] leading-none text-foreground">
             {fact.whole}
-            <span className="text-3xl text-foreground/35">{fact.decimals}</span>
+            <span className="text-2xl text-foreground/35">{fact.decimals}</span>
           </p>
+        </div>
+        <div className="relative mt-5">
           {delta !== null ? (
             <div
               className={
@@ -68,14 +70,16 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
       </div>
 
       {/* === Movimiento (col 3) === */}
-      <div className="card-editorial p-6 md:col-span-3">
-        <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
-          Movimiento
-        </p>
-        <p className="mt-3 num-editorial text-5xl leading-none">
-          {overview.cantidadVentas.toLocaleString('es-AR')}
-        </p>
-        <div className="mt-3 space-y-0.5 text-xs text-muted-foreground">
+      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-3">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
+            Movimiento
+          </p>
+          <p className="mt-4 num-editorial text-[2.75rem] leading-none">
+            {overview.cantidadVentas.toLocaleString('es-AR')}
+          </p>
+        </div>
+        <div className="mt-5 space-y-0.5 text-xs text-muted-foreground">
           <p>
             <span className="tabular-nums font-medium text-foreground">ventas</span> en total
           </p>
@@ -87,15 +91,17 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
       </div>
 
       {/* === Ticket promedio (col 3) === */}
-      <div className="card-editorial p-6 md:col-span-3">
-        <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
-          Ticket promedio
-        </p>
-        <p className="mt-3 num-editorial text-4xl leading-none">
-          {ticket.whole}
-          <span className="text-xl text-foreground/35">{ticket.decimals}</span>
-        </p>
-        <p className="mt-3 text-xs text-muted-foreground">
+      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-3">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
+            Ticket promedio
+          </p>
+          <p className="mt-4 num-editorial text-[2.75rem] leading-none">
+            {ticket.whole}
+            <span className="text-2xl text-foreground/35">{ticket.decimals}</span>
+          </p>
+        </div>
+        <p className="mt-5 text-xs text-muted-foreground">
           por venta · salón{' '}
           <span className="tabular-nums font-medium text-foreground">
             {formatCurrency(overview.ticketPromedioSalon)}
