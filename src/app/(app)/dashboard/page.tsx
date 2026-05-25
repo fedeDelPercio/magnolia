@@ -7,6 +7,9 @@ import {
   getProductosEnRiesgo,
   getProductosMasRentables,
   getStockCritico,
+  getMenuEngineering,
+  getTopInsumosGasto,
+  getInsumosConSuba,
 } from '@/features/dashboard/queries'
 import { HeroCards } from '@/features/dashboard/components/hero-cards'
 import { DailyChart } from '@/features/dashboard/components/daily-chart'
@@ -19,6 +22,12 @@ import {
 } from '@/features/dashboard/components/productos-listas'
 import { StockCriticoCard } from '@/features/dashboard/components/stock-critico'
 import { MonthPicker } from '@/features/dashboard/components/month-picker'
+import { CostosCard } from '@/features/dashboard/components/costos-card'
+import { MenuEngineeringMatrix } from '@/features/dashboard/components/menu-engineering'
+import {
+  TopInsumosGastoCard,
+  InsumosSubasCard,
+} from '@/features/dashboard/components/insumos-cards'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +46,9 @@ export default async function DashboardPage({ searchParams }: Props) {
     enRiesgo,
     masRentables,
     stockCritico,
+    menuEng,
+    topInsumos,
+    insumosSubas,
   ] = await Promise.all([
     getDashboardOverview(month),
     getDailyVentas(month),
@@ -46,6 +58,9 @@ export default async function DashboardPage({ searchParams }: Props) {
     getProductosEnRiesgo(),
     getProductosMasRentables(month, 5),
     getStockCritico(0.3),
+    getMenuEngineering(month),
+    getTopInsumosGasto(month, 5),
+    getInsumosConSuba(month, 15),
   ])
 
   return (
@@ -66,19 +81,30 @@ export default async function DashboardPage({ searchParams }: Props) {
         <div className="lg:col-span-2">
           <DailyChart data={daily} month={month} />
         </div>
-        <MediosPagoCard data={mediosPago} />
+        <CostosCard overview={overview} />
+      </div>
+
+      <MenuEngineeringMatrix data={menuEng} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <MixCard data={mix} />
+        <div className="lg:col-span-2">
+          <MediosPagoCard data={mediosPago} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <MixCard data={mix} />
         <TopProductosCard productos={topProductos} />
+        <ProductosMasRentables productos={masRentables} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <ProductosMasRentables productos={masRentables} />
+        <TopInsumosGastoCard insumos={topInsumos} />
+        <InsumosSubasCard alerts={insumosSubas} />
         <ProductosEnRiesgo productos={enRiesgo} />
-        <StockCriticoCard insumos={stockCritico} />
       </div>
+
+      <StockCriticoCard insumos={stockCritico} />
     </div>
   )
 }
