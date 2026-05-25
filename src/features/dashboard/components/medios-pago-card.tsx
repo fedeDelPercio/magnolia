@@ -27,7 +27,7 @@ export function MediosPagoCard({ data }: Props) {
   const digitalPct = total > 0 ? (digital / total) * 100 : 0
 
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <div className="flex items-baseline justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Medios de pago

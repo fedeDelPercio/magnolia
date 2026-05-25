@@ -15,7 +15,7 @@ export function MixCard({ data }: Props) {
     data.transaccionesMostrador > 0 ? data.mostrador / data.transaccionesMostrador : 0
 
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
         Salón vs Mostrador
       </h2>

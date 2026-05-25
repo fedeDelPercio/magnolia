@@ -17,7 +17,7 @@ export function MenuEngineeringMatrix({ data }: Props) {
 
   if (points.length === 0) {
     return (
-      <div className="rounded-xl border bg-card p-6">
+      <div className="card-editorial p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Menu Engineering
         </h2>
@@ -81,7 +81,7 @@ export function MenuEngineeringMatrix({ data }: Props) {
   }
 
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <div className="flex items-baseline justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">

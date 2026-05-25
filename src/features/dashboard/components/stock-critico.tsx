@@ -16,7 +16,7 @@ function fmtQty(val: number, unit: string): string {
 
 export function StockCriticoCard({ insumos }: { insumos: InsumoCritico[] }) {
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <div className="flex items-center gap-2">
         <PackageIcon className="size-4 text-rose-600" />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">

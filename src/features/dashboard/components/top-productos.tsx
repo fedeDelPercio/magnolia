@@ -9,7 +9,7 @@ export function TopProductosCard({ productos }: Props) {
   const maxCantidad = Math.max(1, ...productos.map((p) => p.cantidad))
 
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
         Top productos vendidos
       </h2>

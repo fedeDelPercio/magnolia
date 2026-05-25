@@ -5,7 +5,7 @@ import type { ProductoRiesgo, ProductoRentable } from '../queries'
 
 export function ProductosEnRiesgo({ productos }: { productos: ProductoRiesgo[] }) {
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <div className="flex items-center gap-2">
         <AlertTriangleIcon className="size-4 text-amber-600" />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -49,7 +49,7 @@ export function ProductosEnRiesgo({ productos }: { productos: ProductoRiesgo[] }
 
 export function ProductosMasRentables({ productos }: { productos: ProductoRentable[] }) {
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <div className="flex items-center gap-2">
         <TrophyIcon className="size-4 text-emerald-600" />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">

@@ -61,49 +61,51 @@
    ------------------------------------------------------------ */
 
 :root {
-  /* Fondo cálido y card */
-  --background: oklch(0.965 0.012 85);            /* crema cálido */
-  --surface:    oklch(0.945 0.014 85);            /* riel topnav */
-  --foreground: oklch(0.18 0.015 130);            /* casi-negro con tinte oliva */
-  --card:       oklch(0.995 0.004 85);            /* blanco roto */
+  /* ---- Paleta editorial-restaurant ----
+     Tres niveles de crema (page → card → accent) — ningún blanco puro.
+     Toda la profundidad viene del contraste sutil entre tonos cercanos. */
+  --background:    oklch(0.962 0.014 84);          /* crema cálida — la página */
+  --surface:       oklch(0.945 0.016 84);          /* rieles + popovers + dialogs */
+  --foreground:    oklch(0.18 0.015 130);          /* casi-negro tinte oliva */
+  --card:          oklch(0.978 0.012 85);          /* card — apenas más clara que page, no blanco */
   --card-foreground: oklch(0.18 0.015 130);
-  --popover: oklch(0.945 0.014 85);                /* mismo tono del rail del topnav */
+  --popover:       oklch(0.945 0.016 84);
   --popover-foreground: oklch(0.18 0.015 130);
 
-  /* Verde oliva profundo como acento principal */
-  --primary: oklch(0.34 0.07 138);                /* oliva profundo */
-  --primary-foreground: oklch(0.97 0.012 85);
+  /* Acento oliva — usado con restraint */
+  --primary:       oklch(0.34 0.07 138);
+  --primary-foreground: oklch(0.97 0.014 85);
 
-  --secondary: oklch(0.93 0.012 90);
-  --secondary-foreground: oklch(0.30 0.015 130);
+  --secondary:     oklch(0.92 0.014 88);
+  --secondary-foreground: oklch(0.28 0.015 130);
 
-  --muted: oklch(0.94 0.012 88);
-  --muted-foreground: oklch(0.50 0.015 120);
+  --muted:         oklch(0.93 0.014 88);
+  --muted-foreground: oklch(0.46 0.014 120);
 
-  --accent: oklch(0.92 0.04 130);                 /* oliva pálido para fondos sutiles */
+  --accent:        oklch(0.92 0.04 130);
   --accent-foreground: oklch(0.30 0.08 138);
 
-  --destructive: oklch(0.52 0.18 25);             /* terracota apagado en vez de rojo puro */
-  --border: oklch(0.89 0.012 90);
-  --input: oklch(0.89 0.012 90);
-  --ring: oklch(0.34 0.07 138);
+  --destructive:   oklch(0.52 0.18 25);
+  --border:        oklch(0.86 0.013 88);           /* hairline más visible */
+  --input:         oklch(0.86 0.013 88);
+  --ring:          oklch(0.34 0.07 138);
 
-  /* Charts: gama tierra (oliva, mostaza, terracota, salvia, crema oscuro) */
+  /* Charts: gama tierra coherente */
   --chart-1: oklch(0.34 0.07 138);
   --chart-2: oklch(0.62 0.13 80);
   --chart-3: oklch(0.55 0.14 40);
   --chart-4: oklch(0.55 0.06 165);
   --chart-5: oklch(0.45 0.04 80);
 
-  --radius: 0.875rem;                              /* más redondeado para vibe bento */
+  --radius: 1rem;
 
-  --sidebar: oklch(0.995 0.004 85);
+  --sidebar: oklch(0.978 0.012 85);
   --sidebar-foreground: oklch(0.18 0.015 130);
   --sidebar-primary: oklch(0.34 0.07 138);
-  --sidebar-primary-foreground: oklch(0.97 0.012 85);
+  --sidebar-primary-foreground: oklch(0.97 0.014 85);
   --sidebar-accent: oklch(0.92 0.04 130);
   --sidebar-accent-foreground: oklch(0.30 0.08 138);
-  --sidebar-border: oklch(0.89 0.012 90);
+  --sidebar-border: oklch(0.86 0.013 88);
   --sidebar-ring: oklch(0.34 0.07 138);
 }
 
@@ -148,20 +150,43 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "ss01", "cv11";  /* Geist niceties */
+    font-feature-settings: "ss01", "cv11";
+    /* Grano sutil de papel — da textura editorial sin ser ruidoso.
+       SVG inline turbulence: 0.9 baseFrequency, opacity bajo. */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.15 0 0 0 0 0.13 0 0 0 0 0.10 0 0 0 0.045 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-size: 200px 200px;
+    background-attachment: fixed;
   }
   html {
     @apply font-sans;
   }
-  /* Tabular numbers everywhere — money + counts look aligned */
   .tabular-nums { font-variant-numeric: tabular-nums; }
 }
 
 @layer components {
-  /* Display-grade headings (Fraunces) */
+  /* Display serif: Fraunces — para números editoriales y títulos hero */
   .font-display {
     font-family: var(--font-display);
     font-feature-settings: "ss01";
+    letter-spacing: -0.025em;
+  }
+  /* Letterspacing extremo para labels caps editorial */
+  .tracking-editorial {
+    letter-spacing: 0.18em;
+  }
+  /* Number editorial: serif italic, tabular, kerning */
+  .num-editorial {
+    font-family: var(--font-display);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "ss01";
+    font-style: italic;
     letter-spacing: -0.02em;
+  }
+  /* Card editorial: hairline, sin pure-white, sutil sombra de papel */
+  .card-editorial {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 0 0 oklch(0 0 0 / 0.025), 0 0 0 1px oklch(0 0 0 / 0.015) inset;
   }
 }

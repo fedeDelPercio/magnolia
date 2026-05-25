@@ -22,7 +22,7 @@ import {
   ProductosMasRentables,
 } from '@/features/dashboard/components/productos-listas'
 import { StockCriticoCard } from '@/features/dashboard/components/stock-critico'
-import { RangePicker } from '@/features/dashboard/components/range-picker'
+import { DashboardHeader } from '@/features/dashboard/components/dashboard-header'
 import { CostosCard } from '@/features/dashboard/components/costos-card'
 import { MenuEngineeringMatrix } from '@/features/dashboard/components/menu-engineering'
 import {
@@ -86,15 +86,7 @@ export default async function DashboardPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Resumen del negocio. El rango filtra todas las métricas.
-          </p>
-        </div>
-        <RangePicker from={from} to={to} />
-      </div>
+      <DashboardHeader from={from} to={to} />
 
       <HeroCards overview={overview} />
 

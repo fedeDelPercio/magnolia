@@ -15,9 +15,9 @@ const GRAN_LABELS: Record<Granularity, string> = {
   mes: 'Mes',
 }
 
-// Paleta cohesiva: dos tonos del mismo sistema (índigo oscuro y claro)
-const COLOR_EFECTIVO = 'oklch(0.42 0.18 264)'   // índigo oscuro
-const COLOR_DIGITAL = 'oklch(0.68 0.16 264)'    // índigo claro
+// Paleta editorial olive: dos tonos del mismo hue para coherencia con la app
+const COLOR_EFECTIVO = 'oklch(0.36 0.08 138)'   // oliva profundo
+const COLOR_DIGITAL = 'oklch(0.68 0.08 138)'    // oliva pálido (mismo hue, más claro)
 
 export function EvolucionChart({ data, granularity }: Props) {
   const router = useRouter()
@@ -38,12 +38,12 @@ export function EvolucionChart({ data, granularity }: Props) {
 
   // SVG layout
   const width = 1100
-  const height = 380
-  const padding = { top: 36, right: 24, bottom: 56, left: 72 }
+  const height = 360
+  const padding = { top: 44, right: 24, bottom: 56, left: 72 }
   const innerW = width - padding.left - padding.right
   const innerH = height - padding.top - padding.bottom
   const maxY = Math.max(1, ...data.map((d) => d.total))
-  const barGap = 8
+  const barGap = 6
   const barW = Math.max(6, (innerW - barGap * Math.max(0, data.length - 1)) / Math.max(1, data.length))
 
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => ({
@@ -65,190 +65,205 @@ export function EvolucionChart({ data, granularity }: Props) {
   const xLabelStep = Math.max(1, Math.ceil(data.length / 18))
 
   return (
-    <div className="rounded-xl border bg-card p-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <section>
+      {/* Section header editorial — fuera del card */}
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Evolución de facturación
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-            <span style={{ color: COLOR_EFECTIVO }}>{efectivoPct.toFixed(0)}% efectivo</span>
-            {' · '}
-            <span style={{ color: COLOR_DIGITAL }}>{digitalPct.toFixed(0)}% digital</span>
-            {' · '}
-            <span className="text-foreground/70">total {formatCurrency(total)}</span>
+          <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
+            Evolución
           </p>
+          <h2 className="mt-1 font-display text-3xl tracking-tight">
+            <span className="italic">Día</span> a día, mes a mes
+          </h2>
         </div>
-
-        {/* Granularidad */}
-        <div className="flex rounded-lg border overflow-hidden text-xs">
-          {(['dia', 'semana', 'mes'] as Granularity[]).map((g) => (
-            <button
-              key={g}
-              type="button"
-              onClick={() => setGranularity(g)}
-              className={
-                'px-3 py-1.5 transition-colors ' +
-                (granularity === g
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-background text-muted-foreground hover:bg-muted')
-              }
-            >
-              {GRAN_LABELS[g]}
-            </button>
-          ))}
+        <div className="flex items-center gap-4">
+          <p className="text-xs tabular-nums text-muted-foreground">
+            <span style={{ color: COLOR_EFECTIVO }} className="font-medium">
+              {efectivoPct.toFixed(0)}% efectivo
+            </span>
+            {'  ·  '}
+            <span style={{ color: COLOR_DIGITAL }} className="font-medium">
+              {digitalPct.toFixed(0)}% digital
+            </span>
+          </p>
+          <div className="flex rounded-full border bg-card overflow-hidden text-xs">
+            {(['dia', 'semana', 'mes'] as Granularity[]).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGranularity(g)}
+                className={
+                  'px-3.5 py-1.5 transition-colors ' +
+                  (granularity === g
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground')
+                }
+              >
+                {GRAN_LABELS[g]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Chart */}
-      {data.length === 0 || total === 0 ? (
-        <p className="mt-12 text-center text-sm text-muted-foreground">
-          Sin cierres cargados para este rango.
-        </p>
-      ) : (
-        <div className="mt-6 overflow-x-auto">
-          <svg
-            viewBox={`0 0 ${width} ${height}`}
-            preserveAspectRatio="xMidYMid meet"
-            className="h-auto max-h-[380px] w-full min-w-[640px]"
-          >
-            {/* Gridlines + y labels */}
-            {yTicks.map((t, i) => (
-              <g key={i}>
-                <line
-                  x1={padding.left}
-                  x2={padding.left + innerW}
-                  y1={t.y}
-                  y2={t.y}
-                  stroke="currentColor"
-                  strokeOpacity={0.08}
-                  strokeDasharray={i === 0 ? '0' : '2 4'}
-                />
-                <text
-                  x={padding.left - 8}
-                  y={t.y + 4}
-                  textAnchor="end"
-                  className="fill-muted-foreground text-[10px] tabular-nums"
-                >
-                  {compact(t.val)}
-                </text>
-              </g>
-            ))}
+      <div className="card-editorial p-6">
+        {data.length === 0 || total === 0 ? (
+          <p className="py-16 text-center text-sm text-muted-foreground">
+            Sin cierres cargados para este rango.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <svg
+              viewBox={`0 0 ${width} ${height}`}
+              preserveAspectRatio="xMidYMid meet"
+              className="h-auto max-h-[360px] w-full min-w-[640px]"
+            >
+              {/* Gridlines + y labels */}
+              {yTicks.map((t, i) => (
+                <g key={i}>
+                  <line
+                    x1={padding.left}
+                    x2={padding.left + innerW}
+                    y1={t.y}
+                    y2={t.y}
+                    stroke="currentColor"
+                    strokeOpacity={0.07}
+                    strokeDasharray={i === 0 ? '0' : '2 4'}
+                  />
+                  <text
+                    x={padding.left - 12}
+                    y={t.y + 4}
+                    textAnchor="end"
+                    className="fill-muted-foreground text-[10px] tabular-nums tracking-tight"
+                  >
+                    {compact(t.val)}
+                  </text>
+                </g>
+              ))}
 
-            {/* Barras apiladas */}
-            {data.map((d, i) => {
-              const x = padding.left + i * (barW + barGap)
-              const hTotal = (d.total / maxY) * innerH
-              const hEfectivo = (d.efectivo / maxY) * innerH
-              const hDigital = (d.digital / maxY) * innerH
-              const yEfectivo = padding.top + innerH - hEfectivo
-              const yDigital = padding.top + innerH - hTotal
-              const pctEfectivo = d.total > 0 ? (d.efectivo / d.total) * 100 : 0
-              const pctDigital = d.total > 0 ? (d.digital / d.total) * 100 : 0
-              const tooltip = `${d.label}
+              {/* Barras apiladas */}
+              {data.map((d, i) => {
+                const x = padding.left + i * (barW + barGap)
+                const hTotal = (d.total / maxY) * innerH
+                const hEfectivo = (d.efectivo / maxY) * innerH
+                const hDigital = (d.digital / maxY) * innerH
+                const yEfectivo = padding.top + innerH - hEfectivo
+                const yDigital = padding.top + innerH - hTotal
+                const pctEfectivo = d.total > 0 ? (d.efectivo / d.total) * 100 : 0
+                const pctDigital = d.total > 0 ? (d.digital / d.total) * 100 : 0
+                const tooltip = `${d.label}
 Total: ${formatCurrency(d.total)}
 Efectivo: ${formatCurrency(d.efectivo)} (${pctEfectivo.toFixed(0)}%)
 Digital: ${formatCurrency(d.digital)} (${pctDigital.toFixed(0)}%)`
 
-              // Mostrar % dentro de la barra solo si el segmento es alto suficiente
-              const showPctInside = barW >= 28
-              const minHeightForLabel = 22
+                const showPctInside = barW >= 32
+                const minHeightForLabel = 24
 
-              return (
-                <g key={d.period}>
-                  {/* Digital (arriba) */}
-                  {d.digital > 0 && (
-                    <rect
-                      x={x}
-                      y={yDigital}
-                      width={barW}
-                      height={hDigital}
-                      fill={COLOR_DIGITAL}
-                      rx={2}
-                    >
-                      <title>{tooltip}</title>
-                    </rect>
-                  )}
-                  {/* Efectivo (abajo) */}
-                  {d.efectivo > 0 && (
-                    <rect
-                      x={x}
-                      y={yEfectivo}
-                      width={barW}
-                      height={hEfectivo}
-                      fill={COLOR_EFECTIVO}
-                      rx={2}
-                    >
-                      <title>{tooltip}</title>
-                    </rect>
-                  )}
+                return (
+                  <g key={d.period}>
+                    {/* Digital (arriba) */}
+                    {d.digital > 0 && (
+                      <rect
+                        x={x}
+                        y={yDigital}
+                        width={barW}
+                        height={hDigital}
+                        fill={COLOR_DIGITAL}
+                        rx={1}
+                      >
+                        <title>{tooltip}</title>
+                      </rect>
+                    )}
+                    {/* Efectivo (abajo) */}
+                    {d.efectivo > 0 && (
+                      <rect
+                        x={x}
+                        y={yEfectivo}
+                        width={barW}
+                        height={hEfectivo}
+                        fill={COLOR_EFECTIVO}
+                        rx={1}
+                      >
+                        <title>{tooltip}</title>
+                      </rect>
+                    )}
 
-                  {/* % dentro de cada segmento (solo si entra) */}
-                  {showPctInside && d.digital > 0 && hDigital >= minHeightForLabel && (
-                    <text
-                      x={x + barW / 2}
-                      y={yDigital + hDigital / 2 + 4}
-                      textAnchor="middle"
-                      className="text-[11px] font-medium tabular-nums"
-                      fill="white"
-                    >
-                      {pctDigital.toFixed(0)}%
-                    </text>
-                  )}
-                  {showPctInside && d.efectivo > 0 && hEfectivo >= minHeightForLabel && (
-                    <text
-                      x={x + barW / 2}
-                      y={yEfectivo + hEfectivo / 2 + 4}
-                      textAnchor="middle"
-                      className="text-[11px] font-medium tabular-nums"
-                      fill="white"
-                    >
-                      {pctEfectivo.toFixed(0)}%
-                    </text>
-                  )}
+                    {/* % dentro de cada segmento (solo si entra) */}
+                    {showPctInside && d.digital > 0 && hDigital >= minHeightForLabel && (
+                      <text
+                        x={x + barW / 2}
+                        y={yDigital + hDigital / 2 + 4}
+                        textAnchor="middle"
+                        className="text-[11px] font-medium tabular-nums"
+                        fill="white"
+                        fillOpacity={0.95}
+                      >
+                        {pctDigital.toFixed(0)}%
+                      </text>
+                    )}
+                    {showPctInside && d.efectivo > 0 && hEfectivo >= minHeightForLabel && (
+                      <text
+                        x={x + barW / 2}
+                        y={yEfectivo + hEfectivo / 2 + 4}
+                        textAnchor="middle"
+                        className="text-[11px] font-medium tabular-nums"
+                        fill="white"
+                        fillOpacity={0.95}
+                      >
+                        {pctEfectivo.toFixed(0)}%
+                      </text>
+                    )}
 
-                  {/* Total arriba de la barra */}
-                  {d.total > 0 && (
-                    <text
-                      x={x + barW / 2}
-                      y={yDigital - 6}
-                      textAnchor="middle"
-                      className="fill-foreground text-[11px] font-semibold tabular-nums"
-                    >
-                      {compactTopLabel(d.total)}
-                    </text>
-                  )}
+                    {/* Total arriba de la barra — Fraunces serif */}
+                    {d.total > 0 && (
+                      <text
+                        x={x + barW / 2}
+                        y={yDigital - 8}
+                        textAnchor="middle"
+                        className="fill-foreground text-[12px] tabular-nums"
+                        style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic' }}
+                      >
+                        {compactTopLabel(d.total)}
+                      </text>
+                    )}
 
-                  {/* Label x */}
-                  {i % xLabelStep === 0 && (
-                    <text
-                      x={x + barW / 2}
-                      y={padding.top + innerH + 16}
-                      textAnchor="middle"
-                      className="fill-muted-foreground text-[10px] tabular-nums"
-                    >
-                      {d.label}
-                    </text>
-                  )}
-                </g>
-              )
-            })}
-          </svg>
-        </div>
-      )}
+                    {/* Label x */}
+                    {i % xLabelStep === 0 && (
+                      <text
+                        x={x + barW / 2}
+                        y={padding.top + innerH + 18}
+                        textAnchor="middle"
+                        className="fill-muted-foreground text-[10px] tabular-nums tracking-tight"
+                      >
+                        {d.label}
+                      </text>
+                    )}
+                  </g>
+                )
+              })}
+            </svg>
+          </div>
+        )}
 
-      {/* Leyenda */}
-      <div className="mt-4 flex items-center gap-4 text-xs">
-        <div className="flex items-center gap-1.5">
-          <span className="block size-3 rounded-sm" style={{ backgroundColor: COLOR_EFECTIVO }} />
-          <span className="text-muted-foreground">Efectivo</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="block size-3 rounded-sm" style={{ backgroundColor: COLOR_DIGITAL }} />
-          <span className="text-muted-foreground">Medios digitales</span>
+        {/* Leyenda */}
+        <div className="mt-4 flex items-center gap-6 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="block h-2.5 w-4 rounded-sm" style={{ backgroundColor: COLOR_EFECTIVO }} />
+            <span className="text-muted-foreground">
+              Efectivo · <span className="tabular-nums text-foreground/70">{formatCurrency(efectivoTotal)}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="block h-2.5 w-4 rounded-sm" style={{ backgroundColor: COLOR_DIGITAL }} />
+            <span className="text-muted-foreground">
+              Medios digitales · <span className="tabular-nums text-foreground/70">{formatCurrency(digitalTotal)}</span>
+            </span>
+          </div>
+          <span className="ml-auto text-muted-foreground tabular-nums">
+            Total: <span className="font-medium text-foreground">{formatCurrency(total)}</span>
+          </span>
         </div>
       </div>
-    </div>
+    </section>
   )
 }

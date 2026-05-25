@@ -19,7 +19,7 @@ export function TopInsumosGastoCard({ insumos }: { insumos: InsumoGasto[] }) {
   const maxGasto = Math.max(1, ...insumos.map((i) => i.total_gastado))
 
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <div className="flex items-center gap-2">
         <PackageOpenIcon className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -69,7 +69,7 @@ export function TopInsumosGastoCard({ insumos }: { insumos: InsumoGasto[] }) {
 
 export function InsumosSubasCard({ alerts }: { alerts: InsumoSubaAlert[] }) {
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="card-editorial p-6">
       <div className="flex items-center gap-2">
         <AlertTriangleIcon className="size-4 text-rose-600" />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">

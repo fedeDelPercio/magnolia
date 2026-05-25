@@ -2,35 +2,37 @@ import { ChefHatIcon, UsersIcon, ActivityIcon } from 'lucide-react'
 import { formatCurrency } from '@/lib/format'
 import type { DashboardOverview } from '../queries'
 
-type Tone = { label: string; cls: string; bar: string; bg: string }
+type Tone = {
+  label: string
+  text: string
+  bar: string
+  tint: string
+}
 
 function foodTone(pct: number | null): Tone {
-  if (pct === null) return { label: '—', cls: 'text-muted-foreground', bar: 'bg-muted', bg: '' }
-  if (pct <= 30) return { label: 'óptimo', cls: 'text-emerald-700', bar: 'bg-emerald-500', bg: 'bg-emerald-50/50' }
-  if (pct <= 35) return { label: 'saludable', cls: 'text-emerald-600', bar: 'bg-emerald-500', bg: 'bg-emerald-50/50' }
-  if (pct <= 40) return { label: 'alto', cls: 'text-amber-600', bar: 'bg-amber-500', bg: 'bg-amber-50/50' }
-  return { label: 'crítico', cls: 'text-rose-700', bar: 'bg-rose-500', bg: 'bg-rose-50/50' }
+  if (pct === null) return { label: '—', text: 'text-muted-foreground', bar: 'bg-muted', tint: '' }
+  if (pct <= 35) return { label: 'saludable', text: 'text-emerald-700', bar: 'bg-emerald-600', tint: 'bg-emerald-50/40' }
+  if (pct <= 40) return { label: 'alto', text: 'text-amber-700', bar: 'bg-amber-500', tint: 'bg-amber-50/40' }
+  return { label: 'crítico', text: 'text-rose-700', bar: 'bg-rose-500', tint: 'bg-rose-50/50' }
 }
 
 function laborTone(pct: number | null): Tone {
-  if (pct === null) return { label: '—', cls: 'text-muted-foreground', bar: 'bg-muted', bg: '' }
-  if (pct <= 25) return { label: 'óptimo', cls: 'text-emerald-700', bar: 'bg-emerald-500', bg: 'bg-emerald-50/50' }
-  if (pct <= 32) return { label: 'saludable', cls: 'text-emerald-600', bar: 'bg-emerald-500', bg: 'bg-emerald-50/50' }
-  if (pct <= 40) return { label: 'alto', cls: 'text-amber-600', bar: 'bg-amber-500', bg: 'bg-amber-50/50' }
-  return { label: 'crítico', cls: 'text-rose-700', bar: 'bg-rose-500', bg: 'bg-rose-50/50' }
+  if (pct === null) return { label: '—', text: 'text-muted-foreground', bar: 'bg-muted', tint: '' }
+  if (pct <= 32) return { label: 'saludable', text: 'text-emerald-700', bar: 'bg-emerald-600', tint: 'bg-emerald-50/40' }
+  if (pct <= 40) return { label: 'alto', text: 'text-amber-700', bar: 'bg-amber-500', tint: 'bg-amber-50/40' }
+  return { label: 'crítico', text: 'text-rose-700', bar: 'bg-rose-500', tint: 'bg-rose-50/50' }
 }
 
 function primeTone(pct: number | null): Tone {
-  if (pct === null) return { label: '—', cls: 'text-muted-foreground', bar: 'bg-muted', bg: '' }
-  if (pct <= 55) return { label: 'óptimo', cls: 'text-emerald-700', bar: 'bg-emerald-500', bg: 'bg-emerald-50/50' }
-  if (pct <= 65) return { label: 'saludable', cls: 'text-emerald-600', bar: 'bg-emerald-500', bg: 'bg-emerald-50/50' }
-  if (pct <= 75) return { label: 'alto', cls: 'text-amber-600', bar: 'bg-amber-500', bg: 'bg-amber-50/50' }
-  return { label: 'crítico', cls: 'text-rose-700', bar: 'bg-rose-500', bg: 'bg-rose-50/50' }
+  if (pct === null) return { label: '—', text: 'text-muted-foreground', bar: 'bg-muted', tint: '' }
+  if (pct <= 65) return { label: 'saludable', text: 'text-emerald-700', bar: 'bg-emerald-600', tint: 'bg-emerald-50/40' }
+  if (pct <= 75) return { label: 'alto', text: 'text-amber-700', bar: 'bg-amber-500', tint: 'bg-amber-50/40' }
+  return { label: 'crítico', text: 'text-rose-700', bar: 'bg-rose-500', tint: 'bg-rose-50/50' }
 }
 
 type Row = {
-  title: string             // Inglés (primario)
-  subtitle: string          // Español (aclaración)
+  title: string
+  subtitle: string
   Icon: typeof ChefHatIcon
   pct: number | null
   monto: number | null
@@ -73,55 +75,69 @@ export function CostosCard({ overview }: { overview: DashboardOverview }) {
   ]
 
   return (
-    <div className="rounded-xl border bg-card p-6">
-      <div className="mb-1">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Estructura de costos
-        </h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Sobre la facturación del período · comparado con benchmark gastronómico
+    <section>
+      {/* Section header editorial — fuera del card */}
+      <div className="mb-4 flex items-baseline justify-between">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
+            Estructura de costos
+          </p>
+          <h2 className="mt-1 font-display text-3xl tracking-tight">
+            <span className="italic">Cómo</span> se reparte cada peso
+          </h2>
+        </div>
+        <p className="hidden text-xs text-muted-foreground md:block">
+          Sobre la facturación del período · benchmark gastronómico
         </p>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {rows.map((r) => (
           <div
             key={r.title}
-            className={`rounded-xl border bg-background p-5 transition-colors ${r.tone.bg}`}
+            className={`card-editorial relative overflow-hidden p-7 ${r.tone.tint}`}
           >
+            {/* Hairline accent vertical en la izquierda */}
+            <div className={`absolute inset-y-0 left-0 w-0.5 ${r.tone.bar}`} />
+
             {/* Header */}
-            <div className="flex items-center gap-2 text-sm">
-              <r.Icon className="size-4 text-muted-foreground" />
-              <span className="font-semibold">{r.title}</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                <r.Icon className="size-3.5 text-muted-foreground" />
+                <span className="font-semibold">{r.title}</span>
+              </div>
+              <span className={`text-[10px] font-medium uppercase tracking-editorial ${r.tone.text}`}>
+                {r.tone.label}
+              </span>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">{r.subtitle}</p>
 
-            {/* Big number */}
-            <div className="mt-4 flex items-baseline justify-between">
-              <p className={`text-3xl font-semibold tabular-nums ${r.tone.cls}`}>
-                {r.pct !== null ? `${r.pct.toFixed(1)}%` : '—'}
-              </p>
-              <span className={`text-sm font-medium ${r.tone.cls}`}>{r.tone.label}</span>
-            </div>
+            {/* Big number — Fraunces italic */}
+            <p className={`mt-6 num-editorial text-6xl leading-none ${r.tone.text}`}>
+              {r.pct !== null ? `${r.pct.toFixed(1)}%` : '—'}
+            </p>
 
             {/* Bar */}
-            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className={`h-full rounded-full transition-all ${r.tone.bar}`}
+                className={`h-full ${r.tone.bar} transition-all`}
                 style={{ width: `${Math.min(100, r.pct ?? 0)}%` }}
               />
             </div>
 
-            {/* Footer */}
-            <div className="mt-3 flex items-baseline justify-between text-[11px] text-muted-foreground">
-              <span>benchmark {r.benchmark}</span>
+            {/* Footer dual */}
+            <div className="mt-4 flex items-baseline justify-between text-[11px] text-muted-foreground">
+              <span>
+                <span className="uppercase tracking-editorial">benchmark</span>{' '}
+                <span className="tabular-nums text-foreground/70">{r.benchmark}</span>
+              </span>
               {r.monto !== null && r.monto > 0 && (
-                <span className="tabular-nums">{formatCurrency(r.monto)}</span>
+                <span className="tabular-nums text-foreground/80">{formatCurrency(r.monto)}</span>
               )}
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </section>
   )
 }
