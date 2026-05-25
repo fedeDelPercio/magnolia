@@ -26,6 +26,9 @@ export type DashboardOverview = {
   ticketPromedioSalon: number
   foodCostPct: number | null
   foodCostMonto: number
+  laborCostPct: number | null
+  laborCostMonto: number
+  primeCostPct: number | null
   margenPonderadoPct: number | null
 }
 
@@ -91,7 +94,7 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
   const { from, to } = monthBounds(month)
   const { from: prevFrom, to: prevTo } = monthBounds(prevMonth(month))
 
-  const [cierresRes, cierresPrevRes, productosRes] = await Promise.all([
+  const [cierresRes, cierresPrevRes, productosRes, sueldosRes] = await Promise.all([
     supabase
       .from('cierres_caja')
       .select('total_vendido, monto_salon, cubiertos')
@@ -110,11 +113,19 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
       .eq('cierres_caja.tenant_id', tenantId)
       .gte('cierres_caja.fecha_cierre', from)
       .lt('cierres_caja.fecha_cierre', to),
+    supabase
+      .from('caja_movimientos')
+      .select('monto, categoria')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'egreso')
+      .gte('fecha', from)
+      .lt('fecha', to),
   ])
 
   if (cierresRes.error) throw new Error(cierresRes.error.message)
   if (cierresPrevRes.error) throw new Error(cierresPrevRes.error.message)
   if (productosRes.error) throw new Error(productosRes.error.message)
+  if (sueldosRes.error) throw new Error(sueldosRes.error.message)
 
   const facturacion = (cierresRes.data ?? []).reduce((s, c) => s + (Number(c.total_vendido) || 0), 0)
   const facturacionPrev = (cierresPrevRes.data ?? []).reduce(
@@ -157,6 +168,14 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
   const foodCostPct = ventasMatcheadas > 0 ? (foodCostMonto / ventasMatcheadas) * 100 : null
   const margenPonderadoPct = foodCostPct !== null ? 100 - foodCostPct : null
 
+  // Labor cost: sumar egresos cuya categoría contenga "sueldo"
+  const laborCostMonto = (sueldosRes.data ?? [])
+    .filter((m) => (m.categoria ?? '').toLowerCase().includes('sueldo'))
+    .reduce((s, m) => s + (Number(m.monto) || 0), 0)
+  const laborCostPct = facturacion > 0 ? (laborCostMonto / facturacion) * 100 : null
+  const primeCostPct =
+    foodCostPct !== null && laborCostPct !== null ? foodCostPct + laborCostPct : null
+
   return {
     facturacion,
     facturacionPrev,
@@ -165,6 +184,9 @@ export async function getDashboardOverview(month: string): Promise<DashboardOver
     ticketPromedioSalon,
     foodCostPct,
     foodCostMonto,
+    laborCostPct,
+    laborCostMonto,
+    primeCostPct,
     margenPonderadoPct,
   }
 }
@@ -382,6 +404,213 @@ export async function getProductosMasRentables(
     .filter((p) => p.margen_total > 0)
     .sort((a, b) => b.margen_total - a.margen_total)
     .slice(0, limit)
+}
+
+export type MenuEngineeringPoint = {
+  id: string
+  name: string
+  cantidad: number
+  margen_unitario: number
+  monto: number
+  cuadrante: 'estrella' | 'caballito' | 'acertijo' | 'perro'
+}
+
+export async function getMenuEngineering(month: string): Promise<{
+  points: MenuEngineeringPoint[]
+  medianCantidad: number
+  medianMargen: number
+}> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { from, to } = monthBounds(month)
+
+  const [productosRes, costsRes] = await Promise.all([
+    supabase
+      .from('cierre_caja_productos')
+      .select('producto_id, cantidad, monto_total, cierres_caja!inner(fecha_cierre, tenant_id)')
+      .eq('cierres_caja.tenant_id', tenantId)
+      .gte('cierres_caja.fecha_cierre', from)
+      .lt('cierres_caja.fecha_cierre', to),
+    supabase
+      .from('product_costs')
+      .select('id, name, sale_price, total_cost')
+      .eq('tenant_id', tenantId),
+  ])
+
+  if (productosRes.error) throw new Error(productosRes.error.message)
+  if (costsRes.error) throw new Error(costsRes.error.message)
+
+  const costsMap = new Map(
+    (costsRes.data ?? []).map((c) => [
+      c.id,
+      {
+        name: c.name,
+        margen: (Number(c.sale_price) || 0) - (Number(c.total_cost) || 0),
+      },
+    ]),
+  )
+
+  const agg = new Map<string, { id: string; name: string; cantidad: number; margen_unitario: number; monto: number }>()
+  for (const row of productosRes.data ?? []) {
+    if (!row.producto_id) continue
+    const info = costsMap.get(row.producto_id)
+    if (!info) continue
+    const cur = agg.get(row.producto_id) ?? {
+      id: row.producto_id,
+      name: info.name!,
+      cantidad: 0,
+      margen_unitario: info.margen,
+      monto: 0,
+    }
+    cur.cantidad += Number(row.cantidad) || 0
+    cur.monto += Number(row.monto_total) || 0
+    agg.set(row.producto_id, cur)
+  }
+
+  const arr = Array.from(agg.values()).filter((p) => p.cantidad > 0 && p.margen_unitario !== 0)
+  if (arr.length === 0) return { points: [], medianCantidad: 0, medianMargen: 0 }
+
+  // Medianas para definir cuadrantes
+  const cantidadesSorted = [...arr].map((p) => p.cantidad).sort((a, b) => a - b)
+  const margenesSorted = [...arr].map((p) => p.margen_unitario).sort((a, b) => a - b)
+  const medianCantidad = cantidadesSorted[Math.floor(cantidadesSorted.length / 2)] ?? 0
+  const medianMargen = margenesSorted[Math.floor(margenesSorted.length / 2)] ?? 0
+
+  const points: MenuEngineeringPoint[] = arr.map((p) => {
+    const altaCantidad = p.cantidad >= medianCantidad
+    const altoMargen = p.margen_unitario >= medianMargen
+    let cuadrante: MenuEngineeringPoint['cuadrante']
+    if (altaCantidad && altoMargen) cuadrante = 'estrella'
+    else if (altaCantidad && !altoMargen) cuadrante = 'caballito'
+    else if (!altaCantidad && altoMargen) cuadrante = 'acertijo'
+    else cuadrante = 'perro'
+    return { ...p, cuadrante }
+  })
+
+  return { points, medianCantidad, medianMargen }
+}
+
+export type InsumoGasto = {
+  id: string
+  name: string
+  unit: string
+  total_gastado: number
+  qty_total: number
+}
+
+export async function getTopInsumosGasto(month: string, limit = 5): Promise<InsumoGasto[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { from, to } = monthBounds(month)
+
+  const { data, error } = await supabase
+    .from('compra_items')
+    .select(
+      'insumo_id, qty, unit_price, compras!inner(fecha, tenant_id), insumos!inner(name, unit)',
+    )
+    .eq('compras.tenant_id', tenantId)
+    .gte('compras.fecha', from)
+    .lt('compras.fecha', to)
+
+  if (error) throw new Error(error.message)
+
+  const agg = new Map<string, InsumoGasto>()
+  for (const row of (data ?? []) as unknown as Array<{
+    insumo_id: string
+    qty: number
+    unit_price: number
+    insumos: { name: string; unit: string } | null
+  }>) {
+    if (!row.insumos) continue
+    const cur = agg.get(row.insumo_id) ?? {
+      id: row.insumo_id,
+      name: row.insumos.name,
+      unit: row.insumos.unit,
+      total_gastado: 0,
+      qty_total: 0,
+    }
+    cur.total_gastado += (Number(row.qty) || 0) * (Number(row.unit_price) || 0)
+    cur.qty_total += Number(row.qty) || 0
+    agg.set(row.insumo_id, cur)
+  }
+
+  return Array.from(agg.values())
+    .sort((a, b) => b.total_gastado - a.total_gastado)
+    .slice(0, limit)
+}
+
+export type InsumoSubaAlert = {
+  id: string
+  name: string
+  unit: string
+  precio_anterior: number
+  precio_actual: number
+  variacion_pct: number
+  proveedor_actual: string | null
+}
+
+export async function getInsumosConSuba(
+  month: string,
+  thresholdPct = 15,
+): Promise<InsumoSubaAlert[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { from, to } = monthBounds(month)
+  const { from: prevFrom } = monthBounds(prevMonth(month))
+
+  // Traer todos los precios del mes actual y anterior, en orden cronológico
+  const { data, error } = await supabase
+    .from('insumo_price_history')
+    .select(
+      'insumo_id, price, valid_from, proveedores(name), insumos!inner(name, unit, active, tenant_id)',
+    )
+    .eq('insumos.tenant_id', tenantId)
+    .gte('valid_from', prevFrom)
+    .lt('valid_from', to)
+    .order('valid_from')
+
+  if (error) throw new Error(error.message)
+
+  // Para cada insumo: último precio en mes anterior vs último precio en mes actual
+  type Row = {
+    insumo_id: string
+    price: number
+    valid_from: string
+    proveedores: { name: string } | null
+    insumos: { name: string; unit: string; active: boolean }
+  }
+  const rows = (data ?? []) as unknown as Row[]
+
+  const lastPrev = new Map<string, Row>()
+  const lastCur = new Map<string, Row>()
+  for (const r of rows) {
+    if (!r.insumos.active) continue
+    const isCurrent = r.valid_from >= from
+    const map = isCurrent ? lastCur : lastPrev
+    const existing = map.get(r.insumo_id)
+    if (!existing || existing.valid_from < r.valid_from) {
+      map.set(r.insumo_id, r)
+    }
+  }
+
+  const alerts: InsumoSubaAlert[] = []
+  for (const [id, cur] of lastCur) {
+    const prev = lastPrev.get(id)
+    if (!prev || Number(prev.price) === 0) continue
+    const variacion = ((Number(cur.price) - Number(prev.price)) / Number(prev.price)) * 100
+    if (variacion < thresholdPct) continue
+    alerts.push({
+      id,
+      name: cur.insumos.name,
+      unit: cur.insumos.unit,
+      precio_anterior: Number(prev.price),
+      precio_actual: Number(cur.price),
+      variacion_pct: variacion,
+      proveedor_actual: cur.proveedores?.name ?? null,
+    })
+  }
+
+  return alerts.sort((a, b) => b.variacion_pct - a.variacion_pct).slice(0, 8)
 }
 
 export async function getStockCritico(threshold = 0.3): Promise<InsumoCritico[]> {
