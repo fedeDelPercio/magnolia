@@ -6,8 +6,6 @@ import type { EvolucionPunto, Granularity } from '../queries'
 
 type Props = {
   data: EvolucionPunto[]
-  from: string
-  to: string
   granularity: Granularity
 }
 
@@ -17,23 +15,18 @@ const GRAN_LABELS: Record<Granularity, string> = {
   mes: 'Mes',
 }
 
-export function EvolucionChart({ data, from, to, granularity }: Props) {
+// Paleta cohesiva: dos tonos del mismo sistema (índigo oscuro y claro)
+const COLOR_EFECTIVO = 'oklch(0.42 0.18 264)'   // índigo oscuro
+const COLOR_DIGITAL = 'oklch(0.68 0.16 264)'    // índigo claro
+
+export function EvolucionChart({ data, granularity }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
 
-  function setParam(key: string, value: string) {
-    const sp = new URLSearchParams(params.toString())
-    sp.set(key, value)
-    router.push(`${pathname}?${sp.toString()}`)
-  }
-
   function setGranularity(g: Granularity) {
     const sp = new URLSearchParams(params.toString())
     sp.set('evGran', g)
-    // Limpiamos el rango para que se recalcule el default según granularidad
-    sp.delete('evFrom')
-    sp.delete('evTo')
     router.push(`${pathname}?${sp.toString()}`)
   }
 
@@ -44,16 +37,15 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
   const digitalPct = total > 0 ? (digitalTotal / total) * 100 : 0
 
   // SVG layout
-  const width = 1000
-  const height = 320
-  const padding = { top: 24, right: 16, bottom: 56, left: 64 }
+  const width = 1100
+  const height = 380
+  const padding = { top: 36, right: 24, bottom: 56, left: 72 }
   const innerW = width - padding.left - padding.right
   const innerH = height - padding.top - padding.bottom
   const maxY = Math.max(1, ...data.map((d) => d.total))
-  const barGap = 6
-  const barW = Math.max(4, (innerW - barGap * Math.max(0, data.length - 1)) / Math.max(1, data.length))
+  const barGap = 8
+  const barW = Math.max(6, (innerW - barGap * Math.max(0, data.length - 1)) / Math.max(1, data.length))
 
-  // Eje Y ticks
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => ({
     y: padding.top + innerH - t * innerH,
     val: maxY * t,
@@ -64,8 +56,12 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
     if (val >= 1_000) return `$${Math.round(val / 1_000)}k`
     return `$${Math.round(val)}`
   }
+  const compactTopLabel = (val: number) => {
+    if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`
+    if (val >= 1_000) return `${Math.round(val / 1_000)}k`
+    return `${Math.round(val)}`
+  }
 
-  // Show only every N x-axis labels to avoid crowding
   const xLabelStep = Math.max(1, Math.ceil(data.length / 18))
 
   return (
@@ -76,55 +72,32 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Evolución de facturación
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            <span className="text-emerald-700">{efectivoPct.toFixed(0)}% efectivo</span>
+          <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+            <span style={{ color: COLOR_EFECTIVO }}>{efectivoPct.toFixed(0)}% efectivo</span>
             {' · '}
-            <span className="text-blue-700">{digitalPct.toFixed(0)}% digital</span>
+            <span style={{ color: COLOR_DIGITAL }}>{digitalPct.toFixed(0)}% digital</span>
             {' · '}
-            <span className="tabular-nums">
-              total {formatCurrency(total)}
-            </span>
+            <span className="text-foreground/70">total {formatCurrency(total)}</span>
           </p>
         </div>
 
-        {/* Controles */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Granularidad */}
-          <div className="flex rounded-lg border overflow-hidden text-xs">
-            {(['dia', 'semana', 'mes'] as Granularity[]).map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => setGranularity(g)}
-                className={
-                  'px-2.5 py-1 transition-colors ' +
-                  (granularity === g
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background text-muted-foreground hover:bg-muted')
-                }
-              >
-                {GRAN_LABELS[g]}
-              </button>
-            ))}
-          </div>
-
-          {/* Rango personalizado */}
-          <div className="flex items-center gap-1 rounded-lg border px-2 py-1 text-xs">
-            <label className="text-muted-foreground">desde</label>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setParam('evFrom', e.target.value)}
-              className="bg-transparent outline-none tabular-nums"
-            />
-            <span className="text-muted-foreground">a</span>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setParam('evTo', e.target.value)}
-              className="bg-transparent outline-none tabular-nums"
-            />
-          </div>
+        {/* Granularidad */}
+        <div className="flex rounded-lg border overflow-hidden text-xs">
+          {(['dia', 'semana', 'mes'] as Granularity[]).map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setGranularity(g)}
+              className={
+                'px-3 py-1.5 transition-colors ' +
+                (granularity === g
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted')
+              }
+            >
+              {GRAN_LABELS[g]}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -134,11 +107,11 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
           Sin cierres cargados para este rango.
         </p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-6 overflow-x-auto">
           <svg
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="xMidYMid meet"
-            className="h-auto max-h-[320px] w-full min-w-[640px]"
+            className="h-auto max-h-[380px] w-full min-w-[640px]"
           >
             {/* Gridlines + y labels */}
             {yTicks.map((t, i) => (
@@ -173,6 +146,15 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
               const yDigital = padding.top + innerH - hTotal
               const pctEfectivo = d.total > 0 ? (d.efectivo / d.total) * 100 : 0
               const pctDigital = d.total > 0 ? (d.digital / d.total) * 100 : 0
+              const tooltip = `${d.label}
+Total: ${formatCurrency(d.total)}
+Efectivo: ${formatCurrency(d.efectivo)} (${pctEfectivo.toFixed(0)}%)
+Digital: ${formatCurrency(d.digital)} (${pctDigital.toFixed(0)}%)`
+
+              // Mostrar % dentro de la barra solo si el segmento es alto suficiente
+              const showPctInside = barW >= 28
+              const minHeightForLabel = 22
+
               return (
                 <g key={d.period}>
                   {/* Digital (arriba) */}
@@ -182,10 +164,10 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
                       y={yDigital}
                       width={barW}
                       height={hDigital}
-                      fill="oklch(0.55 0.18 245)"
-                      rx={1}
+                      fill={COLOR_DIGITAL}
+                      rx={2}
                     >
-                      <title>{`${d.label}\nDigital: ${formatCurrency(d.digital)} (${pctDigital.toFixed(0)}%)\nEfectivo: ${formatCurrency(d.efectivo)} (${pctEfectivo.toFixed(0)}%)\nTotal: ${formatCurrency(d.total)}`}</title>
+                      <title>{tooltip}</title>
                     </rect>
                   )}
                   {/* Efectivo (abajo) */}
@@ -195,12 +177,49 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
                       y={yEfectivo}
                       width={barW}
                       height={hEfectivo}
-                      fill="oklch(0.62 0.16 145)"
-                      rx={1}
+                      fill={COLOR_EFECTIVO}
+                      rx={2}
                     >
-                      <title>{`${d.label}\nEfectivo: ${formatCurrency(d.efectivo)} (${pctEfectivo.toFixed(0)}%)\nDigital: ${formatCurrency(d.digital)} (${pctDigital.toFixed(0)}%)\nTotal: ${formatCurrency(d.total)}`}</title>
+                      <title>{tooltip}</title>
                     </rect>
                   )}
+
+                  {/* % dentro de cada segmento (solo si entra) */}
+                  {showPctInside && d.digital > 0 && hDigital >= minHeightForLabel && (
+                    <text
+                      x={x + barW / 2}
+                      y={yDigital + hDigital / 2 + 4}
+                      textAnchor="middle"
+                      className="text-[11px] font-medium tabular-nums"
+                      fill="white"
+                    >
+                      {pctDigital.toFixed(0)}%
+                    </text>
+                  )}
+                  {showPctInside && d.efectivo > 0 && hEfectivo >= minHeightForLabel && (
+                    <text
+                      x={x + barW / 2}
+                      y={yEfectivo + hEfectivo / 2 + 4}
+                      textAnchor="middle"
+                      className="text-[11px] font-medium tabular-nums"
+                      fill="white"
+                    >
+                      {pctEfectivo.toFixed(0)}%
+                    </text>
+                  )}
+
+                  {/* Total arriba de la barra */}
+                  {d.total > 0 && (
+                    <text
+                      x={x + barW / 2}
+                      y={yDigital - 6}
+                      textAnchor="middle"
+                      className="fill-foreground text-[11px] font-semibold tabular-nums"
+                    >
+                      {compactTopLabel(d.total)}
+                    </text>
+                  )}
+
                   {/* Label x */}
                   {i % xLabelStep === 0 && (
                     <text
@@ -220,13 +239,13 @@ export function EvolucionChart({ data, from, to, granularity }: Props) {
       )}
 
       {/* Leyenda */}
-      <div className="mt-3 flex items-center gap-4 text-xs">
+      <div className="mt-4 flex items-center gap-4 text-xs">
         <div className="flex items-center gap-1.5">
-          <span className="block size-3 rounded-sm" style={{ backgroundColor: 'oklch(0.62 0.16 145)' }} />
+          <span className="block size-3 rounded-sm" style={{ backgroundColor: COLOR_EFECTIVO }} />
           <span className="text-muted-foreground">Efectivo</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="block size-3 rounded-sm" style={{ backgroundColor: 'oklch(0.55 0.18 245)' }} />
+          <span className="block size-3 rounded-sm" style={{ backgroundColor: COLOR_DIGITAL }} />
           <span className="text-muted-foreground">Medios digitales</span>
         </div>
       </div>

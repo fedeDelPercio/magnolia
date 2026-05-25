@@ -3,17 +3,16 @@ import { getActiveTenantId } from '@/lib/tenant/server'
 
 /* ---------- helpers ---------- */
 
-function monthBounds(month: string): { from: string; to: string } {
-  const [y, m] = month.split('-').map(Number)
-  const from = `${month}-01`
-  const to = m === 12 ? `${y! + 1}-01-01` : `${y}-${String(m! + 1).padStart(2, '0')}-01`
-  return { from, to }
-}
-
-function prevMonth(month: string): string {
-  const [y, m] = month.split('-').map(Number)
-  if (m === 1) return `${y! - 1}-12`
-  return `${y}-${String(m! - 1).padStart(2, '0')}`
+/** Período anterior de igual duración (para deltas y comparaciones mes/mes). */
+function prevPeriod(from: string, to: string): { from: string; to: string } {
+  const fromD = new Date(from)
+  const toD = new Date(to)
+  const ms = toD.getTime() - fromD.getTime()
+  const prevTo = new Date(fromD.getTime())
+  const prevFrom = new Date(fromD.getTime() - ms)
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { from: iso(prevFrom), to: iso(prevTo) }
 }
 
 /* ---------- types ---------- */
@@ -91,11 +90,10 @@ export type InsumoCritico = {
 
 /* ---------- queries ---------- */
 
-export async function getDashboardOverview(month: string): Promise<DashboardOverview> {
+export async function getDashboardOverview(from: string, to: string): Promise<DashboardOverview> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
-  const { from: prevFrom, to: prevTo } = monthBounds(prevMonth(month))
+  const { from: prevFrom, to: prevTo } = prevPeriod(from, to)
 
   const [cierresRes, cierresPrevRes, productosRes, sueldosRes] = await Promise.all([
     supabase
@@ -329,10 +327,9 @@ export async function getFacturacionEvolution(
   return result
 }
 
-export async function getDailyVentas(month: string): Promise<DailyVentas[]> {
+export async function getDailyVentas(from: string, to: string): Promise<DailyVentas[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
 
   const { data, error } = await supabase
     .from('cierres_caja')
@@ -358,10 +355,9 @@ export async function getDailyVentas(month: string): Promise<DailyVentas[]> {
   return Array.from(byDay.values()).sort((a, b) => a.fecha.localeCompare(b.fecha))
 }
 
-export async function getMixData(month: string): Promise<MixData> {
+export async function getMixData(from: string, to: string): Promise<MixData> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
 
   const [cierresRes, productosRes] = await Promise.all([
     supabase
@@ -403,10 +399,9 @@ export async function getMixData(month: string): Promise<MixData> {
   }
 }
 
-export async function getMediosPago(month: string): Promise<MediosPago> {
+export async function getMediosPago(from: string, to: string): Promise<MediosPago> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
 
   const { data, error } = await supabase
     .from('cierres_caja')
@@ -425,10 +420,13 @@ export async function getMediosPago(month: string): Promise<MediosPago> {
   }
 }
 
-export async function getTopProductos(month: string, limit = 10): Promise<TopProducto[]> {
+export async function getTopProductos(
+  from: string,
+  to: string,
+  limit = 10,
+): Promise<TopProducto[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
 
   const { data, error } = await supabase
     .from('cierre_caja_productos')
@@ -488,12 +486,12 @@ export async function getProductosEnRiesgo(): Promise<ProductoRiesgo[]> {
 }
 
 export async function getProductosMasRentables(
-  month: string,
+  from: string,
+  to: string,
   limit = 5,
 ): Promise<ProductoRentable[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
 
   const [productosRes, costsRes] = await Promise.all([
     supabase
@@ -555,14 +553,13 @@ export type MenuEngineeringPoint = {
   cuadrante: 'estrella' | 'caballito' | 'acertijo' | 'perro'
 }
 
-export async function getMenuEngineering(month: string): Promise<{
+export async function getMenuEngineering(from: string, to: string): Promise<{
   points: MenuEngineeringPoint[]
   thresholdCantidad: number
   thresholdMargen: number
 }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
 
   const [productosRes, costsRes] = await Promise.all([
     supabase
@@ -640,10 +637,13 @@ export type InsumoGasto = {
   qty_total: number
 }
 
-export async function getTopInsumosGasto(month: string, limit = 5): Promise<InsumoGasto[]> {
+export async function getTopInsumosGasto(
+  from: string,
+  to: string,
+  limit = 5,
+): Promise<InsumoGasto[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
 
   const { data, error } = await supabase
     .from('compra_items')
@@ -692,13 +692,13 @@ export type InsumoSubaAlert = {
 }
 
 export async function getInsumosConSuba(
-  month: string,
+  from: string,
+  to: string,
   thresholdPct = 15,
 ): Promise<InsumoSubaAlert[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from, to } = monthBounds(month)
-  const { from: prevFrom } = monthBounds(prevMonth(month))
+  const { from: prevFrom } = prevPeriod(from, to)
 
   // Traer todos los precios del mes actual y anterior, en orden cronológico
   const { data, error } = await supabase
