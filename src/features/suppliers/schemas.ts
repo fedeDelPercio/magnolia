@@ -26,7 +26,6 @@ export const proveedorSchema = z.object({
   contact_name: z.string().optional(),
   contact_phone: z.string().optional(),
   contact_email: z.string().optional(),
-  payment_terms_days: z.number().int().min(0).default(0),
   notes: z.string().optional(),
   discrimina_iva: z.boolean().default(false),
   payment_rule: paymentRuleSchema.nullable().optional(),

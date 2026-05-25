@@ -59,7 +59,6 @@ export function ProveedoresClient({ proveedores }: Props) {
           <TableHeader>
             <TableRow>
               <TableHead>Nombre</TableHead>
-              <TableHead className="text-center">Días de pago</TableHead>
               <TableHead className="text-right">Saldo deudor</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="w-10" />
@@ -68,7 +67,7 @@ export function ProveedoresClient({ proveedores }: Props) {
           <TableBody>
             {proveedores.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                   Sin proveedores. Creá el primero.
                 </TableCell>
               </TableRow>
@@ -84,9 +83,6 @@ export function ProveedoresClient({ proveedores }: Props) {
                       {p.name}
                       <ChevronRightIcon className="size-3.5 text-muted-foreground" />
                     </div>
-                  </TableCell>
-                  <TableCell className="text-center text-muted-foreground">
-                    {p.payment_terms_days === 0 ? 'Contado' : `${p.payment_terms_days} días`}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {p.saldo > 0 ? (

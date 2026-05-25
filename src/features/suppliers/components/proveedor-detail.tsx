@@ -196,9 +196,6 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
           </Button>
           <div>
             <h1 className="text-xl font-semibold">{proveedor.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              {proveedor.payment_terms_days === 0 ? 'Contado' : `${proveedor.payment_terms_days} días de pago`}
-            </p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -440,7 +437,6 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
         onOpenChange={(v) => { setCompraOpen(v); if (!v) setEditingCompra(null) }}
         proveedorId={proveedor.id}
         proveedorName={proveedor.name}
-        paymentTermsDays={proveedor.payment_terms_days}
         insumos={insumos}
         compra={editingCompra ?? undefined}
       />

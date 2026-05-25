@@ -44,19 +44,12 @@ type Props = {
   onOpenChange: (open: boolean) => void
   proveedorId: string
   proveedorName: string
-  paymentTermsDays: number
   insumos: InsumoOpt[]
   compra?: CompraWithItems
 }
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
-}
-
-function addDays(dateStr: string, days: number) {
-  const d = new Date(dateStr)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
 }
 
 const EMPTY_NEW_INSUMO: NewInsumoForm = { name: '', kind: 'ingrediente', unit: 'kg' }
@@ -66,7 +59,6 @@ export function CompraDialog({
   onOpenChange,
   proveedorId,
   proveedorName,
-  paymentTermsDays,
   insumos,
   compra,
 }: Props) {
@@ -106,9 +98,8 @@ export function CompraDialog({
           })),
         )
       } else {
-        const today = todayStr()
-        setFecha(today)
-        setDueDate(paymentTermsDays > 0 ? addDays(today, paymentTermsDays) : '')
+        setFecha(todayStr())
+        setDueDate('')
         setNotes('')
         setItems([])
       }
@@ -119,7 +110,7 @@ export function CompraDialog({
       setCreatingInsumo(false)
       setNewInsumoForm(EMPTY_NEW_INSUMO)
     }
-  }, [open, paymentTermsDays, insumos, compra])
+  }, [open, insumos, compra])
 
   function handleStartCreateInsumo(search: string) {
     setNewInsumoForm({ ...EMPTY_NEW_INSUMO, name: search })
@@ -152,11 +143,6 @@ export function CompraDialog({
     }
     setCreatingInsumo(false)
     setNewInsumoForm(EMPTY_NEW_INSUMO)
-  }
-
-  function handleFechaChange(val: string) {
-    setFecha(val)
-    if (paymentTermsDays > 0) setDueDate(addDays(val, paymentTermsDays))
   }
 
   function handleSelectInsumo(id: string | null) {
@@ -232,7 +218,7 @@ export function CompraDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm font-medium">Fecha</label>
-              <Input type="date" value={fecha} onChange={(e) => handleFechaChange(e.target.value)} />
+              <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Vencimiento de pago</label>

@@ -27,7 +27,6 @@ const DEFAULT: ProveedorFormValues = {
   contact_name: '',
   contact_phone: '',
   contact_email: '',
-  payment_terms_days: 0,
   notes: '',
   discrimina_iva: false,
   payment_rule: null,
@@ -63,7 +62,6 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
           contact_name: proveedor.contact_name ?? '',
           contact_phone: proveedor.contact_phone ?? '',
           contact_email: proveedor.contact_email ?? '',
-          payment_terms_days: proveedor.payment_terms_days,
           notes: proveedor.notes ?? '',
           discrimina_iva: proveedor.discrimina_iva ?? false,
           payment_rule: (proveedor.payment_rule as PaymentRule | null) ?? null,
@@ -158,25 +156,6 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl><Input type="email" placeholder="proveedor@ejemplo.com" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="payment_terms_days"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Días para pago (0 = contado)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min="0"
-                      {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                    />
-                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

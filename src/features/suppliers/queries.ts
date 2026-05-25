@@ -6,7 +6,6 @@ export type SaldoProveedor = {
   id: string
   tenant_id: string
   name: string
-  payment_terms_days: number
   active: boolean
   total_compras: number
   total_pagado: number
