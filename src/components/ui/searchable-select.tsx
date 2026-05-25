@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { CheckIcon, ChevronsUpDownIcon } from 'lucide-react'
+import { CheckIcon, ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export type SearchableOption = { value: string; label: string }
@@ -18,6 +18,7 @@ type Props = {
   className?: string
   triggerClassName?: string
   disabled?: boolean
+  onCreate?: (search: string) => void
 }
 
 export function SearchableSelect({
@@ -29,6 +30,7 @@ export function SearchableSelect({
   className,
   triggerClassName,
   disabled,
+  onCreate,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -117,29 +119,38 @@ export function SearchableSelect({
       className="overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
     >
       <div className="max-h-48 overflow-y-auto p-1">
-        {filtered.length === 0 ? (
+        {filtered.length === 0 && !onCreate && (
           <p className="py-3 text-center text-sm text-muted-foreground">{emptyMessage}</p>
-        ) : (
-          filtered.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => handleSelect(option.value)}
+        )}
+        {filtered.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => handleSelect(option.value)}
+            className={cn(
+              'relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none',
+              'hover:bg-accent hover:text-accent-foreground',
+              option.value === value && 'font-medium',
+            )}
+          >
+            <CheckIcon
               className={cn(
-                'relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none',
-                'hover:bg-accent hover:text-accent-foreground',
-                option.value === value && 'font-medium',
+                'mr-2 size-3.5 shrink-0',
+                option.value === value ? 'opacity-100' : 'opacity-0',
               )}
-            >
-              <CheckIcon
-                className={cn(
-                  'mr-2 size-3.5 shrink-0',
-                  option.value === value ? 'opacity-100' : 'opacity-0',
-                )}
-              />
-              <span className="truncate">{option.label}</span>
-            </button>
-          ))
+            />
+            <span className="truncate">{option.label}</span>
+          </button>
+        ))}
+        {onCreate && search.trim() && (
+          <button
+            type="button"
+            onClick={() => { onCreate(search.trim()); setOpen(false); setSearch('') }}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-primary hover:bg-accent hover:text-accent-foreground"
+          >
+            <PlusIcon className="size-3.5 shrink-0" />
+            <span className="truncate">Crear &quot;{search.trim()}&quot;</span>
+          </button>
         )}
       </div>
     </div>

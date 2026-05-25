@@ -1,5 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
+import {
+  getCierresByDia,
+  getProductosForMatching,
+  type CierreCajaWithProductos,
+  type ProductoBasico,
+} from '@/features/cierres/queries'
 import type { Tables } from '@/types/database'
 
 export type DiaOperativo = Tables<'dias_operativos'>
@@ -10,6 +16,11 @@ export type MovimientoConProducto = Tables<'movimientos_diarios'> & {
 
 export type DiaConMovimientos = DiaOperativo & {
   movimientos_diarios: MovimientoConProducto[]
+}
+
+export type DiaConCierres = DiaConMovimientos & {
+  cierres: CierreCajaWithProductos[]
+  productos_catalogo: ProductoBasico[]
 }
 
 export async function getDias(): Promise<DiaOperativo[]> {

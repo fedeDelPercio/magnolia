@@ -105,7 +105,7 @@ export function RecetasClient({ recetas, insumos }: Props) {
         </Button>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>

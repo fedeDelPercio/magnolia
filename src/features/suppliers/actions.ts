@@ -70,6 +70,18 @@ export async function toggleProveedorActive(
 
 // ---- Compras -----------------------------------------------
 
+async function updateInsumoPrices(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  items: CompraItemFormValues[],
+) {
+  for (const item of items) {
+    await supabase
+      .from('insumos')
+      .update({ current_price: item.unit_price })
+      .eq('id', item.insumo_id)
+  }
+}
+
 export async function createCompra(
   proveedorId: string,
   fecha: string,
@@ -106,10 +118,70 @@ export async function createCompra(
 
   if (itemsErr) return { error: itemsErr.message }
 
+  await updateInsumoPrices(supabase, items)
+
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
   revalidatePath('/catalogo/insumos')
   return { id: compra.id }
+}
+
+export async function updateCompra(
+  compraId: string,
+  proveedorId: string,
+  fecha: string,
+  dueDate: string | null,
+  notes: string | null,
+  items: CompraItemFormValues[],
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { error: compraErr } = await supabase
+    .from('compras')
+    .update({ fecha, due_date: dueDate || null, notes: notes || null })
+    .eq('id', compraId)
+
+  if (compraErr) return { error: compraErr.message }
+
+  const { error: deleteErr } = await supabase
+    .from('compra_items')
+    .delete()
+    .eq('compra_id', compraId)
+
+  if (deleteErr) return { error: deleteErr.message }
+
+  const { error: itemsErr } = await supabase.from('compra_items').insert(
+    items.map((item) => ({
+      compra_id: compraId,
+      insumo_id: item.insumo_id,
+      qty: item.qty,
+      unit: item.unit,
+      unit_price: item.unit_price,
+    })),
+  )
+
+  if (itemsErr) return { error: itemsErr.message }
+
+  await updateInsumoPrices(supabase, items)
+
+  revalidatePath('/proveedores')
+  revalidatePath(`/proveedores/${proveedorId}`)
+  revalidatePath('/catalogo/insumos')
+  return {}
+}
+
+export async function deleteCompra(
+  compraId: string,
+  proveedorId: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { error } = await supabase.from('compras').delete().eq('id', compraId)
+  if (error) return { error: error.message }
+
+  revalidatePath('/proveedores')
+  revalidatePath(`/proveedores/${proveedorId}`)
+  return {}
 }
 
 export async function updateCompraStatus(
@@ -129,6 +201,7 @@ export async function updateCompraStatus(
 export async function createPago(
   proveedorId: string,
   values: PagoFormValues,
+  compraId?: string,
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -143,6 +216,14 @@ export async function createPago(
   })
 
   if (error) return { error: error.message }
+
+  if (compraId) {
+    await supabase
+      .from('compras')
+      .update({ status: 'pagada' })
+      .eq('id', compraId)
+      .eq('proveedor_id', proveedorId)
+  }
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)

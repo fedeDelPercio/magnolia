@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { PencilIcon } from 'lucide-react'
+import { AlertTriangleIcon, ChevronDownIcon, HistoryIcon, MinusIcon, PencilIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -33,13 +33,14 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
 import { productoSchema, type ProductoFormValues } from '../schemas'
-import { createProducto, updateProducto } from '../actions'
-import type { ProductoCost } from '../queries'
+import { createProducto, updateProducto, updateProductoPrecio, fetchProductoPriceHistory } from '../actions'
+import type { ProductoCost, ProductoPriceHistoryEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { IngredientesEditor } from '../../recetas/components/ingredientes-editor'
 import { DescartablesEditor } from './descartables-editor'
 import { UNITS, UNIT_LABELS } from '../../recetas/schemas'
 import type { RecetaParaProducto } from '../../recetas/queries'
+import { formatCurrency, formatDate } from '@/lib/format'
 
 type Mode = 'view' | 'edit' | 'create'
 
@@ -84,10 +85,18 @@ export function ProductoDialog({
   })
 
   const [editing, setEditing] = useState(mode !== 'view')
+  const [priceHistory, setPriceHistory] = useState<ProductoPriceHistoryEntry[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [quickPriceOpen, setQuickPriceOpen] = useState(false)
+  const [quickPrice, setQuickPrice] = useState('')
+  const [quickPriceSubmitting, setQuickPriceSubmitting] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setEditing(mode !== 'view')
+    setShowHistory(false)
+    setQuickPriceOpen(false)
+    setQuickPrice('')
     form.reset(
       producto
         ? {
@@ -103,6 +112,9 @@ export function ProductoDialog({
           }
         : DEFAULT_VALUES,
     )
+    if (producto?.id) {
+      fetchProductoPriceHistory(producto.id).then(({ data }) => setPriceHistory(data))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, producto?.id, recetaData, mode])
 
@@ -122,6 +134,26 @@ export function ProductoDialog({
     }
   }
 
+  async function handleQuickPriceUpdate() {
+    if (!producto?.id) return
+    const price = parseFloat(quickPrice)
+    if (isNaN(price) || price < 0) {
+      toast.error('Ingresá un precio válido')
+      return
+    }
+    setQuickPriceSubmitting(true)
+    const result = await updateProductoPrecio(producto.id, price)
+    setQuickPriceSubmitting(false)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Precio actualizado')
+      setQuickPriceOpen(false)
+      setQuickPrice('')
+      fetchProductoPriceHistory(producto.id).then(({ data }) => setPriceHistory(data))
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -135,11 +167,89 @@ export function ProductoDialog({
           </DialogTitle>
         </DialogHeader>
 
+        <div className="max-h-[72vh] overflow-y-auto space-y-4 pr-1">
+        {/* Historial de precios y rentabilidad */}
+        {!isCreate && producto && (
+          <div className="rounded-xl border bg-card">
+            <button
+              type="button"
+              onClick={() => setShowHistory((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <HistoryIcon className="size-4 text-muted-foreground" />
+                Historial de precios
+                {priceHistory.length > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-muted-foreground">
+                    {priceHistory.length}
+                  </span>
+                )}
+              </span>
+              <ChevronDownIcon className={`size-4 transition-transform ${showHistory ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showHistory && (
+              <div className="border-t">
+                {priceHistory.length === 0 ? (
+                  <p className="px-4 py-3 text-xs text-muted-foreground">Sin historial registrado</p>
+                ) : (
+                  <div className="divide-y text-sm">
+                    {priceHistory.map((entry, idx) => {
+                      const prev = priceHistory[idx + 1]
+                      const marginChange =
+                        prev?.margin_pct != null && entry.margin_pct != null
+                          ? entry.margin_pct - prev.margin_pct
+                          : null
+                      const marginOk =
+                        entry.margin_pct != null && producto.target_margin_pct != null
+                          ? entry.margin_pct >= (producto.target_margin_pct ?? 0)
+                          : null
+                      const isLargeDrop = marginChange !== null && marginChange <= -5
+                      return (
+                        <div key={entry.id} className="grid grid-cols-[1fr_auto_auto_6rem] items-center gap-3 px-4 py-3">
+                          <span className="text-xs text-muted-foreground">{formatDate(entry.valid_from.slice(0, 10))}</span>
+                          <span className="tabular-nums font-medium">{formatCurrency(entry.sale_price)}</span>
+                          {entry.total_cost != null ? (
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              Costo {formatCurrency(entry.total_cost)}
+                            </span>
+                          ) : (
+                            <span />
+                          )}
+                          <div className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
+                            {entry.margin_pct != null ? (
+                              <span className={`flex items-center gap-0.5 font-medium ${
+                                marginOk === true ? 'text-emerald-600' : marginOk === false ? 'text-rose-600' : ''
+                              }`}>
+                                {isLargeDrop && <AlertTriangleIcon className="size-3" />}
+                                {marginChange !== null ? (
+                                  marginChange > 0
+                                    ? <TrendingUpIcon className="size-3" />
+                                    : marginChange < 0
+                                      ? <TrendingDownIcon className="size-3" />
+                                      : <MinusIcon className="size-3" />
+                                ) : null}
+                                {entry.margin_pct.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <Form {...form}>
           <form
             id="producto-form"
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4 max-h-[70vh] overflow-y-auto pr-1"
+            className="space-y-4"
           >
             {/* Nombre */}
             <FormField
@@ -158,26 +268,79 @@ export function ProductoDialog({
 
             {/* Precio y margen */}
             <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="sale_price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Precio de venta (ARS)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        disabled={readOnly}
-                        value={field.value}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+              <div>
+                <FormField
+                  control={form.control}
+                  name="sale_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Precio de venta (ARS)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          disabled={readOnly}
+                          value={field.value}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {/* Actualizar precio rápido (solo en vista) */}
+                {readOnly && !isCreate && producto && (
+                  <div className="mt-1.5">
+                    {!quickPriceOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickPrice(String(producto.sale_price ?? 0))
+                          setQuickPriceOpen(true)
+                        }}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Actualizar precio
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={quickPrice}
+                          onChange={(e) => setQuickPrice(e.target.value)}
+                          className="h-7 text-xs w-28"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); handleQuickPriceUpdate() }
+                            if (e.key === 'Escape') setQuickPriceOpen(false)
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 text-xs px-2"
+                          onClick={handleQuickPriceUpdate}
+                          disabled={quickPriceSubmitting}
+                        >
+                          Guardar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs px-2"
+                          onClick={() => setQuickPriceOpen(false)}
+                        >
+                          ✕
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 )}
-              />
+              </div>
 
               <FormField
                 control={form.control}
@@ -292,8 +455,10 @@ export function ProductoDialog({
             <div className="border-t pt-4">
               <DescartablesEditor insumos={insumosDescartables} readOnly={readOnly} />
             </div>
+
           </form>
         </Form>
+        </div>
 
         <DialogFooter>
           <Button

@@ -128,7 +128,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
         </Button>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>

@@ -58,7 +58,7 @@ export function OperacionList({ dias, today }: Props) {
 
       <CargarDiaDialog open={cargarOpen} onOpenChange={setCargarOpen} today={today} />
 
-      <div className="rounded-lg border divide-y">
+      <div className="rounded-xl border bg-card divide-y overflow-hidden">
         {dias.map((dia) => {
           const isToday = dia.fecha === today
           return (

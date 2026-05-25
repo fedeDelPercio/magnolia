@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { PencilIcon } from 'lucide-react'
+import { PencilIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, AlertTriangleIcon, BoxIcon, ClipboardCheckIcon, ChevronDownIcon, HistoryIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -33,9 +33,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
 import { insumoSchema, UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
-import { createInsumo, updateInsumo } from '../actions'
-import type { InsumoWithProveedor } from '../queries'
+import { createInsumo, updateInsumo, fetchInsumoHistory, fetchStockAjustes, registrarAjusteStock } from '../actions'
+import type { InsumoWithProveedor, PriceHistoryEntry, StockAjusteEntry } from '../queries'
 import type { Tables } from '@/types/database'
+import { formatCurrency, formatDate } from '@/lib/format'
 
 type Mode = 'view' | 'edit' | 'create'
 
@@ -45,6 +46,16 @@ type Props = {
   insumo: InsumoWithProveedor | null
   mode: Mode
   proveedores: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
+}
+
+function formatStockQty(val: number, unit: UnitKind): string {
+  if ((unit === 'g' || unit === 'kg') && Math.abs(val) >= 1000) {
+    return `${(val / 1000).toLocaleString('es-AR', { maximumFractionDigits: 2 })} kg`
+  }
+  if ((unit === 'ml' || unit === 'l') && Math.abs(val) >= 1000) {
+    return `${(val / 1000).toLocaleString('es-AR', { maximumFractionDigits: 2 })} l`
+  }
+  return `${val.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${UNIT_LABELS[unit] ?? unit}`
 }
 
 const DEFAULT_VALUES: InsumoFormValues = {
@@ -71,6 +82,13 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
   // Calculamos current_price = packTotal / packQty al guardar.
   const [packQty, setPackQty] = useState('1')
   const [packTotal, setPackTotal] = useState('')
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [stockAjustes, setStockAjustes] = useState<StockAjusteEntry[]>([])
+  const [showAjusteForm, setShowAjusteForm] = useState(false)
+  const [ajusteStockReal, setAjusteStockReal] = useState('')
+  const [ajusteNotas, setAjusteNotas] = useState('')
+  const [ajusteSubmitting, setAjusteSubmitting] = useState(false)
 
   const perishable = form.watch('perishable')
   const trackStock = form.watch('track_stock')
@@ -98,10 +116,20 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
     if (insumo) {
       setPackQty('1')
       setPackTotal(String(insumo.current_price || ''))
+      Promise.all([
+        fetchInsumoHistory(insumo.id).then(({ data }) => setPriceHistory(data)),
+        fetchStockAjustes(insumo.id).then(({ data }) => setStockAjustes(data)),
+      ])
     } else {
       setPackQty('1')
       setPackTotal('')
+      setPriceHistory([])
+      setStockAjustes([])
     }
+    setShowHistory(false)
+    setShowAjusteForm(false)
+    setAjusteStockReal('')
+    setAjusteNotas('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, insumo?.id, mode])
 
@@ -116,6 +144,30 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
 
   const readOnly = !editing
   const isCreate = mode === 'create'
+
+  async function handleRegistrar() {
+    if (!insumo?.stock) return
+    const stockRealNum = parseFloat(ajusteStockReal)
+    if (ajusteStockReal === '' || isNaN(stockRealNum)) return
+    const stockTeorico = insumo.stock.stock_actual ?? 0
+    setAjusteSubmitting(true)
+    const result = await registrarAjusteStock(
+      insumo.id,
+      stockTeorico,
+      stockRealNum,
+      ajusteNotas || undefined,
+    )
+    setAjusteSubmitting(false)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Ajuste registrado')
+      setShowAjusteForm(false)
+      setAjusteStockReal('')
+      setAjusteNotas('')
+      fetchStockAjustes(insumo.id).then(({ data }) => setStockAjustes(data))
+    }
+  }
 
   async function onSubmit(values: InsumoFormValues) {
     const result = insumo ? await updateInsumo(insumo.id, values) : await createInsumo(values)
@@ -137,8 +189,215 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
           </DialogTitle>
         </DialogHeader>
 
+        <div className="max-h-[72vh] overflow-y-auto space-y-4 pr-1">
+        {/* Stock teórico hero — solo cuando existe insumo + track_stock activo */}
+        {!isCreate && insumo && insumo.track_stock && insumo.stock && (() => {
+          const actual = insumo.stock.stock_actual ?? 0
+          const referencia = insumo.stock.stock_referencia ?? 0
+          const stockUnit = (insumo.stock.unit ?? insumo.unit) as UnitKind
+          const pct = referencia > 0 ? Math.min(100, Math.max(0, (actual / referencia) * 100)) : 0
+          const tone =
+            pct > 60 ? { bar: 'bg-emerald-500', label: 'text-emerald-700' } :
+            pct > 30 ? { bar: 'bg-amber-500', label: 'text-amber-700' } :
+                       { bar: 'bg-rose-500', label: 'text-rose-700' }
+          return (
+            <div className="rounded-xl border bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <BoxIcon className="size-3.5" />
+                    Stock teórico
+                  </div>
+                  <p className={`mt-1.5 text-2xl font-semibold tabular-nums ${tone.label}`}>
+                    {formatStockQty(actual, stockUnit)}
+                  </p>
+                </div>
+                {referencia > 0 && (
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">de referencia</p>
+                    <p className="mt-1.5 text-sm tabular-nums text-muted-foreground">
+                      {formatStockQty(referencia, stockUnit)}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {referencia > 0 && (
+                <div className="mt-3 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${pct}%` }} />
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* Stock control / conteo físico */}
+        {!isCreate && insumo && insumo.track_stock && insumo.stock && (() => {
+          const stockTeorico = insumo.stock.stock_actual ?? 0
+          const stockUnit = (insumo.stock.unit ?? insumo.unit) as UnitKind
+          const stockRealNum = parseFloat(ajusteStockReal)
+          const diferencia = ajusteStockReal !== '' && !isNaN(stockRealNum) ? stockRealNum - stockTeorico : null
+          return (
+            <div className="rounded-xl border bg-card">
+              <button
+                type="button"
+                onClick={() => setShowAjusteForm((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  <ClipboardCheckIcon className="size-4 text-muted-foreground" />
+                  Controlar stock
+                  {stockAjustes.length > 0 && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({stockAjustes.length} ajuste{stockAjustes.length !== 1 ? 's' : ''})
+                    </span>
+                  )}
+                </span>
+                <ChevronDownIcon className={`size-4 transition-transform ${showAjusteForm ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showAjusteForm && (
+                <div className="space-y-3 border-t px-4 py-3">
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">Stock real contado</label>
+                      <div className="flex w-fit items-center overflow-hidden rounded-md border text-sm">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          placeholder="0"
+                          value={ajusteStockReal}
+                          onChange={(e) => setAjusteStockReal(e.target.value)}
+                          className="w-24 bg-background px-3 py-1.5 tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        />
+                        <span className="border-l bg-muted/50 px-2.5 py-1.5 text-muted-foreground select-none">
+                          {UNIT_LABELS[stockUnit] ?? stockUnit}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-xs text-muted-foreground">Stock teórico</p>
+                      <p className="py-1.5 text-sm tabular-nums font-medium">
+                        {formatStockQty(stockTeorico, stockUnit)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {diferencia !== null && (
+                    <div className={`flex items-center gap-1.5 text-sm font-medium tabular-nums ${
+                      diferencia > 0 ? 'text-emerald-600' : diferencia < 0 ? 'text-rose-600' : 'text-muted-foreground'
+                    }`}>
+                      {diferencia > 0 ? <TrendingUpIcon className="size-4" /> : diferencia < 0 ? <TrendingDownIcon className="size-4" /> : <MinusIcon className="size-4" />}
+                      Diferencia: {diferencia > 0 ? '+' : ''}{formatStockQty(diferencia, stockUnit)}
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Notas (opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: conteo del lunes a la mañana"
+                      value={ajusteNotas}
+                      onChange={(e) => setAjusteNotas(e.target.value)}
+                      className="w-full rounded-md border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={ajusteStockReal === '' || isNaN(stockRealNum) || ajusteSubmitting}
+                    onClick={handleRegistrar}
+                  >
+                    {ajusteSubmitting ? 'Registrando...' : 'Registrar ajuste'}
+                  </Button>
+
+                  {stockAjustes.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Historial de ajustes</p>
+                      <div className="divide-y rounded-lg border text-sm">
+                        {stockAjustes.map((aj) => (
+                          <div key={aj.id} className="flex items-center justify-between px-3 py-2">
+                            <div className="space-y-0.5">
+                              <p className="text-xs text-muted-foreground">{formatDate(aj.created_at.slice(0, 10))}</p>
+                              {aj.notas && <p className="text-xs italic text-muted-foreground">{aj.notas}</p>}
+                            </div>
+                            <div className="space-y-0.5 text-right">
+                              <p className="tabular-nums font-medium">{formatStockQty(aj.stock_real, stockUnit)}</p>
+                              <p className={`text-xs tabular-nums ${
+                                aj.diferencia > 0 ? 'text-emerald-600' : aj.diferencia < 0 ? 'text-rose-600' : 'text-muted-foreground'
+                              }`}>
+                                {aj.diferencia > 0 ? '+' : ''}{formatStockQty(aj.diferencia, stockUnit)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* Precios del proveedor */}
+        {!isCreate && insumo && (
+          <div className="rounded-xl border bg-card">
+            <button
+              type="button"
+              onClick={() => setShowHistory((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <HistoryIcon className="size-4 text-muted-foreground" />
+                Precios del proveedor
+                {priceHistory.length > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-muted-foreground">
+                    {priceHistory.length}
+                  </span>
+                )}
+              </span>
+              <ChevronDownIcon className={`size-4 transition-transform ${showHistory ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showHistory && (
+              <div className="border-t">
+                {priceHistory.length === 0 ? (
+                  <p className="px-4 py-3 text-xs text-muted-foreground">Sin historial registrado</p>
+                ) : (
+                  <div className="divide-y text-sm">
+                    {priceHistory.map((entry, idx) => {
+                      const prev = priceHistory[idx + 1]
+                      const changePct = prev ? ((entry.price - prev.price) / prev.price) * 100 : null
+                      const isLarge = changePct !== null && Math.abs(changePct) >= 20
+                      return (
+                        <div key={entry.id} className="grid grid-cols-[1fr_auto_5.5rem] items-center gap-3 px-4 py-3">
+                          <span className="text-muted-foreground">{formatDate(entry.valid_from.slice(0, 10))}</span>
+                          <span className="tabular-nums font-medium text-right">{formatCurrency(entry.price)}</span>
+                          <div className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
+                            {changePct !== null ? (
+                              <span className={`flex items-center gap-0.5 ${isLarge ? 'font-semibold text-red-600' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                {isLarge && <AlertTriangleIcon className="size-3" />}
+                                {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
+                                {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <Form {...form}>
-          <form id="insumo-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-h-[65vh] overflow-y-auto pr-0.5">
+          <form id="insumo-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -207,52 +466,67 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
               )}
             />
 
-            <div className="space-y-1">
-              <label className="text-sm font-medium leading-none">Precio de referencia</label>
-              <div className="flex items-end gap-2">
-                <div className="flex-1 space-y-1">
-                  <label className="text-xs text-muted-foreground">Cantidad</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    placeholder="1"
-                    disabled={readOnly}
-                    value={packQty}
-                    onChange={(e) => setPackQty(e.target.value)}
-                  />
+            {isCreate ? (
+              <div className="space-y-1">
+                <div className="flex items-baseline gap-2">
+                  <label className="text-sm font-medium leading-none">Precio de referencia</label>
+                  <span className="text-xs text-muted-foreground">(opcional)</span>
                 </div>
-                <div className="flex-1 space-y-1">
-                  <label className="text-xs text-muted-foreground">Precio total (ARS)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0"
-                    disabled={readOnly}
-                    value={packTotal}
-                    onChange={(e) => setPackTotal(e.target.value)}
-                  />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-xs text-muted-foreground">Cantidad</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      placeholder="1"
+                      value={packQty}
+                      onChange={(e) => setPackQty(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <label className="text-xs text-muted-foreground">Precio total (ARS)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0"
+                      value={packTotal}
+                      onChange={(e) => setPackTotal(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
-              {(() => {
-                const qty = parseFloat(packQty)
-                const total = parseFloat(packTotal)
-                const unitLabel = form.watch('unit') ? UNIT_LABELS[form.watch('unit') as UnitKind] : 'unidad'
-                if (!isNaN(qty) && qty > 0 && !isNaN(total) && total > 0) {
+                {(() => {
+                  const qty = parseFloat(packQty)
+                  const total = parseFloat(packTotal)
+                  const unitLabel = form.watch('unit') ? UNIT_LABELS[form.watch('unit') as UnitKind] : 'unidad'
+                  if (!isNaN(qty) && qty > 0 && !isNaN(total) && total > 0) {
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        ≈ {formatCurrency(total / qty)} por {unitLabel}
+                      </p>
+                    )
+                  }
                   return (
                     <p className="text-xs text-muted-foreground">
-                      ≈ {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(total / qty)} por {unitLabel}
+                      Podés dejarlo en 0 — se completa solo con la primera compra.
                     </p>
                   )
-                }
-                return (
-                  <p className="text-xs text-muted-foreground">
-                    Ej: si compraste 100 g de lechuga por $30.000, cargá 100 y 30000.
+                })()}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
+                <div>
+                  <p className="text-xs text-muted-foreground">Precio actual</p>
+                  <p className="mt-0.5 text-sm font-medium tabular-nums">
+                    {formatCurrency(form.watch('current_price') || 0)} <span className="font-normal text-muted-foreground">/ {UNIT_LABELS[selectedUnit as UnitKind] ?? selectedUnit}</span>
                   </p>
-                )
-              })()}
-            </div>
+                </div>
+                <span className="text-[11px] text-muted-foreground text-right max-w-[180px]">
+                  Se actualiza al registrar compras
+                </span>
+              </div>
+            )}
 
             <FormField
               control={form.control}
@@ -384,8 +658,10 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
               />
             )}
 
+
           </form>
         </Form>
+        </div>
 
         <DialogFooter>
           <Button

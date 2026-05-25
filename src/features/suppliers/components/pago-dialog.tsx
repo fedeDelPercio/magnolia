@@ -19,24 +19,26 @@ type Props = {
   onOpenChange: (open: boolean) => void
   proveedorId: string
   proveedorName: string
+  defaultMonto?: number
+  compraId?: string
 }
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
 }
 
-export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName }: Props) {
+export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, compraId }: Props) {
   const form = useForm<PagoFormValues>({
     resolver: zodResolver(pagoSchema) as Resolver<PagoFormValues>,
     defaultValues: { fecha: todayStr(), monto: 0, metodo: 'transferencia', descripcion: '' },
   })
 
   useEffect(() => {
-    if (open) form.reset({ fecha: todayStr(), monto: 0, metodo: 'transferencia', descripcion: '' })
-  }, [open, form])
+    if (open) form.reset({ fecha: todayStr(), monto: defaultMonto ?? 0, metodo: 'transferencia', descripcion: '' })
+  }, [open, defaultMonto, form])
 
   async function onSubmit(values: PagoFormValues) {
-    const result = await createPago(proveedorId, values)
+    const result = await createPago(proveedorId, values, compraId)
     if (result.error) {
       toast.error(result.error)
     } else {

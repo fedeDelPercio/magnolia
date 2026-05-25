@@ -38,3 +38,12 @@ export const insumoSchema = z
   )
 
 export type InsumoFormValues = z.infer<typeof insumoSchema>
+
+export const stockAjusteSchema = z.object({
+  stock_real: z
+    .number({ error: 'Ingresá el stock real' })
+    .min(0, 'El stock no puede ser negativo'),
+  notas: z.string().max(500).optional(),
+})
+
+export type StockAjusteValues = z.infer<typeof stockAjusteSchema>

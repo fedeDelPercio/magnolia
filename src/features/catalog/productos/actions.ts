@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import type { ProductoFormValues } from './schemas'
+import type { ProductoPriceHistoryEntry } from './queries'
 
 function mapError(msg: string): string {
   if (msg.includes('unique')) return 'Ya existe un producto con ese nombre'
@@ -41,12 +42,33 @@ async function syncDescartables(
   return null
 }
 
+async function snapshotPriceHistory(
+  supabase: Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
+  productoId: string,
+  tenantId: string,
+  userId: string | null,
+) {
+  const { data: costs } = await supabase
+    .from('product_costs')
+    .select('sale_price, total_cost, margin_pct')
+    .eq('id', productoId)
+    .maybeSingle()
+  if (!costs) return
+  await supabase.from('producto_price_history').insert({
+    producto_id: productoId,
+    tenant_id: tenantId,
+    sale_price: costs.sale_price ?? 0,
+    total_cost: costs.total_cost ?? null,
+    margin_pct: costs.margin_pct ?? null,
+    created_by: userId,
+  })
+}
+
 export async function createProducto(values: ProductoFormValues): Promise<{ error?: string }> {
   try {
     const supabase = await createClient()
     const tenantId = await getActiveTenantId()
 
-    // 1. Crear la receta vinculada
     const { data: receta, error: recetaErr } = await supabase
       .from('recetas')
       .insert({
@@ -60,7 +82,6 @@ export async function createProducto(values: ProductoFormValues): Promise<{ erro
 
     if (recetaErr) return { error: mapError(recetaErr.message) }
 
-    // 2. Insertar ingredientes
     if (values.ingredientes.length > 0) {
       const { error: ingErr } = await supabase
         .from('receta_ingredientes')
@@ -71,7 +92,6 @@ export async function createProducto(values: ProductoFormValues): Promise<{ erro
       }
     }
 
-    // 3. Crear el producto apuntando a la receta
     const { data: producto, error } = await supabase.from('productos').insert({
       name: values.name,
       sale_price: values.sale_price,
@@ -86,9 +106,11 @@ export async function createProducto(values: ProductoFormValues): Promise<{ erro
       return { error: mapError(error.message) }
     }
 
-    // 4. Sincronizar descartables
     const descErr = await syncDescartables(supabase, producto.id, values)
     if (descErr) return { error: descErr }
+
+    const { data: { user } } = await supabase.auth.getUser()
+    await snapshotPriceHistory(supabase, producto.id, tenantId, user?.id ?? null)
 
     revalidatePath('/catalogo/productos')
     return {}
@@ -105,10 +127,17 @@ export async function updateProducto(
     const supabase = await createClient()
     const tenantId = await getActiveTenantId()
 
+    // Leer precio actual para detectar si cambió
+    const { data: current } = await supabase
+      .from('productos')
+      .select('sale_price')
+      .eq('id', id)
+      .maybeSingle()
+    const oldPrice = current?.sale_price ?? null
+
     let recetaId = values.receta_id ?? null
 
     if (!recetaId) {
-      // Producto sin receta previa (caso legacy): crear una
       const { data: receta, error: recetaErr } = await supabase
         .from('recetas')
         .insert({
@@ -122,7 +151,6 @@ export async function updateProducto(
       if (recetaErr) return { error: recetaErr.message }
       recetaId = receta.id
     } else {
-      // Actualizar la receta existente
       const { error: recetaErr } = await supabase
         .from('recetas')
         .update({
@@ -133,7 +161,6 @@ export async function updateProducto(
         .eq('id', recetaId)
       if (recetaErr) return { error: recetaErr.message }
 
-      // Reemplazar ingredientes: delete + re-insert
       const { error: delErr } = await supabase
         .from('receta_ingredientes')
         .delete()
@@ -161,14 +188,62 @@ export async function updateProducto(
 
     if (error) return { error: mapError(error.message) }
 
-    // Sincronizar descartables
     const descErr = await syncDescartables(supabase, id, values)
     if (descErr) return { error: descErr }
+
+    if (oldPrice !== values.sale_price) {
+      const { data: { user } } = await supabase.auth.getUser()
+      await snapshotPriceHistory(supabase, id, tenantId, user?.id ?? null)
+    }
 
     revalidatePath('/catalogo/productos')
     return {}
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Error desconocido' }
+  }
+}
+
+export async function updateProductoPrecio(
+  id: string,
+  salePrice: number,
+): Promise<{ error?: string }> {
+  try {
+    const supabase = await createClient()
+    const tenantId = await getActiveTenantId()
+
+    const { data: current } = await supabase
+      .from('productos')
+      .select('sale_price')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (current?.sale_price === salePrice) return {}
+
+    const { error } = await supabase
+      .from('productos')
+      .update({ sale_price: salePrice })
+      .eq('id', id)
+    if (error) return { error: mapError(error.message) }
+
+    const { data: { user } } = await supabase.auth.getUser()
+    await snapshotPriceHistory(supabase, id, tenantId, user?.id ?? null)
+
+    revalidatePath('/catalogo/productos')
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Error desconocido' }
+  }
+}
+
+export async function fetchProductoPriceHistory(
+  productoId: string,
+): Promise<{ data: ProductoPriceHistoryEntry[] }> {
+  try {
+    const { getProductoPriceHistory } = await import('./queries')
+    const data = await getProductoPriceHistory(productoId)
+    return { data }
+  } catch {
+    return { data: [] }
   }
 }
 

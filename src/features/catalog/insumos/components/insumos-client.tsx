@@ -38,8 +38,10 @@ function StockBar({ insumo }: { insumo: InsumoWithProveedor }) {
 
   const pct = referencia > 0 ? Math.min(100, Math.max(0, (actual / referencia) * 100)) : 0
 
-  const fillColor =
-    pct > 60 ? 'bg-emerald-400' : pct > 30 ? 'bg-amber-400' : 'bg-rose-400'
+  const tone =
+    pct > 60 ? { bar: 'bg-emerald-500', text: 'text-emerald-700' } :
+    pct > 30 ? { bar: 'bg-amber-500', text: 'text-amber-700' } :
+               { bar: 'bg-rose-500', text: 'text-rose-700' }
 
   function fmt(val: number) {
     if ((unit === 'g' || unit === 'kg') && val >= 1000)
@@ -50,12 +52,12 @@ function StockBar({ insumo }: { insumo: InsumoWithProveedor }) {
   }
 
   return (
-    <div className="w-36 space-y-1.5">
-      <div className="h-0.5 w-full rounded-full bg-border overflow-hidden">
-        <div className={`h-full rounded-full ${fillColor}`} style={{ width: `${pct}%` }} />
+    <div className="w-36 space-y-1">
+      <div className="h-1 w-full rounded-full bg-neutral-300 overflow-hidden">
+        <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${pct}%` }} />
       </div>
-      <p className="text-[11px] leading-none text-muted-foreground/70 tabular-nums">
-        {fmt(actual)} · {fmt(referencia)}
+      <p className="text-[11px] leading-none tabular-nums text-muted-foreground">
+        {fmt(actual)} de {fmt(referencia)} · <span className={`font-medium ${tone.text}`}>{Math.round(pct)}%</span>
       </p>
     </div>
   )
@@ -158,7 +160,7 @@ export function InsumosClient({ insumos, proveedores }: Props) {
         </Button>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>

@@ -3,13 +3,17 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { LockIcon, LockOpenIcon, ArrowLeftIcon } from 'lucide-react'
+import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { formatCurrency } from '@/lib/format'
 import { cerrarDia, reabrirDia } from '../actions'
 import { MovimientoRow } from './movimiento-row'
 import type { DiaConMovimientos } from '../queries'
+import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
+import { ImportCierreDialog } from '@/features/cierres/components/import-cierre-dialog'
+import { CierreDetailDialog } from '@/features/cierres/components/cierre-detail-dialog'
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -22,12 +26,19 @@ function formatFecha(fechaStr: string) {
   return `${day} de ${MESES[month - 1]!} de ${year}`
 }
 
-type Props = { dia: DiaConMovimientos }
+type Props = {
+  dia: DiaConMovimientos
+  cierres: CierreCajaWithProductos[]
+  productosCatalogo: ProductoBasico[]
+  taxRate?: number
+}
 
-export function DiaClient({ dia }: Props) {
+export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [loading, setLoading] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [selectedCierre, setSelectedCierre] = useState<CierreCajaWithProductos | null>(null)
 
   const readonly = dia.status === 'cerrado'
   const movimientos = [...dia.movimientos_diarios].sort((a, b) =>
@@ -101,11 +112,18 @@ export function DiaClient({ dia }: Props) {
         </div>
       </div>
 
+      {/* Cierre Bistrosoft section */}
+      <CierreBistrosoftSection
+        cierres={cierres}
+        onImport={() => setImportOpen(true)}
+        onView={(c) => setSelectedCierre(c)}
+      />
+
       {/* Table */}
-      <div className="rounded-lg border overflow-x-auto">
+      <div className="rounded-xl border bg-card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-gray-50 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <tr className="border-b text-xs font-medium text-muted-foreground uppercase tracking-wide">
               <th className="py-2.5 pl-4 pr-2 text-left">Producto</th>
               <th className="px-2 py-2.5 text-right">Stock ant.</th>
               <th className="px-2 py-2.5 text-right">Produc.</th>
@@ -143,6 +161,101 @@ export function DiaClient({ dia }: Props) {
           Los cambios se guardan automáticamente.
         </p>
       )}
+
+      <ImportCierreDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        productos={productosCatalogo}
+      />
+      {selectedCierre && (
+        <CierreDetailDialog
+          open={!!selectedCierre}
+          onOpenChange={(v) => !v && setSelectedCierre(null)}
+          cierre={selectedCierre}
+          productos={productosCatalogo}
+          taxRate={taxRate}
+        />
+      )}
+    </div>
+  )
+}
+
+function CierreBistrosoftSection({
+  cierres,
+  onImport,
+  onView,
+}: {
+  cierres: CierreCajaWithProductos[]
+  onImport: () => void
+  onView: (c: CierreCajaWithProductos) => void
+}) {
+  if (cierres.length === 0) {
+    return (
+      <div className="rounded-xl border bg-card p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <FileTextIcon className="size-5 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">Cierre Bistrosoft</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Subí el PDF de cierre de caja para autocompletar las ventas del día.
+              </p>
+            </div>
+          </div>
+          <Button type="button" onClick={onImport}>
+            <UploadIcon className="size-4" />
+            Importar cierre
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-5 pt-4 pb-3">
+        <div>
+          <p className="text-sm font-medium">Cierre Bistrosoft</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {cierres.length} cierre{cierres.length !== 1 ? 's' : ''} importado{cierres.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onImport}>
+          <UploadIcon className="size-3.5" />
+          Importar otro
+        </Button>
+      </div>
+      <div className="border-t divide-y text-sm">
+        {cierres.map((c) => {
+          const unmapped = c.cierre_caja_productos.filter((p) => !p.producto_id).length
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onView(c)}
+              className="flex w-full items-center justify-between px-5 py-3 hover:bg-muted/50 transition-colors text-left"
+            >
+              <div>
+                <p className="font-medium">
+                  {c.operador ?? 'Sin operador'} · {c.cantidad_ventas} ventas · {c.cubiertos} cubiertos
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Efectivo {formatCurrency(c.monto_efectivo)} · Tarjetas {formatCurrency(c.monto_tarjetas)} · QR {formatCurrency(c.monto_qr)} · Online {formatCurrency(c.monto_online)}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {unmapped > 0 && (
+                  <span className="flex items-center gap-1 text-xs text-amber-700">
+                    <AlertTriangleIcon className="size-3.5" />
+                    {unmapped} sin mapear
+                  </span>
+                )}
+                <span className="tabular-nums font-semibold">{formatCurrency(c.total_vendido)}</span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

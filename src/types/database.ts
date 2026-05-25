@@ -108,6 +108,138 @@ export type Database = {
           },
         ]
       }
+      cierre_caja_productos: {
+        Row: {
+          cantidad: number
+          categoria: string | null
+          cierre_caja_id: string
+          created_at: string
+          id: string
+          monto_total: number
+          nombre: string
+          producto_id: string | null
+        }
+        Insert: {
+          cantidad?: number
+          categoria?: string | null
+          cierre_caja_id: string
+          created_at?: string
+          id?: string
+          monto_total?: number
+          nombre: string
+          producto_id?: string | null
+        }
+        Update: {
+          cantidad?: number
+          categoria?: string | null
+          cierre_caja_id?: string
+          created_at?: string
+          id?: string
+          monto_total?: number
+          nombre?: string
+          producto_id?: string | null
+        }
+        Relationships: []
+      }
+      cierres_caja: {
+        Row: {
+          cantidad_comandas: number
+          cantidad_ventas: number
+          created_at: string
+          created_by: string | null
+          cubiertos: number
+          dia_operativo_id: string | null
+          efectivo_apertura: number
+          efectivo_cierre: number
+          fecha_apertura: string
+          fecha_cierre: string
+          id: string
+          monto_cuenta_cliente: number
+          monto_efectivo: number
+          monto_mostrador: number
+          monto_online: number
+          monto_qr: number
+          monto_salon: number
+          monto_tarjetas: number
+          operador: string | null
+          raw_payload: Json | null
+          razon_social: string | null
+          tenant_id: string
+          ticket_promedio: number
+          total_comandas: number
+          total_depositos: number
+          total_retiros: number
+          total_vendido: number
+          total_ventas: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          cantidad_comandas?: number
+          cantidad_ventas?: number
+          created_at?: string
+          created_by?: string | null
+          cubiertos?: number
+          dia_operativo_id?: string | null
+          efectivo_apertura?: number
+          efectivo_cierre?: number
+          fecha_apertura: string
+          fecha_cierre: string
+          id?: string
+          monto_cuenta_cliente?: number
+          monto_efectivo?: number
+          monto_mostrador?: number
+          monto_online?: number
+          monto_qr?: number
+          monto_salon?: number
+          monto_tarjetas?: number
+          operador?: string | null
+          raw_payload?: Json | null
+          razon_social?: string | null
+          tenant_id: string
+          ticket_promedio?: number
+          total_comandas?: number
+          total_depositos?: number
+          total_retiros?: number
+          total_vendido?: number
+          total_ventas?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          cantidad_comandas?: number
+          cantidad_ventas?: number
+          created_at?: string
+          created_by?: string | null
+          cubiertos?: number
+          dia_operativo_id?: string | null
+          efectivo_apertura?: number
+          efectivo_cierre?: number
+          fecha_apertura?: string
+          fecha_cierre?: string
+          id?: string
+          monto_cuenta_cliente?: number
+          monto_efectivo?: number
+          monto_mostrador?: number
+          monto_online?: number
+          monto_qr?: number
+          monto_salon?: number
+          monto_tarjetas?: number
+          operador?: string | null
+          raw_payload?: Json | null
+          razon_social?: string | null
+          tenant_id?: string
+          ticket_promedio?: number
+          total_comandas?: number
+          total_depositos?: number
+          total_retiros?: number
+          total_vendido?: number
+          total_ventas?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       compra_items: {
         Row: {
           compra_id: string
@@ -313,6 +445,53 @@ export type Database = {
           },
           {
             foreignKeyName: "insumo_price_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insumo_stock_ajustes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          diferencia: number
+          id: string
+          insumo_id: string
+          notas: string | null
+          stock_real: number
+          stock_teorico: number
+          tenant_id: string
+        }
+        Insert: {
+          created_by?: string | null
+          id?: string
+          insumo_id: string
+          notas?: string | null
+          stock_real: number
+          stock_teorico: number
+          tenant_id: string
+        }
+        Update: {
+          created_by?: string | null
+          id?: string
+          insumo_id?: string
+          notas?: string | null
+          stock_real?: number
+          stock_teorico?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insumo_stock_ajustes_insumo_id_fkey"
+            columns: ["insumo_id"]
+            isOneToOne: false
+            referencedRelation: "insumos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumo_stock_ajustes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -611,6 +790,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      producto_price_history: {
+        Row: {
+          created_by: string | null
+          id: string
+          margin_pct: number | null
+          producto_id: string
+          sale_price: number
+          tenant_id: string
+          total_cost: number | null
+          valid_from: string
+        }
+        Insert: {
+          created_by?: string | null
+          id?: string
+          margin_pct?: number | null
+          producto_id: string
+          sale_price: number
+          tenant_id: string
+          total_cost?: number | null
+          valid_from?: string
+        }
+        Update: {
+          created_by?: string | null
+          id?: string
+          margin_pct?: number | null
+          producto_id?: string
+          sale_price?: number
+          tenant_id?: string
+          total_cost?: number | null
+          valid_from?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "producto_price_history_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "producto_price_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      producto_aliases: {
+        Row: {
+          alias: string
+          created_at: string
+          created_by: string | null
+          id: string
+          producto_id: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          alias: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          producto_id: string
+          source?: string
+          tenant_id: string
+        }
+        Update: {
+          alias?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          producto_id?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: []
       }
       productos: {
         Row: {

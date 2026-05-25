@@ -43,3 +43,41 @@ export async function getProveedores(): Promise<Pick<Tables<'proveedores'>, 'id'
   if (error) throw error
   return data
 }
+
+export type PriceHistoryEntry = Pick<
+  Tables<'insumo_price_history'>,
+  'id' | 'price' | 'source' | 'valid_from'
+>
+
+export async function getInsumoHistory(insumoId: string): Promise<PriceHistoryEntry[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('insumo_price_history')
+    .select('id, price, source, valid_from')
+    .eq('insumo_id', insumoId)
+    .order('valid_from', { ascending: false })
+    .limit(30)
+  if (error) throw error
+  return data ?? []
+}
+
+export type StockAjusteEntry = {
+  id: string
+  stock_teorico: number
+  stock_real: number
+  diferencia: number
+  notas: string | null
+  created_at: string
+}
+
+export async function getStockAjustes(insumoId: string): Promise<StockAjusteEntry[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('insumo_stock_ajustes')
+    .select('id, stock_teorico, stock_real, diferencia, notas, created_at')
+    .eq('insumo_id', insumoId)
+    .order('created_at', { ascending: false })
+    .limit(20)
+  if (error) throw error
+  return (data ?? []) as StockAjusteEntry[]
+}

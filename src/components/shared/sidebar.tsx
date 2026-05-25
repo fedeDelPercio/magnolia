@@ -104,7 +104,13 @@ export function Sidebar() {
               </p>
               <ul className="space-y-0.5">
                 {items.map(({ href, label, icon: Icon }) => {
-                  const active = pathname === href || pathname.startsWith(href + '/')
+                  // Match longest prefix only — evita que /operacion se active cuando estamos en /operacion/cierres
+                  const allHrefs = navSections.flatMap((s) => s.items.map((i) => i.href))
+                  const matching = allHrefs.filter(
+                    (h) => pathname === h || pathname.startsWith(h + '/'),
+                  )
+                  const longest = matching.reduce((a, b) => (b.length > a.length ? b : a), '')
+                  const active = href === longest
                   return (
                     <li key={href}>
                       <Link
