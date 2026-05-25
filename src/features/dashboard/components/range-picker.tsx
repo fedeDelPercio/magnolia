@@ -45,17 +45,23 @@ const PRESETS: Preset[] = [
     },
   },
   {
+    // Ej: en mayo → 1 feb a 1 jun (Feb, Mar, Abr, May completos)
     label: 'Últimos 3 meses',
     range: () => {
       const now = new Date()
-      return { from: iso(addMonths(now, -3)), to: iso(now) }
+      const from = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      return { from: iso(from), to: iso(to) }
     },
   },
   {
+    // Ej: en mayo → 1 nov del año pasado a 1 jun
     label: 'Últimos 6 meses',
     range: () => {
       const now = new Date()
-      return { from: iso(addMonths(now, -6)), to: iso(now) }
+      const from = new Date(now.getFullYear(), now.getMonth() - 6, 1)
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      return { from: iso(from), to: iso(to) }
     },
   },
   {
@@ -80,23 +86,39 @@ function rangeLabel(from: string, to: string): string {
   const f = parseLocal(from)
   const t = parseLocal(to)
 
-  // Si from = primer día del mes y to = primer día del mes siguiente, es un mes calendario
+  // Mes calendario único (Feb 1 → Mar 1)
   const isFullMonth =
     f.d === 1 &&
     t.d === 1 &&
     ((f.m === 12 && t.m === 1 && t.y === f.y + 1) || (t.m === f.m + 1 && t.y === f.y))
-  if (isFullMonth) return `${MES_NAMES[f.m - 1]} ${f.y}`
+  if (isFullMonth) return `${capitalize(MES_NAMES[f.m - 1]!)} ${f.y}`
 
-  // Año calendario completo
+  // Año calendario completo (Ene 1 → Ene 1 del año siguiente)
   if (f.m === 1 && f.d === 1 && t.m === 1 && t.d === 1 && t.y === f.y + 1) {
     return `Año ${f.y}`
   }
 
-  // Restamos 1 día al "to" porque el rango es exclusivo
+  // Multi-mes alineado a calendario (ambos día 1 de un mes)
+  if (f.d === 1 && t.d === 1) {
+    // Último mes incluido = restar 1 día al "to"
+    const tLastDay = new Date(t.y, t.m - 1, 0) // último día del mes anterior a "t"
+    const lastM = tLastDay.getMonth() + 1
+    const lastY = tLastDay.getFullYear()
+    if (lastY === f.y) {
+      return `${capitalize(MES_NAMES[f.m - 1]!)} — ${capitalize(MES_NAMES[lastM - 1]!)} ${f.y}`
+    }
+    return `${capitalize(MES_NAMES[f.m - 1]!)} ${f.y} — ${capitalize(MES_NAMES[lastM - 1]!)} ${lastY}`
+  }
+
+  // Rango libre con días arbitrarios
   const tLastDay = new Date(t.y, t.m - 1, t.d - 1)
   const fmt = (y: number, m: number, d: number) =>
     `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`
   return `${fmt(f.y, f.m, f.d)} – ${fmt(tLastDay.getFullYear(), tLastDay.getMonth() + 1, tLastDay.getDate())}`
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 type Props = {

@@ -8,7 +8,7 @@ const MES = [
 function rangeHeadline(from: string, to: string): { eyebrow: string; headline: string; trail: string } {
   const [fy, fm, fd] = from.split('-').map(Number)
   const [ty, tm, td] = to.split('-').map(Number)
-  // Detección de mes calendario
+  // Mes calendario único
   const isFullMonth =
     fd === 1 && td === 1 &&
     ((fm === 12 && tm === 1 && ty === fy! + 1) || (tm === fm! + 1 && ty === fy))
@@ -19,11 +19,29 @@ function rangeHeadline(from: string, to: string): { eyebrow: string; headline: s
       trail: String(fy),
     }
   }
-  // Año entero
+  // Año calendario completo
   if (fm === 1 && fd === 1 && tm === 1 && td === 1 && ty === fy! + 1) {
     return { eyebrow: 'Resumen del año', headline: String(fy), trail: '' }
   }
-  // Rango libre
+  // Multi-mes alineado a calendario
+  if (fd === 1 && td === 1) {
+    const tLastDay = new Date(ty!, tm! - 1, 0) // último día del mes anterior a "to"
+    const lastM = tLastDay.getMonth()
+    const lastY = tLastDay.getFullYear()
+    if (lastY === fy) {
+      return {
+        eyebrow: 'Resumen del período',
+        headline: `${MES[fm! - 1]} — ${MES[lastM]}`,
+        trail: String(fy),
+      }
+    }
+    return {
+      eyebrow: 'Resumen del período',
+      headline: `${MES[fm! - 1]} ${fy} — ${MES[lastM]} ${lastY}`,
+      trail: '',
+    }
+  }
+  // Rango libre con días arbitrarios
   const fmt = (y: number, m: number, d: number) =>
     `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`
   const toLastDay = new Date(ty!, tm! - 1, td! - 1)

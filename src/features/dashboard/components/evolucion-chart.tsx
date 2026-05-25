@@ -68,12 +68,12 @@ export function EvolucionChart({ data, granularity }: Props) {
     <section>
       {/* Section header editorial — fuera del card */}
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
-        <div>
+        <div className="max-w-xl">
           <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
             Evolución
           </p>
-          <h2 className="mt-1 font-display text-3xl tracking-tight">
-            <span className="italic">Día</span> a día, mes a mes
+          <h2 className="mt-1 font-display text-3xl leading-tight tracking-tight">
+            <span className="italic">Así</span> está evolucionando la facturación de Magnolia
           </h2>
         </div>
         <div className="flex items-center gap-4">
