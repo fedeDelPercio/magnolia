@@ -1,7 +1,9 @@
 'use client'
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { formatCurrency } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { formatCurrency, compactCurrency, compactNumber } from '@/lib/format'
+import { SectionHeader } from '@/components/shared/section-header'
 import type { EvolucionPunto, Granularity } from '../queries'
 
 type Props = {
@@ -51,60 +53,46 @@ export function EvolucionChart({ data, granularity }: Props) {
     val: maxY * t,
   }))
 
-  const compact = (val: number) => {
-    if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`
-    if (val >= 1_000) return `$${Math.round(val / 1_000)}k`
-    return `$${Math.round(val)}`
-  }
-  const compactTopLabel = (val: number) => {
-    if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`
-    if (val >= 1_000) return `${Math.round(val / 1_000)}k`
-    return `${Math.round(val)}`
-  }
-
   const xLabelStep = Math.max(1, Math.ceil(data.length / 18))
 
   return (
     <section>
-      {/* Section header editorial — fuera del card */}
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
-        <div className="max-w-xl">
-          <p className="text-[10px] font-medium uppercase tracking-editorial text-muted-foreground">
-            Evolución
-          </p>
-          <h2 className="mt-1 font-display text-3xl leading-tight tracking-tight">
-            <span className="italic">Así</span> está evolucionando la facturación de Magnolia
-          </h2>
-        </div>
-        <div className="flex items-center gap-4">
-          <p className="text-xs tabular-nums text-muted-foreground">
-            <span style={{ color: COLOR_EFECTIVO }} className="font-medium">
-              {efectivoPct.toFixed(0)}% efectivo
-            </span>
-            {'  ·  '}
-            <span style={{ color: COLOR_DIGITAL }} className="font-medium">
-              {digitalPct.toFixed(0)}% digital
-            </span>
-          </p>
-          <div className="flex rounded-full border bg-card overflow-hidden text-xs">
-            {(['dia', 'semana', 'mes'] as Granularity[]).map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => setGranularity(g)}
-                className={
-                  'px-3.5 py-1.5 transition-colors ' +
-                  (granularity === g
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground')
-                }
-              >
-                {GRAN_LABELS[g]}
-              </button>
-            ))}
+      <SectionHeader
+        eyebrow="Evolución"
+        trail={
+          <div className="flex items-center gap-4">
+            <p className="text-metric">
+              <span style={{ color: COLOR_EFECTIVO }} className="font-medium">
+                {efectivoPct.toFixed(0)}% efectivo
+              </span>
+              {'  ·  '}
+              <span style={{ color: COLOR_DIGITAL }} className="font-medium">
+                {digitalPct.toFixed(0)}% digital
+              </span>
+            </p>
+            <div className="flex overflow-hidden rounded-full border bg-card text-xs">
+              {(['dia', 'semana', 'mes'] as Granularity[]).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGranularity(g)}
+                  aria-pressed={granularity === g}
+                  className={cn(
+                    'focus-ring px-3.5 py-1.5 transition-colors',
+                    granularity === g
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {GRAN_LABELS[g]}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      </div>
+        }
+      >
+        <span className="italic">Así</span> está evolucionando la facturación de Magnolia
+      </SectionHeader>
 
       <div className="card-editorial p-6">
         {data.length === 0 || total === 0 ? (
@@ -136,7 +124,7 @@ export function EvolucionChart({ data, granularity }: Props) {
                     textAnchor="end"
                     className="fill-muted-foreground text-[10px] tabular-nums tracking-tight"
                   >
-                    {compact(t.val)}
+                    {compactCurrency(t.val)}
                   </text>
                 </g>
               ))}
@@ -223,7 +211,7 @@ Digital: ${formatCurrency(d.digital)} (${pctDigital.toFixed(0)}%)`
                         className="fill-foreground text-[12px] tabular-nums"
                         style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic' }}
                       >
-                        {compactTopLabel(d.total)}
+                        {compactNumber(d.total)}
                       </text>
                     )}
 

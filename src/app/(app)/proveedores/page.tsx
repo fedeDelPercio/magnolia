@@ -1,5 +1,6 @@
 import { getSaldosProveedores } from '@/features/suppliers/queries'
 import { ProveedoresClient } from '@/features/suppliers/components/proveedores-client'
+import { PageHeader } from '@/components/shared/page-header'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,12 +9,15 @@ export default async function ProveedoresPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Proveedores</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cuenta corriente, compras y pagos por proveedor.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Proveedores"
+        title={
+          <>
+            <span className="italic">Cuenta</span> corriente
+          </>
+        }
+        description="Saldo deudor, compras y reglas de pago por proveedor."
+      />
       <ProveedoresClient proveedores={proveedores} />
     </div>
   )

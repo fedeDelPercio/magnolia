@@ -6,6 +6,7 @@ import {
   getDescartablesParaProductos,
 } from '@/features/catalog/recetas/queries'
 import { ProductosClient } from '@/features/catalog/productos/components/productos-client'
+import { PageHeader } from '@/components/shared/page-header'
 
 export const metadata = { title: 'Productos — Magnolia' }
 
@@ -24,12 +25,16 @@ export default async function ProductosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-neutral-900">Productos</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Precio de venta, costo calculado y margen por producto.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Catálogo · Productos"
+        title={
+          <>
+            <span className="italic">Carta</span> y márgenes
+          </>
+        }
+        description="Precio de venta, costo calculado y margen por producto."
+      />
+
       <ProductosClient
         productos={productos}
         insumos={insumos}

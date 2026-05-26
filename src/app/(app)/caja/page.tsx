@@ -2,6 +2,7 @@ import { getCajaMovimientos } from '@/features/cashflow/queries'
 import { getMonthlyVentasSummary } from '@/features/cierres/queries'
 import { getDigitalTaxRate } from '@/features/config/queries'
 import { CajaClient } from '@/features/cashflow/components/caja-client'
+import { PageHeader } from '@/components/shared/page-header'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,12 +20,15 @@ export default async function CajaPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Caja</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Ingresos, egresos y flujo de efectivo mensual.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Caja"
+        title={
+          <>
+            <span className="italic">Flujo</span> de efectivo
+          </>
+        }
+        description="Ingresos, egresos y resultado mensual."
+      />
       <CajaClient
         movimientos={movimientos}
         month={month}

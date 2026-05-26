@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { CalendarIcon, ChevronDownIcon } from 'lucide-react'
+import { CalendarIcon, CheckIcon, ChevronDownIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 type Preset = { label: string; range: () => { from: string; to: string } }
 
@@ -134,14 +135,26 @@ export function RangePicker({ from, to }: Props) {
   const [customFrom, setCustomFrom] = useState(from)
   const [customTo, setCustomTo] = useState(to)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
+    if (!open) return
     function onClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
     document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
 
   useEffect(() => {
     setCustomFrom(from)
@@ -165,17 +178,24 @@ export function RangePicker({ from, to }: Props) {
   return (
     <div ref={ref} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-sm font-medium tabular-nums hover:bg-muted/40"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="focus-ring flex items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-sm font-medium text-metric transition-colors hover:bg-muted/40"
       >
-        <CalendarIcon className="size-4 text-muted-foreground" />
+        <CalendarIcon className="size-4 text-muted-foreground" aria-hidden />
         {rangeLabel(from, to)}
-        <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+        <ChevronDownIcon className="size-3.5 text-muted-foreground" aria-hidden />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-2xl border bg-popover shadow-lg">
+        <div
+          role="dialog"
+          aria-label="Seleccionar rango de fechas"
+          className="absolute right-0 top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border bg-popover shadow-lg"
+        >
           <ul className="divide-y divide-border/70 text-sm">
             {PRESETS.map((p) => {
               const r = p.range()
@@ -185,41 +205,46 @@ export function RangePicker({ from, to }: Props) {
                   <button
                     type="button"
                     onClick={() => apply(r.from, r.to)}
-                    className={`flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-muted/50 ${
-                      isActive ? 'font-medium text-primary' : ''
-                    }`}
+                    aria-pressed={isActive}
+                    className={cn(
+                      'focus-ring flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-muted/50',
+                      isActive && 'bg-accent/30 font-medium text-accent-foreground',
+                    )}
                   >
-                    {p.label}
+                    <span>{p.label}</span>
+                    {isActive && <CheckIcon className="size-3.5 text-primary" aria-hidden />}
                   </button>
                 </li>
               )
             })}
           </ul>
 
-          <div className="border-t border-border bg-muted/30 p-3 space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Personalizado
-            </p>
+          <div className="space-y-2 border-t border-border bg-muted/30 p-3">
+            <p className="text-eyebrow">Personalizado</p>
             <div className="flex items-center gap-2">
               <input
                 type="date"
+                aria-label="Fecha desde"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="w-full rounded-md border bg-background px-2 py-1 text-xs tabular-nums outline-none focus:ring-1 focus:ring-ring"
+                className="focus-ring w-full rounded-md border bg-background px-2 py-1 text-xs text-metric"
               />
-              <span className="text-xs text-muted-foreground">a</span>
+              <span className="text-xs text-muted-foreground" aria-hidden>
+                a
+              </span>
               <input
                 type="date"
+                aria-label="Fecha hasta"
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="w-full rounded-md border bg-background px-2 py-1 text-xs tabular-nums outline-none focus:ring-1 focus:ring-ring"
+                className="focus-ring w-full rounded-md border bg-background px-2 py-1 text-xs text-metric"
               />
             </div>
             <button
               type="button"
               onClick={applyCustom}
               disabled={!customFrom || !customTo || customFrom >= customTo}
-              className="w-full rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-ring w-full rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Aplicar
             </button>

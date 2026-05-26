@@ -16,9 +16,7 @@ export function MixCard({ data }: Props) {
 
   return (
     <div className="card-editorial p-6">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-        Salón vs Mostrador
-      </h2>
+      <h3 className="text-eyebrow">Salón vs Mostrador</h3>
 
       {/* Stacked bar */}
       <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-muted">
@@ -40,34 +38,34 @@ export function MixCard({ data }: Props) {
         {/* SALÓN */}
         <div className="space-y-1">
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="size-2 rounded-full bg-emerald-600" />
-            <UtensilsIcon className="size-3 text-muted-foreground" />
+            <span className="size-2 rounded-full bg-emerald-600" aria-hidden />
+            <UtensilsIcon className="size-3 text-muted-foreground" aria-hidden />
             <span className="font-medium text-muted-foreground">Salón</span>
-            <span className="ml-auto tabular-nums text-muted-foreground">
+            <span className="ml-auto text-metric text-muted-foreground">
               {salonPct.toFixed(0)}%
             </span>
           </div>
-          <p className="text-lg font-semibold tabular-nums">{formatCurrency(data.salon)}</p>
-          <div className="space-y-0.5 text-[11px] text-muted-foreground">
-            <p className="tabular-nums">{data.cubiertosSalon} cubiertos</p>
-            <p className="tabular-nums">{formatCurrency(ticketSalon)} por persona</p>
+          <p className="num-editorial text-2xl leading-none">{formatCurrency(data.salon)}</p>
+          <div className="space-y-0.5 text-card-sub">
+            <p className="text-metric">{data.cubiertosSalon} cubiertos</p>
+            <p className="text-metric">{formatCurrency(ticketSalon)} por persona</p>
           </div>
         </div>
 
         {/* MOSTRADOR */}
         <div className="space-y-1">
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="size-2 rounded-full bg-amber-500" />
-            <ShoppingBagIcon className="size-3 text-muted-foreground" />
+            <span className="size-2 rounded-full bg-amber-500" aria-hidden />
+            <ShoppingBagIcon className="size-3 text-muted-foreground" aria-hidden />
             <span className="font-medium text-muted-foreground">Mostrador</span>
-            <span className="ml-auto tabular-nums text-muted-foreground">
+            <span className="ml-auto text-metric text-muted-foreground">
               {mostradorPct.toFixed(0)}%
             </span>
           </div>
-          <p className="text-lg font-semibold tabular-nums">{formatCurrency(data.mostrador)}</p>
-          <div className="space-y-0.5 text-[11px] text-muted-foreground">
-            <p className="tabular-nums">{data.transaccionesMostrador} transacciones</p>
-            <p className="tabular-nums">{formatCurrency(ticketMostrador)} por venta</p>
+          <p className="num-editorial text-2xl leading-none">{formatCurrency(data.mostrador)}</p>
+          <div className="space-y-0.5 text-card-sub">
+            <p className="text-metric">{data.transaccionesMostrador} transacciones</p>
+            <p className="text-metric">{formatCurrency(ticketMostrador)} por venta</p>
           </div>
         </div>
       </div>

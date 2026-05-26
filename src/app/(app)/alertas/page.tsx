@@ -1,6 +1,8 @@
 import { getProveedoresConRegla } from '@/features/alerts/queries'
 import { evaluatePaymentRule } from '@/features/suppliers/payment-rules'
 import { RuleAlertCard } from '@/features/alerts/components/rule-alert-card'
+import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader } from '@/components/shared/section-header'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,37 +24,45 @@ export default async function Page() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-neutral-900">Alertas</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Reglas de pago a proveedores.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Alertas"
+        title={
+          <>
+            <span className="italic">Pagos</span> a proveedores
+          </>
+        }
+        description="Reglas activas evaluadas contra compras pendientes."
+      />
 
-      <section className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            Pagos a proveedores
-          </h2>
-          {evaluated.length > 0 && (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {triggered.length} a revisar · {ok.length} ok
-            </span>
-          )}
-        </div>
+      <section>
+        <SectionHeader
+          eyebrow="Reglas activas"
+          trail={
+            evaluated.length > 0 ? (
+              <span className="text-metric">
+                {triggered.length} a revisar · {ok.length} ok
+              </span>
+            ) : null
+          }
+        >
+          <span className="italic">Qué</span> hay que pagar
+        </SectionHeader>
 
         {evaluated.length === 0 ? (
-          <div className="card-editorial p-6 text-center">
+          <div className="card-editorial p-7 text-center">
             <p className="text-sm text-muted-foreground">
               Ningún proveedor tiene una regla de pago configurada.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Configurá una regla editando un proveedor en{' '}
-              <a href="/proveedores" className="underline">Proveedores</a>.
+              <a href="/proveedores" className="focus-ring rounded-sm underline">
+                Proveedores
+              </a>
+              .
             </p>
           </div>
         ) : (
-          <>
+          <div className="space-y-3">
             {triggered.length > 0 && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {triggered.map(({ proveedor, evaluation }) => (
@@ -79,7 +89,7 @@ export default async function Page() {
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
       </section>
     </div>

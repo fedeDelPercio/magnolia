@@ -1,4 +1,4 @@
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, compactNumber } from '@/lib/format'
 import type { MenuEngineeringPoint } from '../queries'
 
 type Props = {
@@ -18,11 +18,9 @@ export function MenuEngineeringMatrix({ data }: Props) {
   if (points.length === 0) {
     return (
       <div className="card-editorial p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Menu Engineering
-        </h2>
+        <h3 className="text-eyebrow">Menu Engineering</h3>
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Sin productos mapeados al catálogo en este mes.
+          Sin productos mapeados al catálogo en este período.
         </p>
       </div>
     )
@@ -75,19 +73,12 @@ export function MenuEngineeringMatrix({ data }: Props) {
     arr.sort((a, b) => b.monto - a.monto).slice(0, 2).forEach((p) => labelSet.add(p.id))
   }
 
-  const compact = (v: number) => {
-    if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`
-    return `${Math.round(v)}`
-  }
-
   return (
     <div className="card-editorial p-6">
-      <div className="flex items-baseline justify-between flex-wrap gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Menu Engineering
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <h3 className="text-eyebrow">Menu Engineering</h3>
+          <p className="mt-1 text-card-sub">
             Popularidad × rentabilidad por producto · {points.length} productos analizados
           </p>
         </div>
@@ -151,13 +142,13 @@ export function MenuEngineeringMatrix({ data }: Props) {
 
           {/* Eje Y labels */}
           <text x={padding.left - 8} y={padding.top + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
-            ${compact(yMax)}
+            ${compactNumber(yMax)}
           </text>
           <text x={padding.left - 8} y={yMid + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
-            ${compact(thresholdMargen)}
+            ${compactNumber(thresholdMargen)}
           </text>
           <text x={padding.left - 8} y={padding.top + innerH + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
-            ${compact(yMin)}
+            ${compactNumber(yMin)}
           </text>
           <text
             x={20}

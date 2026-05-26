@@ -58,14 +58,10 @@ export function DashboardHeader({ from, to }: { from: string; to: string }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-6 pb-2">
       <div className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-editorial text-muted-foreground">
-          {eyebrow}
-        </p>
+        <p className="text-eyebrow">{eyebrow}</p>
         <h1 className="font-display text-5xl leading-[0.95] tracking-tight md:text-6xl">
           <span className="italic">{headline}</span>
-          {trail && (
-            <span className="ml-3 text-foreground/30 tabular-nums">{trail}</span>
-          )}
+          {trail && <span className="ml-3 text-foreground/30 text-metric">{trail}</span>}
         </h1>
       </div>
       <RangePicker from={from} to={to} />

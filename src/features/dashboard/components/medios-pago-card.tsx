@@ -29,10 +29,8 @@ export function MediosPagoCard({ data }: Props) {
   return (
     <div className="card-editorial p-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Medios de pago
-        </h2>
-        <p className="text-xs tabular-nums text-muted-foreground">
+        <h3 className="text-eyebrow">Medios de pago</h3>
+        <p className="text-xs text-metric text-muted-foreground">
           <span className="text-emerald-700">{efectivoPct.toFixed(0)}% efectivo</span>
           {' · '}
           <span className="text-blue-700">{digitalPct.toFixed(0)}% digital</span>
@@ -46,12 +44,12 @@ export function MediosPagoCard({ data }: Props) {
           return (
             <div key={key} className="flex items-center gap-3">
               <div className={`grid size-7 place-items-center rounded-md ${iconBg} ${iconFg}`}>
-                <Icon className="size-3.5" />
+                <Icon className="size-3.5" aria-hidden />
               </div>
               <div className="flex-1">
                 <div className="flex items-baseline justify-between text-sm">
                   <span className="text-muted-foreground">{label}</span>
-                  <span className="tabular-nums font-medium">{formatCurrency(monto)}</span>
+                  <span className="text-metric font-medium">{formatCurrency(monto)}</span>
                 </div>
                 <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
                   <div className={`h-full ${bar}`} style={{ width: `${pct}%` }} />

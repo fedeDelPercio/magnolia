@@ -10,12 +10,10 @@ export function TopProductosCard({ productos }: Props) {
 
   return (
     <div className="card-editorial p-6">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-        Top productos vendidos
-      </h2>
+      <h3 className="text-eyebrow">Top productos vendidos</h3>
       {productos.length === 0 ? (
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Sin ventas registradas en el mes.
+          Sin ventas registradas en el período.
         </p>
       ) : (
         <ol className="mt-4 space-y-2.5">
@@ -25,14 +23,14 @@ export function TopProductosCard({ productos }: Props) {
               <li key={p.nombre} className="space-y-1">
                 <div className="flex items-baseline justify-between gap-3 text-sm">
                   <div className="flex min-w-0 items-baseline gap-2">
-                    <span className="tabular-nums text-xs text-muted-foreground/60">
+                    <span className="text-metric text-xs text-muted-foreground/60">
                       {String(i + 1).padStart(2, '0')}
                     </span>
                     <span className="truncate font-medium">{p.nombre}</span>
                   </div>
                   <div className="shrink-0 text-right">
-                    <span className="tabular-nums font-medium">{Math.round(p.cantidad)}</span>
-                    <span className="ml-2 tabular-nums text-xs text-muted-foreground">
+                    <span className="text-metric font-medium">{Math.round(p.cantidad)}</span>
+                    <span className="ml-2 text-metric text-xs text-muted-foreground">
                       {formatCurrency(p.monto)}
                     </span>
                   </div>

@@ -1,19 +1,7 @@
 import Link from 'next/link'
 import { TrendingUpIcon, PackageOpenIcon, AlertTriangleIcon } from 'lucide-react'
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, formatQuantity } from '@/lib/format'
 import type { InsumoGasto, InsumoSubaAlert } from '../queries'
-
-const UNIT_LABELS: Record<string, string> = { kg: 'kg', g: 'g', l: 'l', ml: 'ml', u: 'u' }
-
-function fmtQty(val: number, unit: string): string {
-  if ((unit === 'g' || unit === 'kg') && Math.abs(val) >= 1000) {
-    return `${(val / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg`
-  }
-  if ((unit === 'ml' || unit === 'l') && Math.abs(val) >= 1000) {
-    return `${(val / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} l`
-  }
-  return `${val.toLocaleString('es-AR', { maximumFractionDigits: 1 })} ${UNIT_LABELS[unit] ?? unit}`
-}
 
 export function TopInsumosGastoCard({ insumos }: { insumos: InsumoGasto[] }) {
   const maxGasto = Math.max(1, ...insumos.map((i) => i.total_gastado))
@@ -21,16 +9,14 @@ export function TopInsumosGastoCard({ insumos }: { insumos: InsumoGasto[] }) {
   return (
     <div className="card-editorial p-6">
       <div className="flex items-center gap-2">
-        <PackageOpenIcon className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Top insumos en gasto
-        </h2>
+        <PackageOpenIcon className="size-3.5 text-muted-foreground" aria-hidden />
+        <h3 className="text-eyebrow">Top insumos en gasto</h3>
       </div>
-      <p className="mt-0.5 text-xs text-muted-foreground">Dónde se va la plata este mes</p>
+      <p className="mt-1 text-card-sub">Dónde se va la plata este período</p>
 
       {insumos.length === 0 ? (
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Sin compras registradas en el mes.
+          Sin compras registradas en el período.
         </p>
       ) : (
         <ol className="mt-4 space-y-2.5">
@@ -40,18 +26,18 @@ export function TopInsumosGastoCard({ insumos }: { insumos: InsumoGasto[] }) {
               <li key={i.id} className="space-y-1">
                 <Link
                   href="/catalogo/insumos"
-                  className="flex items-baseline justify-between gap-3 text-sm hover:opacity-80"
+                  className="focus-ring -mx-1 flex items-baseline justify-between gap-3 rounded-sm px-1 text-sm transition-colors hover:bg-muted/40"
                 >
                   <div className="flex min-w-0 items-baseline gap-2">
-                    <span className="tabular-nums text-xs text-muted-foreground/60">
+                    <span className="text-metric text-xs text-muted-foreground/60">
                       {String(idx + 1).padStart(2, '0')}
                     </span>
                     <span className="truncate font-medium">{i.name}</span>
                   </div>
                   <div className="shrink-0 text-right">
-                    <span className="tabular-nums font-medium">{formatCurrency(i.total_gastado)}</span>
-                    <span className="ml-2 text-[11px] text-muted-foreground tabular-nums">
-                      {fmtQty(i.qty_total, i.unit)}
+                    <span className="text-metric font-medium">{formatCurrency(i.total_gastado)}</span>
+                    <span className="ml-2 text-[11px] text-metric text-muted-foreground">
+                      {formatQuantity(i.qty_total, i.unit)}
                     </span>
                   </div>
                 </Link>
@@ -71,16 +57,14 @@ export function InsumosSubasCard({ alerts }: { alerts: InsumoSubaAlert[] }) {
   return (
     <div className="card-editorial p-6">
       <div className="flex items-center gap-2">
-        <AlertTriangleIcon className="size-4 text-rose-600" />
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Insumos con suba
-        </h2>
+        <AlertTriangleIcon className="size-3.5 text-rose-600" aria-hidden />
+        <h3 className="text-eyebrow">Insumos con suba</h3>
       </div>
-      <p className="mt-0.5 text-xs text-muted-foreground">Variación &gt;15% vs. mes anterior</p>
+      <p className="mt-1 text-card-sub">Variación &gt;15% vs. mes anterior</p>
 
       {alerts.length === 0 ? (
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Sin subas significativas este mes.
+          Sin subas significativas este período.
         </p>
       ) : (
         <ul className="mt-4 divide-y divide-border">
@@ -88,7 +72,7 @@ export function InsumosSubasCard({ alerts }: { alerts: InsumoSubaAlert[] }) {
             <li key={a.id} className="py-2.5">
               <Link
                 href="/catalogo/insumos"
-                className="flex items-baseline justify-between gap-3 hover:opacity-80"
+                className="focus-ring -mx-1 flex items-baseline justify-between gap-3 rounded-sm px-1 transition-colors hover:bg-muted/40"
               >
                 <div className="min-w-0 space-y-0.5">
                   <p className="truncate text-sm font-medium">{a.name}</p>
@@ -97,11 +81,11 @@ export function InsumosSubasCard({ alerts }: { alerts: InsumoSubaAlert[] }) {
                   )}
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="flex items-center justify-end gap-0.5 text-sm tabular-nums font-medium text-rose-700">
-                    <TrendingUpIcon className="size-3.5" />
+                  <p className="flex items-center justify-end gap-0.5 text-sm text-metric font-medium text-rose-700">
+                    <TrendingUpIcon className="size-3.5" aria-hidden />
                     +{a.variacion_pct.toFixed(0)}%
                   </p>
-                  <p className="text-[11px] text-muted-foreground tabular-nums">
+                  <p className="text-[11px] text-metric text-muted-foreground">
                     {formatCurrency(a.precio_anterior)} → {formatCurrency(a.precio_actual)}
                   </p>
                 </div>
