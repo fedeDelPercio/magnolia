@@ -32,6 +32,9 @@ import {
 import { getIvaBalance } from '@/features/alerts/queries'
 import { getDigitalTaxRate } from '@/features/config/queries'
 import { IvaBalanceCard } from '@/features/alerts/components/iva-balance-card'
+import { getReviewsSummary } from '@/features/reviews/queries'
+import { syncGoogleReviews } from '@/features/reviews/actions'
+import { ReviewsCard } from '@/features/reviews/components/reviews-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +64,11 @@ export default async function DashboardPage({ searchParams }: Props) {
   const granularity: Granularity =
     sp.evGran === 'dia' || sp.evGran === 'semana' || sp.evGran === 'mes' ? sp.evGran : 'mes'
 
+  // Sync silencioso de reseñas Google: idempotente por día UTC. Si falla
+  // (no hay key, API down, etc.) seguimos renderizando con el último snapshot
+  // disponible — la card maneja el empty state.
+  await syncGoogleReviews().catch(() => undefined)
+
   const [
     overview,
     evolution,
@@ -74,6 +82,7 @@ export default async function DashboardPage({ searchParams }: Props) {
     topInsumos,
     insumosSubas,
     taxRate,
+    reviewsSummary,
   ] = await Promise.all([
     getDashboardOverview(from, to),
     getFacturacionEvolution(from, to, granularity),
@@ -87,6 +96,7 @@ export default async function DashboardPage({ searchParams }: Props) {
     getTopInsumosGasto(from, to, 5),
     getInsumosConSuba(from, to, 15),
     getDigitalTaxRate(),
+    getReviewsSummary(from, to),
   ])
   const ivaBalance = await getIvaBalance(from, to, taxRate)
 
@@ -95,6 +105,8 @@ export default async function DashboardPage({ searchParams }: Props) {
       <DashboardHeader from={from} to={to} />
 
       <HeroCards overview={overview} />
+
+      <ReviewsCard summary={reviewsSummary} />
 
       <EvolucionChart data={evolution} granularity={granularity} />
 

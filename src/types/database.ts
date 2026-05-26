@@ -139,7 +139,29 @@ export type Database = {
           nombre?: string
           producto_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cierre_caja_productos_cierre_caja_id_fkey"
+            columns: ["cierre_caja_id"]
+            isOneToOne: false
+            referencedRelation: "cierres_caja"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierre_caja_productos_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "product_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierre_caja_productos_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cierres_caja: {
         Row: {
@@ -238,7 +260,22 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cierres_caja_dia_operativo_id_fkey"
+            columns: ["dia_operativo_id"]
+            isOneToOne: false
+            referencedRelation: "dias_operativos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierres_caja_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       compra_items: {
         Row: {
@@ -397,6 +434,47 @@ export type Database = {
           },
         ]
       }
+      google_review_snapshots: {
+        Row: {
+          created_at: string
+          fetched_at: string
+          id: string
+          latest_reviews: Json
+          place_id: string
+          rating: number
+          tenant_id: string
+          total_reviews: number
+        }
+        Insert: {
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          latest_reviews?: Json
+          place_id: string
+          rating: number
+          tenant_id: string
+          total_reviews: number
+        }
+        Update: {
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          latest_reviews?: Json
+          place_id?: string
+          rating?: number
+          tenant_id?: string
+          total_reviews?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_review_snapshots_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insumo_price_history: {
         Row: {
           created_by: string | null
@@ -454,6 +532,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "insumo_price_history_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_proveedores"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "insumo_price_history_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -466,7 +551,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
-          diferencia: number
+          diferencia: number | null
           id: string
           insumo_id: string
           notas: string | null
@@ -475,7 +560,9 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          created_at?: string
           created_by?: string | null
+          diferencia?: number | null
           id?: string
           insumo_id: string
           notas?: string | null
@@ -484,7 +571,9 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          created_at?: string
           created_by?: string | null
+          diferencia?: number | null
           id?: string
           insumo_id?: string
           notas?: string | null
@@ -493,6 +582,13 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "insumo_stock_ajustes_insumo_id_fkey"
+            columns: ["insumo_id"]
+            isOneToOne: false
+            referencedRelation: "insumo_stock"
+            referencedColumns: ["insumo_id"]
+          },
           {
             foreignKeyName: "insumo_stock_ajustes_insumo_id_fkey"
             columns: ["insumo_id"]
@@ -748,6 +844,58 @@ export type Database = {
           },
         ]
       }
+      producto_aliases: {
+        Row: {
+          alias: string
+          created_at: string
+          created_by: string | null
+          id: string
+          producto_id: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          alias: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          producto_id: string
+          source?: string
+          tenant_id: string
+        }
+        Update: {
+          alias?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          producto_id?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "producto_aliases_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "product_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "producto_aliases_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "producto_aliases_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       producto_descartables: {
         Row: {
           created_at: string
@@ -837,6 +985,13 @@ export type Database = {
             foreignKeyName: "producto_price_history_producto_id_fkey"
             columns: ["producto_id"]
             isOneToOne: false
+            referencedRelation: "product_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "producto_price_history_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
             referencedRelation: "productos"
             referencedColumns: ["id"]
           },
@@ -848,36 +1003,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      producto_aliases: {
-        Row: {
-          alias: string
-          created_at: string
-          created_by: string | null
-          id: string
-          producto_id: string
-          source: string
-          tenant_id: string
-        }
-        Insert: {
-          alias: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          producto_id: string
-          source?: string
-          tenant_id: string
-        }
-        Update: {
-          alias?: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          producto_id?: string
-          source?: string
-          tenant_id?: string
-        }
-        Relationships: []
       }
       productos: {
         Row: {
@@ -1244,6 +1369,7 @@ export type Database = {
       }
       cerrar_dia: { Args: { p_dia_id: string }; Returns: undefined }
       current_tenant_ids: { Args: never; Returns: string[] }
+      normalize_name: { Args: { p_name: string }; Returns: string }
       normalize_qty: {
         Args: { from_unit: string; qty: number; to_unit: string }
         Returns: number
