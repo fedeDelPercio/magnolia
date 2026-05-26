@@ -1,23 +1,11 @@
-import { getProveedoresConRegla, getIvaBalance } from '@/features/alerts/queries'
-import { getDigitalTaxRate } from '@/features/config/queries'
+import { getProveedoresConRegla } from '@/features/alerts/queries'
 import { evaluatePaymentRule } from '@/features/suppliers/payment-rules'
-import { IvaBalanceCard } from '@/features/alerts/components/iva-balance-card'
 import { RuleAlertCard } from '@/features/alerts/components/rule-alert-card'
 
 export const dynamic = 'force-dynamic'
 
-function currentMonth(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
-
 export default async function Page() {
-  const month = currentMonth()
-  const [proveedores, taxRate] = await Promise.all([
-    getProveedoresConRegla(),
-    getDigitalTaxRate(),
-  ])
-  const balance = await getIvaBalance(month, taxRate)
+  const proveedores = await getProveedoresConRegla()
 
   const evaluated = proveedores
     .filter((p) => p.payment_rule)
@@ -37,11 +25,9 @@ export default async function Page() {
       <div>
         <h1 className="text-2xl font-semibold text-neutral-900">Alertas</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Balanza fiscal y reglas de pago a proveedores.
+          Reglas de pago a proveedores.
         </p>
       </div>
-
-      <IvaBalanceCard balance={balance} />
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between">
@@ -56,12 +42,13 @@ export default async function Page() {
         </div>
 
         {evaluated.length === 0 ? (
-          <div className="rounded-xl border bg-card p-6 text-center">
+          <div className="card-editorial p-6 text-center">
             <p className="text-sm text-muted-foreground">
               Ningún proveedor tiene una regla de pago configurada.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Configurá una regla editando un proveedor en <a href="/proveedores" className="underline">Proveedores</a>.
+              Configurá una regla editando un proveedor en{' '}
+              <a href="/proveedores" className="underline">Proveedores</a>.
             </p>
           </div>
         ) : (

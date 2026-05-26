@@ -55,7 +55,6 @@ export async function getProveedoresConRegla(): Promise<ProveedorWithRule[]> {
 }
 
 export type IvaBalance = {
-  month: string
   taxRate: number
   digitalRevenue: number
   ivaDebito: number
@@ -64,13 +63,13 @@ export type IvaBalance = {
   balance: number
 }
 
-export async function getIvaBalance(month: string, taxRate: number): Promise<IvaBalance> {
+export async function getIvaBalance(
+  from: string,
+  to: string,
+  taxRate: number,
+): Promise<IvaBalance> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-
-  const [y, m] = month.split('-').map(Number)
-  const from = `${month}-01`
-  const to = m === 12 ? `${y! + 1}-01-01` : `${y}-${String(m! + 1).padStart(2, '0')}-01`
 
   const [cierresRes, comprasRes] = await Promise.all([
     supabase
@@ -107,7 +106,6 @@ export async function getIvaBalance(month: string, taxRate: number): Promise<Iva
   const ivaCredito = comprasConIva * (taxRate / 100)
 
   return {
-    month,
     taxRate,
     digitalRevenue,
     ivaDebito,

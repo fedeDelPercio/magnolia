@@ -29,6 +29,9 @@ import {
   TopInsumosGastoCard,
   InsumosSubasCard,
 } from '@/features/dashboard/components/insumos-cards'
+import { getIvaBalance } from '@/features/alerts/queries'
+import { getDigitalTaxRate } from '@/features/config/queries'
+import { IvaBalanceCard } from '@/features/alerts/components/iva-balance-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,6 +73,7 @@ export default async function DashboardPage({ searchParams }: Props) {
     menuEng,
     topInsumos,
     insumosSubas,
+    taxRate,
   ] = await Promise.all([
     getDashboardOverview(from, to),
     getFacturacionEvolution(from, to, granularity),
@@ -82,7 +86,9 @@ export default async function DashboardPage({ searchParams }: Props) {
     getMenuEngineering(from, to),
     getTopInsumosGasto(from, to, 5),
     getInsumosConSuba(from, to, 15),
+    getDigitalTaxRate(),
   ])
+  const ivaBalance = await getIvaBalance(from, to, taxRate)
 
   return (
     <div className="space-y-6">
@@ -93,6 +99,8 @@ export default async function DashboardPage({ searchParams }: Props) {
       <EvolucionChart data={evolution} granularity={granularity} />
 
       <CostosCard overview={overview} />
+
+      <IvaBalanceCard balance={ivaBalance} />
 
       <MenuEngineeringMatrix data={menuEng} />
 
