@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright smoke screenshots (locales, no se commitean)
+scripts/.shots/
+.tsc-out.txt
