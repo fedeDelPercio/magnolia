@@ -8,7 +8,6 @@ import {
   ChevronDownIcon,
   LogOutIcon,
   SettingsIcon,
-  SearchIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -131,14 +130,6 @@ export function TopNav() {
 
         {/* Right cluster */}
         <div className="ml-auto flex items-center gap-2">
-          <div className="hidden md:flex h-9 w-64 items-center gap-2 rounded-full border border-border/80 bg-card/50 px-3 text-sm text-muted-foreground">
-            <SearchIcon className="size-4" aria-hidden />
-            <span className="text-xs">Buscar...</span>
-            <kbd className="ml-auto rounded border border-border/60 bg-background px-1.5 py-0.5 text-[10px] text-metric text-muted-foreground/70">
-              ⌘K
-            </kbd>
-          </div>
-
           <Link
             href="/alertas"
             aria-label="Alertas"
@@ -155,7 +146,7 @@ export function TopNav() {
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               aria-label="Menú de usuario"
-              className="focus-ring flex items-center gap-1.5 rounded-full border border-border/80 bg-card/50 py-1 pl-1 pr-2.5 transition-colors hover:bg-card"
+              className="focus-ring flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-card/50 py-1 pl-1 pr-2.5 transition-colors hover:bg-card"
             >
               <div className="grid size-7 place-items-center rounded-full bg-foreground text-background">
                 <span className="text-xs font-medium uppercase">F</span>
