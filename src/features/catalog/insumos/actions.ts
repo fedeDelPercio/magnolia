@@ -22,6 +22,35 @@ function mapError(msg: string): string {
   return msg
 }
 
+// Cuando se activa control de stock, hay que sembrar un ajuste con la fecha
+// actual. Sin esto, la vista `insumo_stock` resta el consumo histórico desde
+// siempre y arroja stock negativo aunque el inicial sea positivo (porque
+// "stock_inicial" no lleva fecha — el ajuste sí).
+// Idempotente: si ya hay un ajuste para el insumo, no hace nada.
+async function ensureInitialStockAjuste(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  insumoId: string,
+  tenantId: string,
+  trackStock: boolean,
+  stockInicial: number,
+): Promise<void> {
+  if (!trackStock) return
+  const { count } = await supabase
+    .from('insumo_stock_ajustes')
+    .select('id', { count: 'exact', head: true })
+    .eq('insumo_id', insumoId)
+  if ((count ?? 0) > 0) return
+  const { data: { user } } = await supabase.auth.getUser()
+  await supabase.from('insumo_stock_ajustes').insert({
+    insumo_id: insumoId,
+    tenant_id: tenantId,
+    stock_teorico: 0,
+    stock_real: stockInicial,
+    notas: 'Stock inicial al activar control',
+    created_by: user?.id ?? null,
+  })
+}
+
 export async function createInsumo(
   values: InsumoFormValues,
 ): Promise<{ error?: string; data?: { id: string; name: string; unit: string; current_price: number } }> {
@@ -47,6 +76,15 @@ export async function createInsumo(
       .single()
 
     if (error) return { error: mapError(error.message) }
+
+    await ensureInitialStockAjuste(
+      supabase,
+      data.id,
+      tenantId,
+      values.track_stock,
+      values.track_stock ? (values.stock_inicial ?? 0) : 0,
+    )
+
     revalidatePath('/catalogo/insumos')
     return { data: data as { id: string; name: string; unit: string; current_price: number } }
   } catch (e) {
@@ -84,6 +122,14 @@ export async function updateInsumo(
       .eq('id', id)
 
     if (error) return { error: mapError(error.message) }
+
+    await ensureInitialStockAjuste(
+      supabase,
+      id,
+      tenantId,
+      values.track_stock,
+      values.track_stock ? (values.stock_inicial ?? 0) : 0,
+    )
 
     const priceChanged = existing && Number(existing.current_price) !== Number(values.current_price)
     if (priceChanged && values.current_price > 0) {

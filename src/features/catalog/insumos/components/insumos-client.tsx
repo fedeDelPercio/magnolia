@@ -231,7 +231,7 @@ export function InsumosClient({ insumos, proveedores }: Props) {
                     <Badge
                       variant="outline"
                       className={insumo.active
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 font-normal'
+                        ? 'border-primary/25 bg-primary/10 text-primary font-normal'
                         : 'border-border bg-muted/40 text-muted-foreground font-normal'}
                     >
                       {insumo.active ? 'Activo' : 'Inactivo'}

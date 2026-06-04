@@ -44,8 +44,8 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
     <Badge
       variant="outline"
       className={ok
-        ? 'border-green-200 bg-green-50 tabular-nums text-xs text-green-700'
-        : 'border-red-200 bg-red-50 tabular-nums text-xs text-red-600'}
+        ? 'border-primary/25 bg-primary/10 tabular-nums text-xs text-primary'
+        : 'border-rose-200/70 bg-rose-50/60 tabular-nums text-xs text-rose-800/90'}
     >
       {formatPct(margin)}
     </Badge>
@@ -180,8 +180,8 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
                     <Badge
                       variant="outline"
                       className={producto.active
-                        ? 'border-green-200 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-gray-50 text-gray-500'}
+                        ? 'border-primary/25 bg-primary/10 text-primary font-normal'
+                        : 'border-border bg-muted/40 text-muted-foreground font-normal'}
                     >
                       {producto.active ? 'Activo' : 'Inactivo'}
                     </Badge>

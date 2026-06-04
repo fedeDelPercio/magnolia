@@ -2,7 +2,7 @@ import { getInsumos, getProveedores } from '@/features/catalog/insumos/queries'
 import { InsumosClient } from '@/features/catalog/insumos/components/insumos-client'
 import { PageHeader } from '@/components/shared/page-header'
 
-export const metadata = { title: 'Insumos — Magnolia' }
+export const metadata = { title: 'Insumos — MAGNOLIA FOOD' }
 
 export default async function InsumosPage() {
   const [insumos, proveedores] = await Promise.all([getInsumos(), getProveedores()])

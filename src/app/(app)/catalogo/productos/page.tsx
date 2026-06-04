@@ -8,7 +8,7 @@ import {
 import { ProductosClient } from '@/features/catalog/productos/components/productos-client'
 import { PageHeader } from '@/components/shared/page-header'
 
-export const metadata = { title: 'Productos — Magnolia' }
+export const metadata = { title: 'Productos — MAGNOLIA FOOD' }
 
 export default async function ProductosPage() {
   const [productos, todosInsumos, recetasParaProductos, subRecetas, descartablesParaProductos] =
