@@ -53,7 +53,12 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       if (result.error) {
         toast.error(result.error)
       } else {
-        toast.success('Día cerrado correctamente')
+        const n = result.sueldosPagados ?? 0
+        toast.success(
+          n > 0
+            ? `Día cerrado. Se pagaron ${n} sueldo${n === 1 ? '' : 's'} en caja.`
+            : 'Día cerrado correctamente',
+        )
         router.refresh()
       }
     })
@@ -236,8 +241,20 @@ function CierreBistrosoftSection({
               className="flex w-full items-center justify-between px-5 py-3 hover:bg-muted/50 transition-colors text-left"
             >
               <div>
-                <p className="font-medium">
-                  {c.operador ?? 'Sin operador'} · {c.cantidad_ventas} ventas · {c.cubiertos} cubiertos
+                <p className="flex items-center gap-2 font-medium">
+                  <span>
+                    {c.operador ?? 'Sin operador'} · {c.cantidad_ventas} ventas · {c.cubiertos} cubiertos
+                  </span>
+                  <span
+                    className={
+                      'rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ' +
+                      (c.source === 'api'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-slate-100 text-slate-600')
+                    }
+                  >
+                    {c.source === 'api' ? 'API' : 'PDF'}
+                  </span>
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Efectivo {formatCurrency(c.monto_efectivo)} · Tarjetas {formatCurrency(c.monto_tarjetas)} · QR {formatCurrency(c.monto_qr)} · Online {formatCurrency(c.monto_online)}

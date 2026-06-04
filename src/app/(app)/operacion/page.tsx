@@ -1,5 +1,5 @@
-import { getDias } from '@/features/operations/queries'
-import { OperacionList } from '@/features/operations/components/operacion-list'
+import { getDiasMes } from '@/features/operations/queries'
+import { OperacionCalendar } from '@/features/operations/components/operacion-calendar'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import { PageHeader } from '@/components/shared/page-header'
@@ -14,24 +14,31 @@ function todayLocal() {
   return `${y}-${m}-${d}`
 }
 
-export default async function OperacionPage() {
+type Props = { searchParams: Promise<{ month?: string }> }
+
+export default async function OperacionPage({ searchParams }: Props) {
   const today = todayLocal()
+  const sp = await searchParams
+  const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : today.slice(0, 7)
+
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
-  // Auto-creamos el día de hoy si no existe — sin botón "Abrir hoy" explícito
-  const { data: existing } = await supabase
-    .from('dias_operativos')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('fecha', today)
-    .maybeSingle()
+  // Auto-creamos el día de hoy si no existe, sólo cuando estamos viendo el mes actual.
+  if (month === today.slice(0, 7)) {
+    const { data: existing } = await supabase
+      .from('dias_operativos')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('fecha', today)
+      .maybeSingle()
 
-  if (!existing) {
-    await supabase.rpc('abrir_dia', { p_tenant_id: tenantId, p_fecha: today })
+    if (!existing) {
+      await supabase.rpc('abrir_dia', { p_tenant_id: tenantId, p_fecha: today })
+    }
   }
 
-  const dias = await getDias()
+  const dias = await getDiasMes(month)
 
   return (
     <div className="space-y-6">
@@ -42,9 +49,9 @@ export default async function OperacionPage() {
             <span className="italic">Día</span> a día
           </>
         }
-        description="Registrá producción, ventas y movimientos de stock por día."
+        size="md"
       />
-      <OperacionList dias={dias} today={today} />
+      <OperacionCalendar dias={dias} month={month} today={today} />
     </div>
   )
 }

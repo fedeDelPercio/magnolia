@@ -1,11 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
-import {
-  getCierresByDia,
-  getProductosForMatching,
-  type CierreCajaWithProductos,
-  type ProductoBasico,
-} from '@/features/cierres/queries'
 import type { Tables } from '@/types/database'
 
 export type DiaOperativo = Tables<'dias_operativos'>
@@ -18,11 +12,6 @@ export type DiaConMovimientos = DiaOperativo & {
   movimientos_diarios: MovimientoConProducto[]
 }
 
-export type DiaConCierres = DiaConMovimientos & {
-  cierres: CierreCajaWithProductos[]
-  productos_catalogo: ProductoBasico[]
-}
-
 export async function getDias(): Promise<DiaOperativo[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -33,6 +22,27 @@ export async function getDias(): Promise<DiaOperativo[]> {
     .eq('tenant_id', tenantId)
     .order('fecha', { ascending: false })
     .limit(60)
+
+  if (error) throw new Error(error.message)
+  return data
+}
+
+/** Días operativos en un mes específico ('YYYY-MM'). */
+export async function getDiasMes(month: string): Promise<DiaOperativo[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+
+  const from = `${month}-01`
+  const [year, mon] = month.split('-').map(Number)
+  const nextMonth = mon === 12 ? `${year! + 1}-01-01` : `${year}-${String(mon! + 1).padStart(2, '0')}-01`
+
+  const { data, error } = await supabase
+    .from('dias_operativos')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .gte('fecha', from)
+    .lt('fecha', nextMonth)
+    .order('fecha', { ascending: true })
 
   if (error) throw new Error(error.message)
   return data
