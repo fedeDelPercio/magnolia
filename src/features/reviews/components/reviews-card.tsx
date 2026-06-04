@@ -83,70 +83,87 @@ export function ReviewsCard({ summary }: { summary: ReviewsSummary }) {
   const deltaPositive = (delta ?? 0) > 0
   const DeltaIcon = deltaPositive ? TrendingUpIcon : TrendingDownIcon
 
+  const newReviews = summary.newReviewsCount
+  const grewReviews = newReviews !== null && newReviews > 0
+
   const sparkValues = summary.sparkline.map((s) => s.rating)
-  // Si no hay puntos del período, mostramos al menos el último para que el SVG no quede vacío.
   const sparkFallback = sparkValues.length === 0 ? [summary.rating, summary.rating] : sparkValues
 
   return (
-    <section className="card-editorial flex flex-col gap-4 overflow-hidden p-7 md:flex-row md:items-center md:justify-between">
-      {/* Bloque izquierdo: rating + nombre */}
-      <div className="flex items-center gap-6">
-        <div>
-          <p className="text-eyebrow">Reseñas Google</p>
-          <div className="mt-3 flex items-baseline gap-2">
-            <StarIcon className="size-7 -translate-y-1 fill-amber-400 text-amber-400" aria-hidden />
-            <p className="num-editorial text-5xl leading-none">{fmtRating(summary.rating)}</p>
-            <span className="text-sm text-muted-foreground text-metric">/ 5,0</span>
-          </div>
-          {summary.placeName && (
-            <p className="mt-2 text-card-sub">{summary.placeName}</p>
-          )}
-        </div>
-
-        {/* Sparkline */}
-        <div className="hidden text-primary md:block" aria-hidden>
-          <Sparkline data={sparkFallback} />
-          <p className="mt-1 text-[10px] uppercase tracking-editorial text-muted-foreground">
-            evolución
-          </p>
-        </div>
+    <section className="card-editorial overflow-hidden p-7">
+      {/* Header */}
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-eyebrow">Reseñas Google</p>
+        {summary.placeName && <p className="text-card-sub">{summary.placeName}</p>}
       </div>
 
-      {/* Bloque derecho: deltas */}
-      <div className="flex flex-col items-start gap-2 md:items-end">
-        {hasDelta ? (
-          <div
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-metric',
-              deltaPositive
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-rose-200 bg-rose-50 text-rose-700',
-            )}
-          >
-            <DeltaIcon className="size-3" aria-hidden />
-            {deltaPositive ? '+' : ''}
-            {delta!.toFixed(1)} vs. período anterior
+      <div className="mt-5 flex flex-col gap-6 sm:flex-row sm:items-stretch sm:gap-8">
+        {/* Métrica 1 — Calificación */}
+        <div className="flex flex-col justify-between">
+          <div className="flex items-baseline gap-2">
+            <StarIcon className="size-7 -translate-y-1 fill-amber-400 text-amber-400" aria-hidden />
+            <p className="num-editorial text-5xl leading-none">{fmtRating(summary.rating)}</p>
+            <span className="text-metric text-sm text-muted-foreground">/ 5,0</span>
           </div>
-        ) : delta !== null ? (
-          <p className="text-xs italic text-muted-foreground">Rating estable en el período</p>
-        ) : (
-          <p className="text-xs italic text-muted-foreground">Sin período anterior comparable</p>
-        )}
+          <div className="mt-2">
+            <p className="text-[11px] uppercase tracking-editorial text-muted-foreground">
+              Calificación
+            </p>
+            {hasDelta ? (
+              <span
+                className={cn(
+                  'mt-1 inline-flex items-center gap-1 text-xs font-medium text-metric',
+                  deltaPositive ? 'text-emerald-700' : 'text-rose-700',
+                )}
+              >
+                <DeltaIcon className="size-3" aria-hidden />
+                {deltaPositive ? '+' : ''}
+                {delta!.toFixed(1)} vs. período anterior
+              </span>
+            ) : (
+              <p className="mt-1 text-xs italic text-muted-foreground">
+                {delta !== null ? 'Estable en el período' : 'Sin comparable aún'}
+              </p>
+            )}
+          </div>
+        </div>
 
-        <p className="text-sm text-muted-foreground">
-          {summary.newReviewsCount !== null && summary.newReviewsCount > 0 ? (
-            <>
-              <span className="text-metric font-medium text-foreground">
-                +{summary.newReviewsCount.toLocaleString('es-AR')}
-              </span>{' '}
-              reseñas nuevas ·{' '}
-            </>
-          ) : null}
-          <span className="text-metric font-medium text-foreground">
+        {/* divisor */}
+        <div className="hidden w-px self-stretch bg-border sm:block" aria-hidden />
+
+        {/* Métrica 2 — Reseñas totales (co-protagonista) */}
+        <div className="flex flex-col justify-between">
+          <p className="num-editorial text-5xl leading-none">
             {summary.totalReviews.toLocaleString('es-AR')}
-          </span>{' '}
-          totales
-        </p>
+          </p>
+          <div className="mt-2">
+            <p className="text-[11px] uppercase tracking-editorial text-muted-foreground">
+              Reseñas en Google
+            </p>
+            {grewReviews ? (
+              <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-metric text-emerald-700">
+                <TrendingUpIcon className="size-3" aria-hidden />+
+                {newReviews!.toLocaleString('es-AR')} en el período
+              </span>
+            ) : newReviews === 0 ? (
+              <p className="mt-1 text-xs italic text-muted-foreground">
+                Sin reseñas nuevas en el período
+              </p>
+            ) : (
+              <p className="mt-1 text-xs italic text-muted-foreground">
+                Tu base — ojo que esto suba
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Sparkline del rating — a la derecha */}
+        <div className="hidden flex-col justify-end text-primary sm:ml-auto sm:flex" aria-hidden>
+          <Sparkline data={sparkFallback} width={120} height={36} />
+          <p className="mt-1 text-[10px] uppercase tracking-editorial text-muted-foreground">
+            Evolución del rating
+          </p>
+        </div>
       </div>
     </section>
   )

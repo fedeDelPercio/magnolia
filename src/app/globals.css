@@ -11,6 +11,7 @@
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono);
   --font-display: var(--font-display), Georgia, serif;
+  --font-numbers: var(--font-numbers), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -174,13 +175,15 @@
   .tracking-editorial {
     letter-spacing: 0.18em;
   }
-  /* Number editorial: serif italic, tabular, kerning */
+  /* Number editorial: Inter Tight semibold, tabular + lining. Diseñada
+     específicamente para data-dense UI; condensada y con números muy
+     legibles. El contraste deliberado con títulos serif italic (Fraunces)
+     jerarquiza: título = personalidad, número = dato. */
   .num-editorial {
-    font-family: var(--font-display);
+    font-family: var(--font-numbers);
+    font-weight: 500;
     font-variant-numeric: tabular-nums lining-nums;
-    font-feature-settings: "ss01";
-    font-style: italic;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.06em;
   }
   /* Card editorial: hairline, sin pure-white, sutil sombra de papel */
   .card-editorial {

@@ -55,7 +55,7 @@ export default function SignupPage() {
     <Card>
       <CardHeader>
         <CardTitle>Crear cuenta</CardTitle>
-        <CardDescription>Registrá tu restaurante en Magnolia</CardDescription>
+        <CardDescription>Registrá tu restaurante en MAGNOLIA FOOD</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

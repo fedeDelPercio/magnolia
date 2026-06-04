@@ -7,12 +7,32 @@ export function formatDate(dateStr: string): string {
   })
 }
 
+// Formato corto DD/MM/YY para chips/badges donde el espacio importa.
+export function formatDateShort(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${String(year! % 100).padStart(2, '0')}`
+}
+
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
     minimumFractionDigits: 2,
   }).format(value)
+}
+
+/** Currency sin decimales y sin espacio entre símbolo y número. Para hero
+ * numbers de dashboard donde los centavos son ruido visual y el espacio
+ * desconecta visualmente al `$` del valor (ej. "$1.418.488"). */
+export function formatCurrencyShort(value: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  })
+    .format(value)
+    // Intl agrega U+00A0 (nbsp) entre símbolo y número en es-AR; lo quitamos.
+    .replace(/ /g, '')
 }
 
 export function formatPct(value: number): string {

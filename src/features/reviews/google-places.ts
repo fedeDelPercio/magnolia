@@ -41,25 +41,59 @@ const COORDS_REGEX = /@(-?\d+\.\d+),(-?\d+\.\d+)/
 
 type PlaceResolution = { placeId: string; displayName: string }
 
+/** Short links de Maps: `maps.app.goo.gl/...` o `goo.gl/maps/...`. */
+const SHORT_URL_REGEX = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)/i
+
+/**
+ * Sigue los redirects de un short link de Maps hasta obtener la URL larga
+ * (la que contiene `/maps/place/...@lat,lng` o el Place ID). Google a veces
+ * encadena 2-3 redirects, por eso iteramos.
+ */
+async function expandShortUrl(url: string): Promise<string> {
+  let current = url
+  for (let i = 0; i < 5; i++) {
+    const res = await fetch(current, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MagnoliaBot/1.0)' },
+    }).catch(() => null)
+    if (!res) break
+    const loc = res.headers.get('location')
+    if (!loc) {
+      // Sin redirect: si el fetch siguió hasta el final, res.url es la final.
+      if (res.url && res.url !== current) current = res.url
+      break
+    }
+    current = loc.startsWith('http') ? loc : new URL(loc, current).href
+    if (current.includes('/maps/place/') || PLACE_ID_REGEX.test(current)) break
+  }
+  return current
+}
+
 /**
  * Resuelve una URL de Google Maps a Place ID oficial.
  *
  * Estrategia:
+ *  0. Si es un short link (maps.app.goo.gl), lo expande siguiendo redirects.
  *  1. Si la URL contiene el Place ID directo (`ChIJ...`), lo devuelve.
- *  2. Si tiene un FTID + nombre + coords, busca con `places:searchText`
- *     filtrando por bias de ubicación.
- *  3. Si solo hay nombre + coords, igual: searchText con location bias.
+ *  2. Si tiene nombre + coords, busca con `places:searchText` + location bias.
  */
 export async function resolvePlaceIdFromUrl(mapsUrl: string): Promise<PlaceResolution> {
   if (!mapsUrl || typeof mapsUrl !== 'string') {
     throw new Error('URL vacía')
   }
 
+  // 0. Expandir short links antes de parsear.
+  let workingUrl = mapsUrl.trim()
+  if (SHORT_URL_REGEX.test(workingUrl)) {
+    workingUrl = await expandShortUrl(workingUrl)
+  }
+
   const decoded = (() => {
     try {
-      return decodeURIComponent(mapsUrl)
+      return decodeURIComponent(workingUrl)
     } catch {
-      return mapsUrl
+      return workingUrl
     }
   })()
 

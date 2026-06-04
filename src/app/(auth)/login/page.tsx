@@ -41,7 +41,7 @@ export default function LoginPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Magnolia</CardTitle>
+        <CardTitle>MAGNOLIA FOOD</CardTitle>
         <CardDescription>Ingresá con tu cuenta</CardDescription>
       </CardHeader>
       <CardContent>
