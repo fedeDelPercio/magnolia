@@ -106,15 +106,15 @@ export default async function DashboardPage({ searchParams }: Props) {
 
       <HeroCards overview={overview} />
 
-      <ReviewsCard summary={reviewsSummary} />
-
       <EvolucionChart data={evolution} granularity={granularity} />
 
       <CostosCard overview={overview} />
 
+      <MenuEngineeringMatrix data={menuEng} />
+
       <IvaBalanceCard balance={ivaBalance} />
 
-      <MenuEngineeringMatrix data={menuEng} />
+      <ReviewsCard summary={reviewsSummary} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <MixCard data={mix} />

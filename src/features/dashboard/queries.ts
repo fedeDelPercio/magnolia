@@ -31,6 +31,11 @@ export type DashboardOverview = {
   laborCostMonto: number
   primeCostPct: number | null
   margenPonderadoPct: number | null
+  egresosTotales: number
+  resultadoCaja: number
+  resultadoCajaPct: number | null
+  margenOperativo: number | null
+  margenOperativoPct: number | null
 }
 
 export type DailyVentas = {
@@ -97,23 +102,23 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
 
   const [cierresRes, cierresPrevRes, productosRes, sueldosRes] = await Promise.all([
     supabase
-      .from('cierres_caja')
+      .from('cierres_caja_active')
       .select('total_vendido, monto_salon, cubiertos, cantidad_ventas')
       .eq('tenant_id', tenantId)
       .gte('fecha_cierre', from)
       .lt('fecha_cierre', to),
     supabase
-      .from('cierres_caja')
+      .from('cierres_caja_active')
       .select('total_vendido')
       .eq('tenant_id', tenantId)
       .gte('fecha_cierre', prevFrom)
       .lt('fecha_cierre', prevTo),
     supabase
-      .from('cierre_caja_productos')
-      .select('cantidad, monto_total, producto_id, cierres_caja!inner(fecha_cierre, tenant_id)')
-      .eq('cierres_caja.tenant_id', tenantId)
-      .gte('cierres_caja.fecha_cierre', from)
-      .lt('cierres_caja.fecha_cierre', to),
+      .from('cierre_caja_productos_active')
+      .select('cantidad, monto_total, producto_id')
+      .eq('cierre_tenant_id', tenantId)
+      .gte('cierre_fecha_cierre', from)
+      .lt('cierre_fecha_cierre', to),
     supabase
       .from('caja_movimientos')
       .select('monto, categoria')
@@ -174,6 +179,9 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
   const foodCostPct = ventasMatcheadas > 0 ? (foodCostMonto / ventasMatcheadas) * 100 : null
   const margenPonderadoPct = foodCostPct !== null ? 100 - foodCostPct : null
 
+  // Egresos totales del período (todos los movimientos de caja tipo egreso)
+  const egresosTotales = (sueldosRes.data ?? []).reduce((s, m) => s + (Number(m.monto) || 0), 0)
+
   // Labor cost: sumar egresos cuya categoría contenga "sueldo"
   const laborCostMonto = (sueldosRes.data ?? [])
     .filter((m) => (m.categoria ?? '').toLowerCase().includes('sueldo'))
@@ -181,6 +189,18 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
   const laborCostPct = facturacion > 0 ? (laborCostMonto / facturacion) * 100 : null
   const primeCostPct =
     foodCostPct !== null && laborCostPct !== null ? foodCostPct + laborCostPct : null
+
+  // Resultado de caja: lo que entró menos todo lo que salió (cash real).
+  const resultadoCaja = facturacion - egresosTotales
+  const resultadoCajaPct = facturacion > 0 ? (resultadoCaja / facturacion) * 100 : null
+
+  // Margen operativo: facturación menos prime cost (food + labor). Rentabilidad
+  // de la operación, sin gastos fijos ni timing de compras. Solo cuando hay
+  // food cost calculable (productos con receta).
+  const margenOperativo =
+    foodCostMonto > 0 || laborCostMonto > 0 ? facturacion - foodCostMonto - laborCostMonto : null
+  const margenOperativoPct =
+    margenOperativo !== null && facturacion > 0 ? (margenOperativo / facturacion) * 100 : null
 
   return {
     facturacion,
@@ -196,6 +216,11 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
     laborCostMonto,
     primeCostPct,
     margenPonderadoPct,
+    egresosTotales,
+    resultadoCaja,
+    resultadoCajaPct,
+    margenOperativo,
+    margenOperativoPct,
   }
 }
 
@@ -272,7 +297,7 @@ export async function getFacturacionEvolution(
   const tenantId = await getActiveTenantId()
 
   const { data, error } = await supabase
-    .from('cierres_caja')
+    .from('cierres_caja_active')
     .select(
       'fecha_cierre, monto_efectivo, monto_tarjetas, monto_qr, monto_online, monto_cuenta_cliente',
     )
@@ -285,6 +310,7 @@ export async function getFacturacionEvolution(
   // Agregar por bin
   const bins = new Map<string, EvolucionPunto>()
   for (const c of data ?? []) {
+    if (!c.fecha_cierre) continue
     const d = new Date(c.fecha_cierre)
     const start = binStart(d, gran)
     const key = isoDate(start)
@@ -307,9 +333,13 @@ export async function getFacturacionEvolution(
     bins.set(key, cur)
   }
 
-  // Rellenar los bins vacíos para mantener la continuidad temporal
-  const fromDate = binStart(new Date(from), gran)
-  const toDate = new Date(to)
+  // Rellenar los bins vacíos para mantener la continuidad temporal.
+  // Parsear from/to como local (no UTC) — sino "2026-05-01" se interpreta
+  // como 30/abr 21:00 en Argentina y el primer bin sale corrido un mes.
+  const [fy, fm, fd] = from.split('-').map(Number)
+  const [ty, tm, td] = to.split('-').map(Number)
+  const fromDate = binStart(new Date(fy!, fm! - 1, fd!), gran)
+  const toDate = new Date(ty!, tm! - 1, td!)
   const result: EvolucionPunto[] = []
   for (let d = fromDate; d < toDate; d = nextBin(d, gran)) {
     const key = isoDate(d)
@@ -324,7 +354,14 @@ export async function getFacturacionEvolution(
     )
   }
 
-  return result
+  // Trim leading/trailing bins vacíos. Los del medio se mantienen porque ahí
+  // sí aporta información ("no operamos en ese mes"). Pero arrastrar meses
+  // futuros o anteriores al primer dato es ruido visual.
+  let start = 0
+  while (start < result.length && result[start]!.total === 0) start++
+  let end = result.length
+  while (end > start && result[end - 1]!.total === 0) end--
+  return result.slice(start, end)
 }
 
 export async function getDailyVentas(from: string, to: string): Promise<DailyVentas[]> {
@@ -332,7 +369,7 @@ export async function getDailyVentas(from: string, to: string): Promise<DailyVen
   const tenantId = await getActiveTenantId()
 
   const { data, error } = await supabase
-    .from('cierres_caja')
+    .from('cierres_caja_active')
     .select('fecha_cierre, total_vendido, monto_salon, monto_mostrador')
     .eq('tenant_id', tenantId)
     .gte('fecha_cierre', from)
@@ -344,6 +381,7 @@ export async function getDailyVentas(from: string, to: string): Promise<DailyVen
   // Agrupar por día (puede haber más de 1 cierre por día)
   const byDay = new Map<string, DailyVentas>()
   for (const c of data ?? []) {
+    if (!c.fecha_cierre) continue
     const fecha = c.fecha_cierre.slice(0, 10)
     const cur = byDay.get(fecha) ?? { fecha, total: 0, salon: 0, mostrador: 0 }
     cur.total += Number(c.total_vendido) || 0
@@ -361,17 +399,17 @@ export async function getMixData(from: string, to: string): Promise<MixData> {
 
   const [cierresRes, productosRes] = await Promise.all([
     supabase
-      .from('cierres_caja')
+      .from('cierres_caja_active')
       .select('id, monto_salon, monto_mostrador, cubiertos')
       .eq('tenant_id', tenantId)
       .gte('fecha_cierre', from)
       .lt('fecha_cierre', to),
     supabase
-      .from('cierre_caja_productos')
-      .select('categoria, cierre_caja_id, cierres_caja!inner(fecha_cierre, tenant_id)')
-      .eq('cierres_caja.tenant_id', tenantId)
-      .gte('cierres_caja.fecha_cierre', from)
-      .lt('cierres_caja.fecha_cierre', to),
+      .from('cierre_caja_productos_active')
+      .select('categoria, cierre_caja_id')
+      .eq('cierre_tenant_id', tenantId)
+      .gte('cierre_fecha_cierre', from)
+      .lt('cierre_fecha_cierre', to),
   ])
 
   if (cierresRes.error) throw new Error(cierresRes.error.message)
@@ -404,7 +442,7 @@ export async function getMediosPago(from: string, to: string): Promise<MediosPag
   const tenantId = await getActiveTenantId()
 
   const { data, error } = await supabase
-    .from('cierres_caja')
+    .from('cierres_caja_active')
     .select('monto_efectivo, monto_tarjetas, monto_qr, monto_online')
     .eq('tenant_id', tenantId)
     .gte('fecha_cierre', from)
@@ -429,11 +467,11 @@ export async function getTopProductos(
   const tenantId = await getActiveTenantId()
 
   const { data, error } = await supabase
-    .from('cierre_caja_productos')
-    .select('nombre, cantidad, monto_total, cierres_caja!inner(fecha_cierre, tenant_id)')
-    .eq('cierres_caja.tenant_id', tenantId)
-    .gte('cierres_caja.fecha_cierre', from)
-    .lt('cierres_caja.fecha_cierre', to)
+    .from('cierre_caja_productos_active')
+    .select('nombre, cantidad, monto_total')
+    .eq('cierre_tenant_id', tenantId)
+    .gte('cierre_fecha_cierre', from)
+    .lt('cierre_fecha_cierre', to)
 
   if (error) throw new Error(error.message)
 
@@ -495,11 +533,11 @@ export async function getProductosMasRentables(
 
   const [productosRes, costsRes] = await Promise.all([
     supabase
-      .from('cierre_caja_productos')
-      .select('producto_id, cantidad, monto_total, cierres_caja!inner(fecha_cierre, tenant_id)')
-      .eq('cierres_caja.tenant_id', tenantId)
-      .gte('cierres_caja.fecha_cierre', from)
-      .lt('cierres_caja.fecha_cierre', to),
+      .from('cierre_caja_productos_active')
+      .select('producto_id, cantidad, monto_total')
+      .eq('cierre_tenant_id', tenantId)
+      .gte('cierre_fecha_cierre', from)
+      .lt('cierre_fecha_cierre', to),
     supabase
       .from('product_costs')
       .select('id, name, sale_price, total_cost')
@@ -563,11 +601,11 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
 
   const [productosRes, costsRes] = await Promise.all([
     supabase
-      .from('cierre_caja_productos')
-      .select('producto_id, cantidad, monto_total, cierres_caja!inner(fecha_cierre, tenant_id)')
-      .eq('cierres_caja.tenant_id', tenantId)
-      .gte('cierres_caja.fecha_cierre', from)
-      .lt('cierres_caja.fecha_cierre', to),
+      .from('cierre_caja_productos_active')
+      .select('producto_id, cantidad, monto_total')
+      .eq('cierre_tenant_id', tenantId)
+      .gte('cierre_fecha_cierre', from)
+      .lt('cierre_fecha_cierre', to),
     supabase
       .from('product_costs')
       .select('id, name, sale_price, total_cost')

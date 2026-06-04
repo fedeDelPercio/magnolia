@@ -1,15 +1,20 @@
 import { formatCurrency, compactNumber } from '@/lib/format'
+import { MenuEngineeringHelp } from './menu-engineering-help'
+import { SectionHeader } from '@/components/shared/section-header'
 import type { MenuEngineeringPoint } from '../queries'
 
 type Props = {
   data: { points: MenuEngineeringPoint[]; thresholdCantidad: number; thresholdMargen: number }
 }
 
+// Orden de las claves = orden de la leyenda inferior. Sigue la lectura por
+// columnas de la matriz: izquierda (Acertijo↖, Perro↙), luego derecha
+// (Estrella↗, Caballito↘). El acceso por key no depende del orden.
 const CUADRANTE_INFO = {
-  estrella: { label: 'Estrellas', hex: '#059669', tint: '#ECFDF5', desc: 'Volumen + rentabilidad. Potenciar.' },
-  caballito: { label: 'Caballitos', hex: '#2563EB', tint: '#EFF6FF', desc: 'Mucho volumen, poco margen. Bajar costo o subir precio.' },
   acertijo: { label: 'Acertijos', hex: '#D97706', tint: '#FFFBEB', desc: 'Buen margen, poca venta. Promover o reubicar.' },
   perro: { label: 'Perros', hex: '#E11D48', tint: '#FFF1F2', desc: 'Poca venta y poco margen. Considerar sacar de carta.' },
+  estrella: { label: 'Estrellas', hex: '#059669', tint: '#ECFDF5', desc: 'Volumen + rentabilidad. Potenciar.' },
+  caballito: { label: 'Caballitos', hex: '#2563EB', tint: '#EFF6FF', desc: 'Mucho volumen, poco margen. Bajar costo o subir precio.' },
 } as const
 
 export function MenuEngineeringMatrix({ data }: Props) {
@@ -17,12 +22,16 @@ export function MenuEngineeringMatrix({ data }: Props) {
 
   if (points.length === 0) {
     return (
-      <div className="card-editorial p-6">
-        <h3 className="text-eyebrow">Menu Engineering</h3>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Sin productos mapeados al catálogo en este período.
-        </p>
-      </div>
+      <section>
+        <SectionHeader eyebrow="Menu Engineering" action={<MenuEngineeringHelp />}>
+          <span className="italic">Qué</span> hacer con cada producto
+        </SectionHeader>
+        <div className="card-editorial p-6">
+          <p className="text-center text-sm text-muted-foreground">
+            Sin productos mapeados al catálogo en este período.
+          </p>
+        </div>
+      </section>
     )
   }
 
@@ -74,17 +83,17 @@ export function MenuEngineeringMatrix({ data }: Props) {
   }
 
   return (
-    <div className="card-editorial p-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h3 className="text-eyebrow">Menu Engineering</h3>
-          <p className="mt-1 text-card-sub">
-            Popularidad × rentabilidad por producto · {points.length} productos analizados
-          </p>
-        </div>
-      </div>
+    <section>
+      <SectionHeader
+        eyebrow="Menu Engineering"
+        action={<MenuEngineeringHelp />}
+        trail={`Popularidad × rentabilidad · ${points.length} productos analizados`}
+      >
+        <span className="italic">Qué</span> hacer con cada producto
+      </SectionHeader>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="card-editorial p-6">
+      <div className="overflow-x-auto">
         <svg
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="xMidYMid meet"
@@ -224,6 +233,7 @@ export function MenuEngineeringMatrix({ data }: Props) {
           ),
         )}
       </div>
-    </div>
+      </div>
+    </section>
   )
 }

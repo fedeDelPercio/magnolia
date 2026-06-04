@@ -91,7 +91,7 @@ export function EvolucionChart({ data, granularity }: Props) {
           </div>
         }
       >
-        <span className="italic">Así</span> está evolucionando la facturación de Magnolia
+        <span className="italic">Así</span> está evolucionando la facturación de MAGNOLIA FOOD
       </SectionHeader>
 
       <div className="card-editorial p-6">
@@ -209,7 +209,7 @@ Digital: ${formatCurrency(d.digital)} (${pctDigital.toFixed(0)}%)`
                         y={yDigital - 8}
                         textAnchor="middle"
                         className="fill-foreground text-[12px] tabular-nums"
-                        style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic' }}
+                        style={{ fontFamily: 'var(--font-display)' }}
                       >
                         {compactNumber(d.total)}
                       </text>
