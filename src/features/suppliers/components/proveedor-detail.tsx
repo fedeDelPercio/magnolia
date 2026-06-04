@@ -1,18 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeftIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, PencilIcon, TrashIcon, CheckCircleIcon, MoreHorizontalIcon, AlertTriangleIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronDownIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, PencilIcon, TrashIcon, CheckCircleIcon, MoreHorizontalIcon, AlertTriangleIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
-import { formatCurrency, formatDate } from '@/lib/format'
+import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { METODO_LABELS } from '../schemas'
-import { deleteCompra, updateCompraStatus } from '../actions'
+import { deleteCompra, updateCompraStatus, setChequeCleared } from '../actions'
 import { CompraDialog } from './compra-dialog'
 import { PagoDialog } from './pago-dialog'
+import { RangePicker } from '@/features/dashboard/components/range-picker'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,8 @@ type Props = {
   compras: CompraWithItems[]
   pagos: PagoProveedor[]
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
+  from: string
+  to: string
 }
 
 type InsumoHistory = {
@@ -48,7 +51,10 @@ type InsumoHistory = {
   entries: { fecha: string; unit_price: number }[]
 }
 
-function formatDateShort(dateStr: string): string {
+// Formato DD-MM-YYYY con año completo, usado en tooltips/labels del chart de
+// precios donde puede haber puntos de varios años. No confundir con el helper
+// formatDateShort de lib/format (DD/MM/YY, para chips con espacio limitado).
+function formatDateChart(dateStr: string): string {
   const [y, m, d] = dateStr.slice(0, 10).split('-')
   return `${d}-${m}-${y}`
 }
@@ -56,9 +62,11 @@ function formatDateShort(dateStr: string): string {
 function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_price: number }[]; unit: string }) {
   if (entries.length < 2) return null
 
-  const width = 600
-  const height = 140
-  const padding = { top: 28, right: 32, bottom: 26, left: 32 }
+  // viewBox amplio. preserveAspectRatio=none + w-full hace que escale full-width
+  // sin distorsionar tipografía (uso vector text que escala uniformemente con SVG).
+  const width = 1200
+  const height = 160
+  const padding = { top: 28, right: 24, bottom: 28, left: 24 }
   const innerW = width - padding.left - padding.right
   const innerH = height - padding.top - padding.bottom
 
@@ -84,27 +92,40 @@ function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_pric
   const compactCurrency = (val: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val)
 
+  // ID único por gráfico (varios charts en la misma página) — derivado de la primera fecha + cantidad.
+  const gradientId = `priceArea-${entries[0]?.fecha}-${entries.length}`
+
   return (
-    <div className="px-4 pt-3 pb-2">
-      <div className="mx-auto w-1/2 min-w-[300px]">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" preserveAspectRatio="none">
-        {/* área degradada */}
+    <div className="px-5 pt-3 pb-2">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-auto w-full text-foreground/80"
+        preserveAspectRatio="none"
+      >
+        {/* área degradada — usa currentColor para alinearse con la paleta editorial */}
         <defs>
-          <linearGradient id="priceArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgb(59 130 246)" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="rgb(59 130 246)" stopOpacity="0" />
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="currentColor" stopOpacity="0.14" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={areaPath} fill="url(#priceArea)" />
+        <path d={areaPath} fill={`url(#${gradientId})`} />
 
         {/* línea */}
-        <path d={linePath} fill="none" stroke="rgb(59 130 246)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path
+          d={linePath}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
 
         {/* puntos */}
         {points.map((p, i) => (
           <g key={i}>
-            <circle cx={p.x} cy={p.y} r="3.5" fill="white" stroke="rgb(59 130 246)" strokeWidth="2" />
-            <title>{`${formatDateShort(p.fecha)}: ${formatCurrency(p.price)}/${unit}`}</title>
+            <circle cx={p.x} cy={p.y} r="3" fill="var(--card)" stroke="currentColor" strokeWidth="1.5" />
+            <title>{`${formatDateChart(p.fecha)}: ${formatCurrency(p.price)}/${unit}`}</title>
           </g>
         ))}
 
@@ -113,10 +134,10 @@ function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_pric
           <text
             key={`v-${i}`}
             x={p.x}
-            y={p.y - 9}
+            y={p.y - 10}
             textAnchor="middle"
             className="fill-foreground"
-            style={{ fontSize: 10, fontWeight: 600 }}
+            style={{ fontSize: 10, fontWeight: 500 }}
           >
             {compactCurrency(p.price)}
           </text>
@@ -128,13 +149,19 @@ function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_pric
           const isLast = i === points.length - 1
           const anchor = isFirst ? 'start' : isLast ? 'end' : 'middle'
           return (
-            <text key={`d-${i}`} x={p.x} y={padding.top + innerH + 14} textAnchor={anchor} className="fill-muted-foreground" style={{ fontSize: 9 }}>
-              {formatDateShort(p.fecha)}
+            <text
+              key={`d-${i}`}
+              x={p.x}
+              y={padding.top + innerH + 16}
+              textAnchor={anchor}
+              className="fill-muted-foreground"
+              style={{ fontSize: 9 }}
+            >
+              {formatDateChart(p.fecha)}
             </text>
           )
         })}
-        </svg>
-      </div>
+      </svg>
     </div>
   )
 }
@@ -156,7 +183,31 @@ function buildPriceHistory(compras: CompraWithItems[]): InsumoHistory[] {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
+function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boolean }) {
+  const [busy, setBusy] = useState(false)
+  async function handleClick() {
+    setBusy(true)
+    const today = new Date().toISOString().slice(0, 10)
+    const res = await setChequeCleared(pagoId, cleared ? null : today)
+    setBusy(false)
+    if (res.error) toast.error(res.error)
+    else toast.success(cleared ? 'Cheque pendiente de nuevo' : 'Cheque marcado como cobrado')
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      className={`text-[10px] underline-offset-2 hover:underline disabled:opacity-50 ${
+        cleared ? 'text-muted-foreground' : 'text-emerald-700 font-medium'
+      }`}
+    >
+      {cleared ? 'Deshacer' : 'Marcar cobrado'}
+    </button>
+  )
+}
+
+export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }: Props) {
   const router = useRouter()
   const [compraOpen, setCompraOpen] = useState(false)
   const [editingCompra, setEditingCompra] = useState<CompraWithItems | null>(null)
@@ -164,6 +215,26 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
   const [pagoDefaultMonto, setPagoDefaultMonto] = useState<number | undefined>(undefined)
   const [pagoCompraId, setPagoCompraId] = useState<string | undefined>(undefined)
   const [deletingCompraId, setDeletingCompraId] = useState<string | null>(null)
+  const [expandedCompras, setExpandedCompras] = useState<Set<string>>(new Set())
+  const [selectedInsumo, setSelectedInsumo] = useState<string | null>(null)
+
+  function toggleExpandedCompra(id: string) {
+    setExpandedCompras((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Mapa compra → pago para mostrar método al lado del badge "Pagada".
+  // Si una compra tiene varios pagos (parciales), nos quedamos con el más reciente.
+  const pagoPorCompra = new Map<string, PagoProveedor>()
+  for (const p of pagos) {
+    if (!p.compra_id) continue
+    const prev = pagoPorCompra.get(p.compra_id)
+    if (!prev || p.fecha > prev.fecha) pagoPorCompra.set(p.compra_id, p)
+  }
 
   async function handleDeleteCompra(compraId: string) {
     setDeletingCompraId(compraId)
@@ -184,7 +255,14 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
   }
 
   const hasAging = proveedor.d31_60 > 0 || proveedor.d61_90 > 0 || proveedor.d90plus > 0
-  const priceHistory = buildPriceHistory(compras)
+
+  // Filtros de tiempo aplican a compras y al historial de precios derivado.
+  // Los pagos y el saldo total se mantienen completos (son acumulados, no de período).
+  const comprasFiltradas = useMemo(
+    () => compras.filter((c) => c.fecha >= from && c.fecha < to),
+    [compras, from, to],
+  )
+  const priceHistory = useMemo(() => buildPriceHistory(comprasFiltradas), [comprasFiltradas])
 
   return (
     <div className="space-y-6">
@@ -198,7 +276,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
             <h1 className="text-xl font-semibold">{proveedor.name}</h1>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <RangePicker from={from} to={to} />
           <Button variant="outline" onClick={() => setPagoOpen(true)}>
             Registrar pago
           </Button>
@@ -266,45 +345,93 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
       <div className="rounded-xl border bg-card overflow-hidden">
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <h2 className="text-base font-semibold">Compras</h2>
-          {compras.length > 0 && (
-            <span className="text-xs text-muted-foreground">{compras.length} registro{compras.length !== 1 ? 's' : ''}</span>
+          {comprasFiltradas.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {comprasFiltradas.length} registro{comprasFiltradas.length !== 1 ? 's' : ''}
+              {comprasFiltradas.length !== compras.length && (
+                <> de {compras.length} totales</>
+              )}
+            </span>
           )}
         </div>
-        {compras.length === 0 ? (
+        {comprasFiltradas.length === 0 ? (
           <div className="border-t px-5 py-10 text-center text-sm text-muted-foreground">
-            Sin compras registradas.
+            {compras.length === 0
+              ? 'Sin compras registradas.'
+              : 'No hay compras en este rango de fechas.'}
           </div>
         ) : (
           <div className="border-t divide-y text-sm">
-            {compras.map((c) => (
+            {comprasFiltradas.map((c) => {
+              const isExpanded = expandedCompras.has(c.id)
+              const itemCount = c.compra_items.length
+              return (
               <div key={c.id} className="px-5 py-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{formatDate(c.fecha)}</p>
-                    {c.due_date && (
-                      <p className="text-xs text-muted-foreground">Vence: {formatDate(c.due_date)}</p>
-                    )}
-                    {c.notes && <p className="text-xs text-muted-foreground mt-0.5">{c.notes}</p>}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandedCompra(c.id)}
+                    aria-expanded={isExpanded}
+                    className="focus-ring -m-1 flex items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/30"
+                  >
+                    <ChevronDownIcon
+                      className={`size-3.5 text-muted-foreground transition-transform ${isExpanded ? '' : '-rotate-90'}`}
+                      aria-hidden
+                    />
+                    <div>
+                      <p className="font-medium">{formatDate(c.fecha)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {itemCount} ítem{itemCount === 1 ? '' : 's'}
+                        {c.due_date && <> · Vence {formatDate(c.due_date)}</>}
+                      </p>
+                      {c.notes && <p className="text-xs text-muted-foreground mt-0.5">{c.notes}</p>}
+                    </div>
+                  </button>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="tabular-nums font-semibold">{formatCurrency(c.total)}</span>
 
                     {/* Status: solo texto, sin borde que lo confunda con botón */}
-                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
-                      c.status === 'pagada'
-                        ? 'bg-green-100 text-green-700'
-                        : c.status === 'pagada_parcial'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-red-100 text-red-600'
-                    }`}>
-                      {STATUS_LABELS[c.status]}
-                    </span>
+                    {(() => {
+                      const pago = pagoPorCompra.get(c.id)
+                      const isCheque = c.status === 'pagada' && pago?.metodo === 'cheque'
+                      const chequePending = isCheque && !pago?.cleared_at
+                      const metodoStr = pago ? (METODO_LABELS[pago.metodo] ?? pago.metodo).toLowerCase() : null
+                      const label =
+                        c.status === 'pagada' && metodoStr
+                          ? `Pagada · ${metodoStr}`
+                          : STATUS_LABELS[c.status]
+                      const tone =
+                        c.status === 'pagada'
+                          ? chequePending
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'border-primary/25 bg-primary/10 text-primary'
+                          : c.status === 'pagada_parcial'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-rose-50/80 text-rose-800/90'
+                      return (
+                        <span
+                          className={`text-xs font-medium px-1.5 py-0.5 rounded-full border border-transparent ${tone}`}
+                          title={
+                            isCheque && pago?.due_date
+                              ? chequePending
+                                ? `Cheque vence ${formatDate(pago.due_date)}`
+                                : `Cheque cobrado ${formatDate(pago.cleared_at!)}`
+                              : undefined
+                          }
+                        >
+                          {label}
+                          {isCheque && pago?.due_date && (
+                            <span className="ml-1 opacity-70 tabular-nums">{formatDateShort(pago.due_date)}</span>
+                          )}
+                        </span>
+                      )
+                    })()}
 
                     {c.status !== 'pagada' && (
                       <Button
                         type="button"
                         size="sm"
-                        className="h-6 gap-1 px-2 text-xs bg-green-600 text-white hover:bg-green-700"
+                        className="h-6 gap-1 px-2 text-xs"
                         onClick={() => handleSaldar(c)}
                       >
                         <CheckCircleIcon className="size-3" />
@@ -340,8 +467,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
                     </DropdownMenu>
                   </div>
                 </div>
-                {c.compra_items.length > 0 && (
-                  <div className="mt-2 space-y-0.5 pl-0">
+                {isExpanded && itemCount > 0 && (
+                  <div className="mt-3 ml-6 space-y-0.5 border-l pl-3">
                     {c.compra_items.map((item) => (
                       <p key={item.id} className="text-xs text-muted-foreground">
                         {item.insumos.name} · {item.qty} {item.insumos.unit} · {formatCurrency(item.unit_price)}/{item.insumos.unit}
@@ -350,7 +477,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
                   </div>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -369,68 +497,116 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos }: Props) {
           </div>
         ) : (
           <div className="border-t divide-y text-sm">
-            {pagos.map((p) => (
-              <div key={p.id} className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <p className="font-medium">{formatDate(p.fecha)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {METODO_LABELS[p.metodo] ?? p.metodo}
-                    {p.descripcion ? ` — ${p.descripcion}` : ''}
-                  </p>
+            {pagos.map((p) => {
+              const chequePending = p.metodo === 'cheque' && !p.cleared_at
+              const metodoTone =
+                p.metodo === 'cheque'
+                  ? chequePending
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : p.metodo === 'transferencia'
+                    ? 'border-sky-200 bg-sky-50 text-sky-700'
+                    : p.metodo === 'efectivo'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-gray-200 bg-gray-50 text-gray-700'
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium">{formatDate(p.fecha)}</p>
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${metodoTone}`}
+                      >
+                        {METODO_LABELS[p.metodo] ?? p.metodo}
+                        {p.metodo === 'cheque' && !chequePending && ' · cobrado'}
+                      </span>
+                      {p.metodo === 'cheque' && p.due_date && (
+                        <span className={`text-xs tabular-nums ${chequePending ? 'text-amber-700' : 'text-muted-foreground line-through'}`}>
+                          {formatDateShort(p.due_date)}
+                        </span>
+                      )}
+                      {p.metodo === 'cheque' && p.cleared_at && (
+                        <span className="text-xs text-emerald-700 tabular-nums">
+                          cobrado {formatDateShort(p.cleared_at)}
+                        </span>
+                      )}
+                      {p.metodo === 'cheque' && (
+                        <ChequeClearedButton pagoId={p.id} cleared={!!p.cleared_at} />
+                      )}
+                    </div>
+                    {p.descripcion && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{p.descripcion}</p>
+                    )}
+                  </div>
+                  <span className="tabular-nums font-semibold text-green-700 shrink-0">{formatCurrency(p.monto)}</span>
                 </div>
-                <span className="tabular-nums font-semibold text-green-700">{formatCurrency(p.monto)}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
 
-      {/* Evolución de precios por insumo */}
-      {priceHistory.length > 0 && (
-        <div className="rounded-xl border bg-card overflow-hidden">
-          <div className="px-5 pt-4 pb-3">
-            <h2 className="text-base font-semibold">Evolución de precios</h2>
-          </div>
-          <div className="border-t divide-y">
-            {priceHistory.map((insumo) => (
-              <div key={insumo.name} className="text-sm">
-                <div className="px-5 py-2.5 text-sm font-semibold bg-card">
-                  {insumo.name}
-                </div>
-                <div className="divide-y border-t">
-                  {[...insumo.entries].reverse().map((entry, idx, arr) => {
-                    const prev = arr[idx + 1]
-                    const changePct = prev ? ((entry.unit_price - prev.unit_price) / prev.unit_price) * 100 : null
-                    const isLarge = changePct !== null && changePct >= 20
-                    return (
-                      <div key={entry.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
-                        <span className="text-muted-foreground">{formatDate(entry.fecha)}</span>
-                        <span className="tabular-nums text-right">{formatCurrency(entry.unit_price)} / {insumo.unit}</span>
-                        <span className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
-                          {changePct !== null ? (
-                            <span className={`flex items-center gap-0.5 ${isLarge ? 'font-semibold text-red-600' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                              {isLarge && <AlertTriangleIcon className="size-3" />}
-                              {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
-                              {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground/40">—</span>
-                          )}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-                {insumo.entries.length >= 2 && (
-                  <div className="border-t">
-                    <PriceLineChart entries={insumo.entries} unit={insumo.unit} />
-                  </div>
-                )}
+      {/* Evolución de precios — un insumo por vez para evitar listas larguísimas */}
+      {priceHistory.length > 0 && (() => {
+        // Default: primer insumo alfabético si no hay selección o la seleccionada ya no está en el rango.
+        const activeHistory =
+          priceHistory.find((h) => h.name === selectedInsumo) ?? priceHistory[0]!
+        const entries = activeHistory.entries
+        const reversed = [...entries].reverse()
+        return (
+          <div className="rounded-xl border bg-card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
+              <h2 className="text-base font-semibold">Evolución de precios</h2>
+              <div className="flex items-center gap-2">
+                <label htmlFor="insumo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Insumo
+                </label>
+                <select
+                  id="insumo-select"
+                  value={activeHistory.name}
+                  onChange={(e) => setSelectedInsumo(e.target.value)}
+                  className="focus-ring rounded-md border bg-background px-2.5 py-1 text-sm tabular-nums"
+                >
+                  {priceHistory.map((h) => (
+                    <option key={h.name} value={h.name}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ))}
+            </div>
+            <div className="border-t divide-y text-sm">
+              {reversed.map((entry, idx, arr) => {
+                const prev = arr[idx + 1]
+                const changePct = prev ? ((entry.unit_price - prev.unit_price) / prev.unit_price) * 100 : null
+                const isLarge = changePct !== null && changePct >= 20
+                return (
+                  <div key={entry.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
+                    <span className="text-muted-foreground">{formatDate(entry.fecha)}</span>
+                    <span className="tabular-nums text-right">{formatCurrency(entry.unit_price)} / {activeHistory.unit}</span>
+                    <span className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
+                      {changePct !== null ? (
+                        <span className={`flex items-center gap-0.5 ${isLarge ? 'font-semibold text-rose-700' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-primary' : 'text-muted-foreground'}`}>
+                          {isLarge && <AlertTriangleIcon className="size-3" />}
+                          {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
+                          {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            {entries.length >= 2 && (
+              <div className="border-t">
+                <PriceLineChart entries={entries} unit={activeHistory.unit} />
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       <CompraDialog
         open={compraOpen}

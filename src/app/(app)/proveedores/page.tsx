@@ -16,7 +16,7 @@ export default async function ProveedoresPage() {
             <span className="italic">Cuenta</span> corriente
           </>
         }
-        description="Saldo deudor, compras y reglas de pago por proveedor."
+        size="md"
       />
       <ProveedoresClient proveedores={proveedores} />
     </div>

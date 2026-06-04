@@ -60,12 +60,19 @@ export const compraItemSchema = z.object({
 })
 export type CompraItemFormValues = z.infer<typeof compraItemSchema>
 
-export const pagoSchema = z.object({
-  fecha: z.string().min(1),
-  monto: z.number().positive('Monto requerido'),
-  metodo: z.enum(['efectivo', 'transferencia', 'cheque', 'otro']),
-  descripcion: z.string().optional(),
-})
+export const pagoSchema = z
+  .object({
+    fecha: z.string().min(1),
+    monto: z.number().positive('Monto requerido'),
+    metodo: z.enum(['efectivo', 'transferencia', 'cheque', 'otro']),
+    descripcion: z.string().optional(),
+    // Sólo aplica cuando metodo === 'cheque'. Se computa desde el plazo seleccionado.
+    due_date: z.string().optional(),
+  })
+  .refine((v) => v.metodo !== 'cheque' || !!v.due_date, {
+    path: ['due_date'],
+    message: 'Indicá la fecha de vencimiento del cheque',
+  })
 export type PagoFormValues = z.infer<typeof pagoSchema>
 
 export const cajaEgresoSchema = z.object({

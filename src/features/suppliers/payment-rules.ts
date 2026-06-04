@@ -122,9 +122,13 @@ export function evaluatePaymentRule(
 }
 
 export function describePaymentRule(rule: PaymentRule): string {
-  if (rule.kind === 'boletas') return `Cada ${rule.n} boletas pendientes`
+  if (rule.kind === 'boletas') {
+    return rule.n === 1
+      ? 'Avisar al acumular 1 boleta sin pagar'
+      : `Avisar al acumular ${rule.n} boletas sin pagar`
+  }
   if (rule.kind === 'monto')
-    return `Al alcanzar $${rule.umbral.toLocaleString('es-AR')} pendientes`
+    return `Avisar al acumular $${rule.umbral.toLocaleString('es-AR')} sin pagar`
   if (rule.kind === 'fecha_dia_mes') return `Día ${rule.dia_mes} de cada mes`
   return `${NTH_LABELS[rule.nth]} ${DOW_LABELS[rule.dow]} del mes`
 }

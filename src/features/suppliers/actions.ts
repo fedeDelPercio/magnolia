@@ -239,6 +239,8 @@ export async function createPago(
     monto: values.monto,
     metodo: values.metodo,
     descripcion: values.descripcion || null,
+    due_date: values.metodo === 'cheque' ? (values.due_date ?? null) : null,
+    compra_id: compraId ?? null,
   })
 
   if (error) return { error: error.message }
@@ -254,5 +256,22 @@ export async function createPago(
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
   revalidatePath('/caja')
+  return {}
+}
+
+// Marca/desmarca un cheque como cobrado. Pasar null en clearedAt deshace.
+export async function setChequeCleared(
+  pagoId: string,
+  clearedAt: string | null,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('pagos_proveedor')
+    .update({ cleared_at: clearedAt })
+    .eq('id', pagoId)
+  if (error) return { error: error.message }
+  revalidatePath('/proveedores', 'layout')
+  revalidatePath('/caja')
+  revalidatePath('/alertas')
   return {}
 }
