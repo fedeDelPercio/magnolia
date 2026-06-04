@@ -54,6 +54,80 @@ export async function getProveedoresConRegla(): Promise<ProveedorWithRule[]> {
   }))
 }
 
+export type ChequesMesEntry = {
+  id: string
+  proveedorName: string | null
+  monto: number
+  fecha: string
+  dueDate: string
+}
+
+export type ChequesMesSummary = {
+  limite: number              // 0 = sin límite configurado
+  totalVenciendoMes: number   // suma de monto de cheques cuyo due_date cae en el mes corriente
+  emitidos: ChequesMesEntry[] // detalle (orden asc por due_date)
+  monthLabel: string          // e.g. "junio 2026"
+  monthStart: string          // ISO YYYY-MM-DD
+  monthEnd: string            // ISO YYYY-MM-DD (exclusivo)
+}
+
+const MES_NOMBRE = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+]
+
+export async function getChequesMesSummary(
+  limite: number,
+  monthRef?: Date,
+): Promise<ChequesMesSummary> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+
+  const ref = monthRef ?? new Date()
+  const monthStart = new Date(ref.getFullYear(), ref.getMonth(), 1)
+  const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 1)
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+  const { data, error } = await supabase
+    .from('pagos_proveedor')
+    .select('id, fecha, monto, due_date, proveedores!inner(name)')
+    .eq('tenant_id', tenantId)
+    .eq('metodo', 'cheque')
+    .is('cleared_at', null)
+    .gte('due_date', iso(monthStart))
+    .lt('due_date', iso(monthEnd))
+    .order('due_date', { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  const rows = (data ?? []) as unknown as Array<{
+    id: string
+    fecha: string
+    monto: number
+    due_date: string
+    proveedores: { name: string } | null
+  }>
+
+  const emitidos: ChequesMesEntry[] = rows.map((r) => ({
+    id: r.id,
+    proveedorName: r.proveedores?.name ?? null,
+    monto: Number(r.monto) || 0,
+    fecha: r.fecha,
+    dueDate: r.due_date,
+  }))
+  const totalVenciendoMes = emitidos.reduce((s, e) => s + e.monto, 0)
+
+  return {
+    limite,
+    totalVenciendoMes,
+    emitidos,
+    monthLabel: `${MES_NOMBRE[monthStart.getMonth()]} ${monthStart.getFullYear()}`,
+    monthStart: iso(monthStart),
+    monthEnd: iso(monthEnd),
+  }
+}
+
 export type IvaBalance = {
   taxRate: number
   digitalRevenue: number
@@ -73,7 +147,7 @@ export async function getIvaBalance(
 
   const [cierresRes, comprasRes] = await Promise.all([
     supabase
-      .from('cierres_caja')
+      .from('cierres_caja_active')
       .select('monto_tarjetas, monto_qr, monto_online')
       .eq('tenant_id', tenantId)
       .gte('fecha_cierre', from)

@@ -61,11 +61,13 @@ export function RuleAlertCard({ proveedorId, proveedorName, rule, evaluation }: 
 
       {evaluation.kind === 'boletas' && (
         <div className="mt-4 space-y-1.5">
-          <div className="flex items-baseline justify-between">
+          <div className="flex items-baseline justify-between gap-3">
             <span className={cn('num-editorial text-2xl leading-none', tone.valueText)}>
-              {evaluation.current} / {evaluation.target}
+              {evaluation.current} {evaluation.current === 1 ? 'boleta' : 'boletas'}
             </span>
-            <span className="text-card-sub">boletas pendientes</span>
+            <span className="text-card-sub text-metric">
+              alerta al llegar a {evaluation.target}
+            </span>
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
             <div className={cn('h-full rounded-full', tone.bar)} style={{ width: `${evaluation.pct}%` }} />
@@ -80,7 +82,7 @@ export function RuleAlertCard({ proveedorId, proveedorName, rule, evaluation }: 
               {formatCurrency(evaluation.current)}
             </span>
             <span className="text-card-sub text-metric">
-              de {formatCurrency(evaluation.target)}
+              alerta al llegar a {formatCurrency(evaluation.target)}
             </span>
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
