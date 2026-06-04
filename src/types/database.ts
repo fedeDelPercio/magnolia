@@ -58,6 +58,245 @@ export type Database = {
           },
         ]
       }
+      bistro_credentials: {
+        Row: {
+          created_at: string
+          last_token: string | null
+          last_token_expires_at: string | null
+          password_secret_id: string | null
+          shop_code: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          last_token?: string | null
+          last_token_expires_at?: string | null
+          password_secret_id?: string | null
+          shop_code?: string | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          username: string
+        }
+        Update: {
+          created_at?: string
+          last_token?: string | null
+          last_token_expires_at?: string | null
+          password_secret_id?: string | null
+          shop_code?: string | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bistro_credentials_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bistro_sync_runs: {
+        Row: {
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          pages_fetched: number
+          range_from: string
+          range_to: string
+          shop_codes: string[] | null
+          started_at: string
+          status: string
+          tenant_id: string
+          transactions_inserted: number
+          transactions_updated: number
+          triggered_by: string | null
+          unmapped_items_count: number
+        }
+        Insert: {
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          pages_fetched?: number
+          range_from: string
+          range_to: string
+          shop_codes?: string[] | null
+          started_at?: string
+          status: string
+          tenant_id: string
+          transactions_inserted?: number
+          transactions_updated?: number
+          triggered_by?: string | null
+          unmapped_items_count?: number
+        }
+        Update: {
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          pages_fetched?: number
+          range_from?: string
+          range_to?: string
+          shop_codes?: string[] | null
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          transactions_inserted?: number
+          transactions_updated?: number
+          triggered_by?: string | null
+          unmapped_items_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bistro_sync_runs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bistro_transaccion_items: {
+        Row: {
+          amount: number
+          comments: string | null
+          id: string
+          item_name: string
+          line_type: string
+          measure_unit: string | null
+          producto_id: string | null
+          quantity: number
+          sku: string | null
+          tenant_id: string
+          transaccion_id: string
+          vat: number | null
+        }
+        Insert: {
+          amount: number
+          comments?: string | null
+          id?: string
+          item_name: string
+          line_type: string
+          measure_unit?: string | null
+          producto_id?: string | null
+          quantity: number
+          sku?: string | null
+          tenant_id: string
+          transaccion_id: string
+          vat?: number | null
+        }
+        Update: {
+          amount?: number
+          comments?: string | null
+          id?: string
+          item_name?: string
+          line_type?: string
+          measure_unit?: string | null
+          producto_id?: string | null
+          quantity?: number
+          sku?: string | null
+          tenant_id?: string
+          transaccion_id?: string
+          vat?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bistro_transaccion_items_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "product_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bistro_transaccion_items_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bistro_transaccion_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bistro_transaccion_items_transaccion_id_fkey"
+            columns: ["transaccion_id"]
+            isOneToOne: false
+            referencedRelation: "bistro_transacciones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bistro_transacciones: {
+        Row: {
+          amount_total: number
+          client_name: string | null
+          comments: string | null
+          fecha_hora: string
+          fecha_local: string | null
+          id: string
+          origin: string | null
+          payment_method: string | null
+          raw_payload: Json
+          shop_code: string
+          synced_at: string
+          tenant_id: string
+          ticket_number: number
+          transaction_type: string
+          user_name: string | null
+        }
+        Insert: {
+          amount_total: number
+          client_name?: string | null
+          comments?: string | null
+          fecha_hora: string
+          fecha_local?: string | null
+          id?: string
+          origin?: string | null
+          payment_method?: string | null
+          raw_payload: Json
+          shop_code: string
+          synced_at?: string
+          tenant_id: string
+          ticket_number: number
+          transaction_type: string
+          user_name?: string | null
+        }
+        Update: {
+          amount_total?: number
+          client_name?: string | null
+          comments?: string | null
+          fecha_hora?: string
+          fecha_local?: string | null
+          id?: string
+          origin?: string | null
+          payment_method?: string | null
+          raw_payload?: Json
+          shop_code?: string
+          synced_at?: string
+          tenant_id?: string
+          ticket_number?: number
+          transaction_type?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bistro_transacciones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       caja_movimientos: {
         Row: {
           categoria: string
@@ -148,6 +387,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cierre_caja_productos_cierre_caja_id_fkey"
+            columns: ["cierre_caja_id"]
+            isOneToOne: false
+            referencedRelation: "cierres_caja_active"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cierre_caja_productos_producto_id_fkey"
             columns: ["producto_id"]
             isOneToOne: false
@@ -175,6 +421,7 @@ export type Database = {
           efectivo_cierre: number
           fecha_apertura: string
           fecha_cierre: string
+          fecha_cierre_local: string | null
           id: string
           monto_cuenta_cliente: number
           monto_efectivo: number
@@ -186,6 +433,8 @@ export type Database = {
           operador: string | null
           raw_payload: Json | null
           razon_social: string | null
+          shop_code: string | null
+          source: string
           tenant_id: string
           ticket_promedio: number
           total_comandas: number
@@ -207,6 +456,7 @@ export type Database = {
           efectivo_cierre?: number
           fecha_apertura: string
           fecha_cierre: string
+          fecha_cierre_local?: string | null
           id?: string
           monto_cuenta_cliente?: number
           monto_efectivo?: number
@@ -218,6 +468,8 @@ export type Database = {
           operador?: string | null
           raw_payload?: Json | null
           razon_social?: string | null
+          shop_code?: string | null
+          source?: string
           tenant_id: string
           ticket_promedio?: number
           total_comandas?: number
@@ -239,6 +491,7 @@ export type Database = {
           efectivo_cierre?: number
           fecha_apertura?: string
           fecha_cierre?: string
+          fecha_cierre_local?: string | null
           id?: string
           monto_cuenta_cliente?: number
           monto_efectivo?: number
@@ -250,6 +503,8 @@ export type Database = {
           operador?: string | null
           raw_payload?: Json | null
           razon_social?: string | null
+          shop_code?: string | null
+          source?: string
           tenant_id?: string
           ticket_promedio?: number
           total_comandas?: number
@@ -427,6 +682,270 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "dias_operativos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empleado_ausencias: {
+        Row: {
+          created_at: string
+          empleado_id: string
+          fecha: string
+          id: string
+          notas: string | null
+          paga: boolean
+          tenant_id: string
+          tipo: string
+        }
+        Insert: {
+          created_at?: string
+          empleado_id: string
+          fecha: string
+          id?: string
+          notas?: string | null
+          paga?: boolean
+          tenant_id: string
+          tipo: string
+        }
+        Update: {
+          created_at?: string
+          empleado_id?: string
+          fecha?: string
+          id?: string
+          notas?: string | null
+          paga?: boolean
+          tenant_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleado_ausencias_empleado_id_fkey"
+            columns: ["empleado_id"]
+            isOneToOne: false
+            referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_ausencias_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empleado_horarios: {
+        Row: {
+          dow: number
+          empleado_id: string
+          hora_fin: string
+          hora_inicio: string
+          id: string
+          tenant_id: string
+        }
+        Insert: {
+          dow: number
+          empleado_id: string
+          hora_fin: string
+          hora_inicio: string
+          id?: string
+          tenant_id: string
+        }
+        Update: {
+          dow?: number
+          empleado_id?: string
+          hora_fin?: string
+          hora_inicio?: string
+          id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleado_horarios_empleado_id_fkey"
+            columns: ["empleado_id"]
+            isOneToOne: false
+            referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_horarios_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empleado_liquidaciones: {
+        Row: {
+          caja_movimiento_id: string | null
+          created_at: string
+          dias_ausentes_pagos: number
+          dias_programados: number
+          dias_trabajados: number
+          empleado_id: string
+          fecha_desde: string
+          fecha_hasta: string
+          id: string
+          monto_plus: number
+          monto_sueldo: number
+          monto_total: number | null
+          notas: string | null
+          tenant_id: string
+        }
+        Insert: {
+          caja_movimiento_id?: string | null
+          created_at?: string
+          dias_ausentes_pagos: number
+          dias_programados: number
+          dias_trabajados: number
+          empleado_id: string
+          fecha_desde: string
+          fecha_hasta: string
+          id?: string
+          monto_plus?: number
+          monto_sueldo: number
+          monto_total?: number | null
+          notas?: string | null
+          tenant_id: string
+        }
+        Update: {
+          caja_movimiento_id?: string | null
+          created_at?: string
+          dias_ausentes_pagos?: number
+          dias_programados?: number
+          dias_trabajados?: number
+          empleado_id?: string
+          fecha_desde?: string
+          fecha_hasta?: string
+          id?: string
+          monto_plus?: number
+          monto_sueldo?: number
+          monto_total?: number | null
+          notas?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleado_liquidaciones_caja_movimiento_id_fkey"
+            columns: ["caja_movimiento_id"]
+            isOneToOne: false
+            referencedRelation: "caja_movimientos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_liquidaciones_empleado_id_fkey"
+            columns: ["empleado_id"]
+            isOneToOne: false
+            referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_liquidaciones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empleado_vacaciones: {
+        Row: {
+          cancelada: boolean
+          created_at: string
+          empleado_id: string
+          fecha_desde: string
+          fecha_hasta: string
+          id: string
+          notas: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cancelada?: boolean
+          created_at?: string
+          empleado_id: string
+          fecha_desde: string
+          fecha_hasta: string
+          id?: string
+          notas?: string | null
+          tenant_id: string
+        }
+        Update: {
+          cancelada?: boolean
+          created_at?: string
+          empleado_id?: string
+          fecha_desde?: string
+          fecha_hasta?: string
+          id?: string
+          notas?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleado_vacaciones_empleado_id_fkey"
+            columns: ["empleado_id"]
+            isOneToOne: false
+            referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_vacaciones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empleados: {
+        Row: {
+          activo: boolean
+          aguinaldo_estimado: number
+          created_at: string
+          fecha_ingreso: string | null
+          id: string
+          name: string
+          notas: string | null
+          plus_mensual: number
+          sueldo_diario: number
+          tenant_id: string
+          updated_at: string
+          vacaciones_dias_anuales: number
+        }
+        Insert: {
+          activo?: boolean
+          aguinaldo_estimado?: number
+          created_at?: string
+          fecha_ingreso?: string | null
+          id?: string
+          name: string
+          notas?: string | null
+          plus_mensual?: number
+          sueldo_diario?: number
+          tenant_id: string
+          updated_at?: string
+          vacaciones_dias_anuales?: number
+        }
+        Update: {
+          activo?: boolean
+          aguinaldo_estimado?: number
+          created_at?: string
+          fecha_ingreso?: string | null
+          id?: string
+          name?: string
+          notas?: string | null
+          plus_mensual?: number
+          sueldo_diario?: number
+          tenant_id?: string
+          updated_at?: string
+          vacaciones_dias_anuales?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleados_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -788,8 +1307,11 @@ export type Database = {
       }
       pagos_proveedor: {
         Row: {
+          cleared_at: string | null
+          compra_id: string | null
           created_at: string
           descripcion: string | null
+          due_date: string | null
           fecha: string
           id: string
           metodo: Database["public"]["Enums"]["pago_metodo"]
@@ -799,8 +1321,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cleared_at?: string | null
+          compra_id?: string | null
           created_at?: string
           descripcion?: string | null
+          due_date?: string | null
           fecha?: string
           id?: string
           metodo?: Database["public"]["Enums"]["pago_metodo"]
@@ -810,8 +1335,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cleared_at?: string | null
+          compra_id?: string | null
           created_at?: string
           descripcion?: string | null
+          due_date?: string | null
           fecha?: string
           id?: string
           metodo?: Database["public"]["Enums"]["pago_metodo"]
@@ -821,6 +1349,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pagos_proveedor_compra_id_fkey"
+            columns: ["compra_id"]
+            isOneToOne: false
+            referencedRelation: "compras"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pagos_proveedor_proveedor_id_fkey"
             columns: ["proveedor_id"]
@@ -1284,6 +1819,112 @@ export type Database = {
       }
     }
     Views: {
+      cierre_caja_productos_active: {
+        Row: {
+          cantidad: number | null
+          categoria: string | null
+          cierre_caja_id: string | null
+          cierre_fecha_cierre: string | null
+          cierre_fecha_local: string | null
+          cierre_shop_code: string | null
+          cierre_source: string | null
+          cierre_tenant_id: string | null
+          id: string | null
+          monto_total: number | null
+          nombre: string | null
+          producto_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cierre_caja_productos_cierre_caja_id_fkey"
+            columns: ["cierre_caja_id"]
+            isOneToOne: false
+            referencedRelation: "cierres_caja"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierre_caja_productos_cierre_caja_id_fkey"
+            columns: ["cierre_caja_id"]
+            isOneToOne: false
+            referencedRelation: "cierres_caja_active"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierre_caja_productos_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "product_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierre_caja_productos_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierres_caja_tenant_id_fkey"
+            columns: ["cierre_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cierres_caja_active: {
+        Row: {
+          cantidad_comandas: number | null
+          cantidad_ventas: number | null
+          created_at: string | null
+          created_by: string | null
+          cubiertos: number | null
+          dia_operativo_id: string | null
+          efectivo_apertura: number | null
+          efectivo_cierre: number | null
+          fecha_apertura: string | null
+          fecha_cierre: string | null
+          fecha_cierre_local: string | null
+          id: string | null
+          monto_cuenta_cliente: number | null
+          monto_efectivo: number | null
+          monto_mostrador: number | null
+          monto_online: number | null
+          monto_qr: number | null
+          monto_salon: number | null
+          monto_tarjetas: number | null
+          operador: string | null
+          raw_payload: Json | null
+          razon_social: string | null
+          shop_code: string | null
+          source: string | null
+          tenant_id: string | null
+          ticket_promedio: number | null
+          total_comandas: number | null
+          total_depositos: number | null
+          total_retiros: number | null
+          total_vendido: number | null
+          total_ventas: number | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cierres_caja_dia_operativo_id_fkey"
+            columns: ["dia_operativo_id"]
+            isOneToOne: false
+            referencedRelation: "dias_operativos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cierres_caja_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insumo_stock: {
         Row: {
           insumo_id: string | null
@@ -1366,6 +2007,26 @@ export type Database = {
       abrir_dia: {
         Args: { p_fecha: string; p_tenant_id: string }
         Returns: string
+      }
+      bistro_clear_credentials: { Args: never; Returns: undefined }
+      bistro_get_credentials: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          last_token: string
+          last_token_expires_at: string
+          password: string
+          shop_code: string
+          tenant_id: string
+          username: string
+        }[]
+      }
+      bistro_save_credentials: {
+        Args: { p_password: string; p_shop_code?: string; p_username: string }
+        Returns: undefined
+      }
+      bistro_update_token: {
+        Args: { p_expires_at: string; p_tenant_id: string; p_token: string }
+        Returns: undefined
       }
       cerrar_dia: { Args: { p_dia_id: string }; Returns: undefined }
       current_tenant_ids: { Args: never; Returns: string[] }

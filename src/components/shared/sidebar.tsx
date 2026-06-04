@@ -10,8 +10,8 @@ import {
   ClipboardList,
   Truck,
   Wallet,
+  Users,
   Bell,
-  BarChart2,
   Settings,
   LogOut,
 } from 'lucide-react'
@@ -49,6 +49,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/operacion', label: 'Operación diaria', icon: ClipboardList },
       { href: '/proveedores', label: 'Proveedores', icon: Truck },
+      { href: '/empleados', label: 'Empleados', icon: Users },
       { href: '/caja', label: 'Caja', icon: Wallet },
     ],
   },
@@ -56,7 +57,6 @@ const navSections: NavSection[] = [
     section: 'Análisis',
     items: [
       { href: '/alertas', label: 'Alertas', icon: Bell },
-      { href: '/reportes', label: 'Reportes', icon: BarChart2 },
     ],
   },
   {
@@ -90,7 +90,7 @@ export function Sidebar() {
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
             <BookOpen className="h-4 w-4 text-white" />
           </div>
-          <span className="text-sm font-semibold text-gray-900">Magnolia</span>
+          <span className="text-sm font-semibold text-gray-900">MAGNOLIA FOOD</span>
         </div>
       </div>
 

@@ -7,10 +7,20 @@ import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpIcon, ArrowDownIcon
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
-import { formatCurrency, formatDate } from '@/lib/format'
+import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { EgresoDialog } from './egreso-dialog'
 import type { CajaMovimiento } from '../queries'
 import type { MonthlyVentasSummary } from '@/features/cierres/queries'
+import { METODO_LABELS } from '@/features/suppliers/schemas'
+
+// Tono visual por método: cheque destaca en amber porque no es flujo realizado todavía.
+const METODO_TONE: Record<string, string> = {
+  efectivo: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  transferencia: 'border-sky-200 bg-sky-50 text-sky-700',
+  cheque: 'border-amber-200 bg-amber-50 text-amber-800',
+  otro: 'border-gray-200 bg-gray-50 text-gray-700',
+}
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -172,6 +182,24 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0 }: P
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {m.metodo && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'tabular-nums',
+                      m.metodo === 'cheque' && m.cleared_at
+                        ? METODO_TONE.efectivo
+                        : METODO_TONE[m.metodo] ?? METODO_TONE.otro,
+                    )}
+                  >
+                    {METODO_LABELS[m.metodo] ?? m.metodo}
+                    {m.metodo === 'cheque' && m.cleared_at
+                      ? ` · cobrado ${formatDateShort(m.cleared_at)}`
+                      : m.metodo === 'cheque' && m.due_date
+                        ? ` · vence ${formatDateShort(m.due_date)}`
+                        : null}
+                  </Badge>
+                )}
                 <Badge
                   variant="outline"
                   className={m.tipo === 'ingreso'

@@ -8,7 +8,6 @@ import {
   ChevronDownIcon,
   LogOutIcon,
   SettingsIcon,
-  BarChart2Icon,
   SearchIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -34,6 +33,16 @@ const NAV: NavItem[] = [
   },
   { href: '/operacion', label: 'Operación' },
   { href: '/proveedores', label: 'Proveedores' },
+  {
+    href: '/empleados',
+    label: 'Empleados',
+    sub: [
+      { href: '/empleados', label: 'Listado' },
+      { href: '/empleados/vacaciones', label: 'Vacaciones' },
+      { href: '/empleados/horarios', label: 'Horarios' },
+      { href: '/empleados/asistencia', label: 'Asistencia' },
+    ],
+  },
   { href: '/caja', label: 'Caja' },
   { href: '/alertas', label: 'Alertas' },
 ]
@@ -95,7 +104,7 @@ export function TopNav() {
           <div className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground">
             <span className="font-display text-lg leading-none">M</span>
           </div>
-          <span className="font-display text-xl tracking-tight">Magnolia</span>
+          <span className="font-display text-xl tracking-tight">MAGNOLIA FOOD</span>
         </Link>
 
         {/* Nav rail — pill on darker surface */}
@@ -159,15 +168,6 @@ export function TopNav() {
                 className="absolute right-0 top-full mt-2 w-52 overflow-hidden rounded-2xl border border-border/80 bg-popover shadow-lg"
               >
                 <Link
-                  href="/reportes"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                  className="focus-ring -mx-px flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:bg-muted/60"
-                >
-                  <BarChart2Icon className="size-4 text-muted-foreground" aria-hidden />
-                  Reportes
-                </Link>
-                <Link
                   href="/config"
                   role="menuitem"
                   onClick={() => setMenuOpen(false)}
@@ -192,29 +192,39 @@ export function TopNav() {
         </div>
       </div>
 
-      {/* Subnav — only when active item has children */}
-      {activeItem?.sub && (
-        <div className="mx-auto flex w-full max-w-[1400px] items-center gap-1 px-6 pb-3" aria-label="Sub-secciones">
-          {activeItem.sub.map((s) => {
-            const subActive = pathname === s.href || pathname.startsWith(s.href + '/')
-            return (
-              <Link
-                key={s.href}
-                href={s.href}
-                aria-current={subActive ? 'page' : undefined}
-                className={cn(
-                  'focus-ring rounded-full px-3 py-1 text-sm font-medium transition-colors',
-                  subActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {s.label}
-              </Link>
-            )
-          })}
-        </div>
-      )}
+      {/* Subnav — only when active item has children. Longest-match wins entre subs
+          para que /empleados (Listado) no se marque cuando estamos en /empleados/vacaciones. */}
+      {activeItem?.sub && (() => {
+        const matches = activeItem.sub.filter(
+          (s) => pathname === s.href || pathname.startsWith(s.href + '/'),
+        )
+        const longestHref = matches.reduce<string>(
+          (acc, s) => (s.href.length > acc.length ? s.href : acc),
+          '',
+        )
+        return (
+          <div className="mx-auto flex w-full max-w-[1400px] items-center gap-1 px-6 pb-3" aria-label="Sub-secciones">
+            {activeItem.sub.map((s) => {
+              const subActive = s.href === longestHref
+              return (
+                <Link
+                  key={s.href}
+                  href={s.href}
+                  aria-current={subActive ? 'page' : undefined}
+                  className={cn(
+                    'focus-ring rounded-full px-3 py-1 text-sm font-medium transition-colors',
+                    subActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {s.label}
+                </Link>
+              )
+            })}
+          </div>
+        )
+      })()}
     </header>
   )
 }

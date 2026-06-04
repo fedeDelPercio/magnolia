@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
+import { generarPagosDelDia } from '@/features/empleados/actions'
 
 export async function abrirDia(fecha: string): Promise<{ id?: string; error?: string }> {
   const supabase = await createClient()
@@ -52,16 +53,21 @@ export async function saveMovimiento(
   return {}
 }
 
-export async function cerrarDia(diaId: string): Promise<{ error?: string }> {
+export async function cerrarDia(diaId: string): Promise<{ error?: string; sueldosPagados?: number }> {
   const supabase = await createClient()
 
   const { error } = await supabase.rpc('cerrar_dia', { p_dia_id: diaId })
-
   if (error) return { error: error.message }
+
+  // Al cerrar el día, generamos automáticamente los pagos de sueldos del personal
+  // que trabajó ese día (modelo "se paga en mano cada día"). Es idempotente:
+  // re-cerrar el mismo día no duplica los egresos.
+  const pagos = await generarPagosDelDia(diaId)
 
   revalidatePath('/operacion')
   revalidatePath(`/operacion/${diaId}`)
-  return {}
+  revalidatePath('/caja')
+  return { sueldosPagados: pagos.count }
 }
 
 export async function reabrirDia(diaId: string): Promise<{ error?: string }> {
