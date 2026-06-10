@@ -15,7 +15,21 @@ type Client = SupabaseClient<Database>
 const PAGE_LIMIT = 1000
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60_000
 const AR_TZ = 'America/Argentina/Buenos_Aires'
-const VENTA_TYPES = new Set(['VENTA', 'VENTA (Multipago)', 'VENTA (Pago parcial)'])
+// En el Bistrosoft de Magnolia, tanto VENTA como COMANDA representan tickets
+// cobrados (vienen con payment_method asignado: EFECTIVO/TARJETA/QR/ONLINE).
+// La diferencia entre ambos es interna del POS (probablemente "factura emitida"
+// vs "comprobante sin factura"). Bistrosoft suma los dos en su panel de
+// facturación, así que nosotros también. Validado contrastando con el reporte
+// de "Ventas por medio de pago" de Bistro: COMANDA+VENTA por bucket matchea
+// al peso con lo que muestra Bistro.
+const VENTA_TYPES = new Set([
+  'VENTA',
+  'VENTA (Multipago)',
+  'VENTA (Pago parcial)',
+  'COMANDA',
+  'COMANDA (Multipago)',
+  'COMANDA (Pago parcial)',
+])
 
 const PAYMENT_BUCKETS = {
   efectivo: ['EFECTIVO'],
