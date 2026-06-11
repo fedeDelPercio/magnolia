@@ -31,10 +31,25 @@ export const insumoSchema = z
     shelf_life_days: z.number().int().positive().nullable().optional(),
     track_stock: z.boolean().default(false),
     stock_inicial: z.number().min(0).default(0),
+    // Presentación de compra opcional. Si se setea uno, hay que setear el otro.
+    // Ej: comprás "cajón" y 1 cajón = 10 kg → label="cajón", factor=10.
+    purchase_unit_label: z.string().trim().min(1).nullable().optional(),
+    purchase_unit_factor: z.number().positive().nullable().optional(),
   })
   .refine(
     (data) => !data.perishable || (data.shelf_life_days != null && data.shelf_life_days > 0),
     { message: 'Indicá la vida útil en días para insumos perecederos', path: ['shelf_life_days'] },
+  )
+  .refine(
+    (data) => {
+      const hasLabel = !!data.purchase_unit_label
+      const hasFactor = data.purchase_unit_factor != null
+      return hasLabel === hasFactor
+    },
+    {
+      message: 'Completá el nombre de la presentación y la equivalencia (o dejá ambos vacíos)',
+      path: ['purchase_unit_factor'],
+    },
   )
 
 export type InsumoFormValues = z.infer<typeof insumoSchema>

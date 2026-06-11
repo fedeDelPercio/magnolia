@@ -53,7 +53,7 @@ async function ensureInitialStockAjuste(
 
 export async function createInsumo(
   values: InsumoFormValues,
-): Promise<{ error?: string; data?: { id: string; name: string; unit: string; current_price: number } }> {
+): Promise<{ error?: string; data?: { id: string; name: string; unit: string; current_price: number; purchase_unit_label: string | null; purchase_unit_factor: number | null } }> {
   try {
     const supabase = await createClient()
     const tenantId = await getActiveTenantId()
@@ -70,9 +70,11 @@ export async function createInsumo(
         shelf_life_days: values.perishable ? (values.shelf_life_days ?? null) : null,
         track_stock: values.track_stock,
         stock_inicial: values.track_stock ? (values.stock_inicial ?? 0) : 0,
+        purchase_unit_label: values.purchase_unit_label ?? null,
+        purchase_unit_factor: values.purchase_unit_factor ?? null,
         tenant_id: tenantId,
       })
-      .select('id, name, unit, current_price')
+      .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor')
       .single()
 
     if (error) return { error: mapError(error.message) }
@@ -86,7 +88,7 @@ export async function createInsumo(
     )
 
     revalidatePath('/catalogo/insumos')
-    return { data: data as { id: string; name: string; unit: string; current_price: number } }
+    return { data: data as { id: string; name: string; unit: string; current_price: number; purchase_unit_label: string | null; purchase_unit_factor: number | null } }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Error desconocido' }
   }
@@ -118,6 +120,8 @@ export async function updateInsumo(
         shelf_life_days: values.perishable ? (values.shelf_life_days ?? null) : null,
         track_stock: values.track_stock,
         stock_inicial: values.track_stock ? (values.stock_inicial ?? 0) : 0,
+        purchase_unit_label: values.purchase_unit_label ?? null,
+        purchase_unit_factor: values.purchase_unit_factor ?? null,
       })
       .eq('id', id)
 

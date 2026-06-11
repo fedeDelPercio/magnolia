@@ -23,7 +23,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-type InsumoOpt = Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>
+type InsumoOpt = Pick<
+  Tables<'insumos'>,
+  'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor'
+>
 
 type NewInsumoForm = {
   name: string
@@ -158,12 +161,20 @@ export function CompraDialog({
     const qty = parseFloat(newQty)
     const total = parseFloat(newTotal)
     if (isNaN(qty) || qty <= 0 || isNaN(total) || total <= 0) return null
+    // Si el insumo tiene presentación de compra definida (ej "cajón = 10 kg"),
+    // la cantidad ingresada está en cajones y la convertimos a unidad base
+    // (la DB y el resto del sistema sólo entienden unidad base).
+    const factor =
+      insumo.purchase_unit_label && insumo.purchase_unit_factor
+        ? insumo.purchase_unit_factor
+        : 1
+    const qtyBase = qty * factor
     return {
       insumo_id: insumo.id,
       insumo_name: insumo.name,
-      qty,
+      qty: qtyBase,
       unit: insumo.unit,
-      unit_price: total / qty,
+      unit_price: total / qtyBase,
     }
   }
 
@@ -280,7 +291,11 @@ export function CompraDialog({
               </div>
               <div className="w-20 space-y-1">
                 <label className="text-xs text-muted-foreground">
-                  Cant. {selectedInsumo ? `(${UNIT_LABELS[selectedInsumo.unit]})` : ''}
+                  Cant. {selectedInsumo
+                    ? selectedInsumo.purchase_unit_label && selectedInsumo.purchase_unit_factor
+                      ? `(${selectedInsumo.purchase_unit_label})`
+                      : `(${UNIT_LABELS[selectedInsumo.unit]})`
+                    : ''}
                 </label>
                 <Input
                   type="number"
@@ -395,14 +410,26 @@ export function CompraDialog({
             )}
 
             {selectedInsumo && newQty && newTotal && parseFloat(newQty) > 0 && parseFloat(newTotal) > 0 && (() => {
-              const newUnitPrice = parseFloat(newTotal) / parseFloat(newQty)
+              const qtyInput = parseFloat(newQty)
+              const total = parseFloat(newTotal)
+              const factor =
+                selectedInsumo.purchase_unit_label && selectedInsumo.purchase_unit_factor
+                  ? selectedInsumo.purchase_unit_factor
+                  : 1
+              const qtyBase = qtyInput * factor
+              const newUnitPrice = total / qtyBase
+              const baseLabel = UNIT_LABELS[selectedInsumo.unit]
               const prevPrice = selectedInsumo.current_price
               const changePct = prevPrice > 0 ? ((newUnitPrice - prevPrice) / prevPrice) * 100 : null
               const isLarge = changePct !== null && changePct >= 20
+              const hasPresentation = factor !== 1
               return (
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">
-                    ≈ {formatCurrency(newUnitPrice)} / {UNIT_LABELS[selectedInsumo.unit]}
+                    {hasPresentation && (
+                      <>= {qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {baseLabel} · </>
+                    )}
+                    {formatCurrency(newUnitPrice)} / {baseLabel}
                   </span>
                   {changePct !== null && prevPrice > 0 && (
                     <span className={`flex items-center gap-1 tabular-nums ${isLarge ? 'font-semibold text-red-600' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>

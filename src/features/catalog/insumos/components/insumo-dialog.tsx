@@ -68,6 +68,8 @@ const DEFAULT_VALUES: InsumoFormValues = {
   shelf_life_days: null,
   track_stock: false,
   stock_inicial: 0,
+  purchase_unit_label: null,
+  purchase_unit_factor: null,
 }
 
 export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: Props) {
@@ -109,6 +111,8 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
             shelf_life_days: insumo.shelf_life_days,
             track_stock: insumo.track_stock,
             stock_inicial: insumo.stock_inicial,
+            purchase_unit_label: insumo.purchase_unit_label,
+            purchase_unit_factor: insumo.purchase_unit_factor,
           }
         : DEFAULT_VALUES,
     )
@@ -613,6 +617,86 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                 )}
               />
             )}
+
+            {/* Cómo se compra — presentación opcional distinta de la unidad de stock.
+                Ej: "Cajón de naranjas" donde unit=kg pero se compra en cajones de 10kg.
+                Si se completa, el form de compra captura cantidades en cajones y el
+                backend convierte a unidad base al guardar. */}
+            <div className="rounded-xl border bg-card p-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Cómo se compra</p>
+                <p className="text-xs text-muted-foreground">
+                  Si el insumo se compra en una presentación distinta de su unidad de stock
+                  (ej. cajón, maple, bolsa), definí la equivalencia acá.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <FormField
+                  control={form.control}
+                  name="purchase_unit_label"
+                  render={({ field }) => (
+                    <FormItem className="flex-1 min-w-[150px]">
+                      <FormLabel className="text-xs text-muted-foreground">Presentación</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: cajón, maple, bolsa"
+                          disabled={readOnly}
+                          value={field.value ?? ''}
+                          onChange={(e) => {
+                            const v = e.target.value.trim()
+                            field.onChange(v === '' ? null : e.target.value)
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="purchase_unit_factor"
+                  render={({ field }) => (
+                    <FormItem className="flex-1 min-w-[120px]">
+                      <FormLabel className="text-xs text-muted-foreground">
+                        Equivale a ({UNIT_LABELS[selectedUnit as UnitKind] ?? selectedUnit})
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          placeholder="0"
+                          disabled={readOnly}
+                          value={field.value == null ? '' : field.value}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            field.onChange(v === '' ? null : parseFloat(v) || null)
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              {(() => {
+                const label = form.watch('purchase_unit_label')
+                const factor = form.watch('purchase_unit_factor')
+                const unitLabel = UNIT_LABELS[selectedUnit as UnitKind] ?? selectedUnit
+                if (label && factor && factor > 0) {
+                  return (
+                    <p className="text-xs text-muted-foreground">
+                      1 {label} = {factor.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {unitLabel}
+                    </p>
+                  )
+                }
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    Dejá en blanco si el insumo se compra directamente en {unitLabel}.
+                  </p>
+                )
+              })()}
+            </div>
 
             <FormField
               control={form.control}

@@ -40,7 +40,7 @@ type Props = {
   proveedor: SaldoProveedor
   compras: CompraWithItems[]
   pagos: PagoProveedor[]
-  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor'>[]
   from: string
   to: string
 }

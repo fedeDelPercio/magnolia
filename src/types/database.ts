@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -1134,6 +1134,8 @@ export type Database = {
           name: string
           perishable: boolean
           proveedor_id: string | null
+          purchase_unit_factor: number | null
+          purchase_unit_label: string | null
           shelf_life_days: number | null
           stock_inicial: number
           tenant_id: string
@@ -1150,6 +1152,8 @@ export type Database = {
           name: string
           perishable?: boolean
           proveedor_id?: string | null
+          purchase_unit_factor?: number | null
+          purchase_unit_label?: string | null
           shelf_life_days?: number | null
           stock_inicial?: number
           tenant_id: string
@@ -1166,6 +1170,8 @@ export type Database = {
           name?: string
           perishable?: boolean
           proveedor_id?: string | null
+          purchase_unit_factor?: number | null
+          purchase_unit_label?: string | null
           shelf_life_days?: number | null
           stock_inicial?: number
           tenant_id?: string
@@ -1980,12 +1986,18 @@ export type Database = {
       saldos_proveedores: {
         Row: {
           active: boolean | null
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
           d0_30: number | null
           d31_60: number | null
           d61_90: number | null
           d90plus: number | null
+          discrimina_iva: boolean | null
           id: string | null
           name: string | null
+          notes: string | null
+          payment_rule: Json | null
           payment_terms_days: number | null
           saldo: number | null
           tenant_id: string | null
@@ -2188,3 +2200,4 @@ export const Constants = {
     },
   },
 } as const
+
