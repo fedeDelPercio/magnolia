@@ -14,6 +14,14 @@ export type SaldoProveedor = {
   d31_60: number
   d61_90: number
   d90plus: number
+  // Campos del perfil expuestos por la vista para que el dialog de edición
+  // los reciba sin tener que hacer una query extra a `proveedores`.
+  contact_name: string | null
+  contact_phone: string | null
+  contact_email: string | null
+  notes: string | null
+  discrimina_iva: boolean
+  payment_rule: unknown
 }
 
 export type CompraWithItems = Tables<'compras'> & {
