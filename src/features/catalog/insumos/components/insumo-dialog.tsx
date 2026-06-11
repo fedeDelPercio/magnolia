@@ -650,8 +650,11 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                           step="0.001"
                           placeholder="0"
                           disabled={readOnly}
-                          value={field.value}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          value={field.value === 0 ? '' : field.value}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            field.onChange(v === '' ? 0 : parseFloat(v) || 0)
+                          }}
                           className="w-24 bg-background px-3 py-1.5 tabular-nums outline-none disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       </FormControl>

@@ -112,13 +112,22 @@ async function updateInsumoPrices(
   for (const item of items) {
     const { data: existing } = await supabase
       .from('insumos')
-      .select('current_price')
+      .select('current_price, proveedor_id')
       .eq('id', item.insumo_id)
       .single()
 
+    // Si el insumo no tenia proveedor preferido, lo "atamos" al de esta compra.
+    // No sobrescribimos si ya tenia uno — eso es decision manual desde el dialog.
+    const update: { current_price: number; proveedor_id?: string } = {
+      current_price: item.unit_price,
+    }
+    if (!existing?.proveedor_id) {
+      update.proveedor_id = proveedorId
+    }
+
     await supabase
       .from('insumos')
-      .update({ current_price: item.unit_price })
+      .update(update)
       .eq('id', item.insumo_id)
 
     const priceChanged = existing && Number(existing.current_price) !== Number(item.unit_price)
