@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/format'
-import { toggleProveedorActive } from '../actions'
+import { deleteProveedor, toggleProveedorActive } from '../actions'
 import { ProveedorDialog } from './proveedor-dialog'
 import type { SaldoProveedor } from '../queries'
 import type { Tables } from '@/types/database'
@@ -60,6 +60,18 @@ export function ProveedoresClient({ proveedores }: Props) {
       const result = await toggleProveedorActive(p.id, !p.active)
       if (result.error) toast.error(result.error)
       else toast.success(p.active ? 'Proveedor desactivado' : 'Proveedor activado')
+    })
+  }
+
+  function handleDelete(p: SaldoProveedor) {
+    const ok = window.confirm(
+      `¿Eliminar a "${p.name}"? Esta acción no se puede deshacer.\n\nSi tiene compras o pagos registrados no vas a poder eliminarlo — desactivalo en ese caso.`,
+    )
+    if (!ok) return
+    startTransition(async () => {
+      const result = await deleteProveedor(p.id)
+      if (result.error) toast.error(result.error)
+      else toast.success('Proveedor eliminado')
     })
   }
 
@@ -177,6 +189,12 @@ export function ProveedoresClient({ proveedores }: Props) {
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleToggle(p)}>
                         {p.active ? 'Desactivar' : 'Activar'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => handleDelete(p)}
+                      >
+                        Eliminar
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { METODO_LABELS } from '../schemas'
-import { deleteCompra, updateCompraStatus, setChequeCleared } from '../actions'
+import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared } from '../actions'
 import { CompraDialog } from './compra-dialog'
 import { PagoDialog } from './pago-dialog'
 import { RangePicker } from '@/features/dashboard/components/range-picker'
@@ -243,6 +243,20 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }
     if (result.error) toast.error(result.error)
   }
 
+  async function handleDeleteProveedor() {
+    const ok = window.confirm(
+      `¿Eliminar a "${proveedor.name}"? Esta acción no se puede deshacer.\n\nSi tiene compras o pagos registrados no vas a poder eliminarlo — desactivalo en ese caso.`,
+    )
+    if (!ok) return
+    const result = await deleteProveedor(proveedor.id)
+    if (result.error) {
+      toast.error(result.error)
+      return
+    }
+    toast.success('Proveedor eliminado')
+    router.push('/proveedores')
+  }
+
   async function handleMarkPagada(compraId: string) {
     const result = await updateCompraStatus(compraId, 'pagada', proveedor.id)
     if (result.error) toast.error(result.error)
@@ -285,6 +299,20 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }
             <PlusIcon className="size-4" />
             Registrar compra
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+              <MoreHorizontalIcon className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={handleDeleteProveedor}
+              >
+                <TrashIcon className="size-3.5 mr-2" />
+                Eliminar proveedor
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

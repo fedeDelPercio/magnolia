@@ -72,6 +72,34 @@ export async function toggleProveedorActive(
   return {}
 }
 
+// Borrado duro. Bloquea si hay historial de compras o pagos para no perder
+// trazabilidad de la cuenta corriente. Para "ocultar" un proveedor con historial,
+// usar toggleProveedorActive(id, false).
+export async function deleteProveedor(
+  id: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const [{ count: comprasCount }, { count: pagosCount }] = await Promise.all([
+    supabase.from('compras').select('id', { count: 'exact', head: true }).eq('proveedor_id', id),
+    supabase.from('pagos_proveedor').select('id', { count: 'exact', head: true }).eq('proveedor_id', id),
+  ])
+
+  if ((comprasCount ?? 0) > 0 || (pagosCount ?? 0) > 0) {
+    return {
+      error:
+        'El proveedor tiene compras o pagos registrados. Desactivalo en lugar de eliminarlo para no perder el historial.',
+    }
+  }
+
+  const { error } = await supabase.from('proveedores').delete().eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidatePath('/proveedores')
+  revalidatePath('/alertas')
+  return {}
+}
+
 // ---- Compras -----------------------------------------------
 
 async function updateInsumoPrices(
