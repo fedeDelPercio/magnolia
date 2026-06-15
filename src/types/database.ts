@@ -586,6 +586,8 @@ export type Database = {
       }
       compras: {
         Row: {
+          comprobante_meta: Json | null
+          comprobante_url: string | null
           created_at: string
           due_date: string | null
           fecha: string
@@ -598,6 +600,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          comprobante_meta?: Json | null
+          comprobante_url?: string | null
           created_at?: string
           due_date?: string | null
           fecha?: string
@@ -610,6 +614,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          comprobante_meta?: Json | null
+          comprobante_url?: string | null
           created_at?: string
           due_date?: string | null
           fecha?: string
@@ -638,6 +644,89 @@ export type Database = {
           },
           {
             foreignKeyName: "compras_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comprobante_uploads: {
+        Row: {
+          ai_model: string | null
+          ai_response: Json | null
+          applied_at: string | null
+          compra_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          mime_type: string | null
+          parsed_at: string | null
+          parsed_items: Json | null
+          proveedor_id: string | null
+          status: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          ai_model?: string | null
+          ai_response?: Json | null
+          applied_at?: string | null
+          compra_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          mime_type?: string | null
+          parsed_at?: string | null
+          parsed_items?: Json | null
+          proveedor_id?: string | null
+          status?: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          ai_model?: string | null
+          ai_response?: Json | null
+          applied_at?: string | null
+          compra_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          mime_type?: string | null
+          parsed_at?: string | null
+          parsed_items?: Json | null
+          proveedor_id?: string | null
+          status?: string
+          storage_path?: string
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comprobante_uploads_compra_id_fkey"
+            columns: ["compra_id"]
+            isOneToOne: false
+            referencedRelation: "compras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comprobante_uploads_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comprobante_uploads_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comprobante_uploads_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -2042,6 +2131,20 @@ export type Database = {
       }
       cerrar_dia: { Args: { p_dia_id: string }; Returns: undefined }
       current_tenant_ids: { Args: never; Returns: string[] }
+      match_insumos_by_name: {
+        Args: {
+          p_limit?: number
+          p_query: string
+          p_tenant_id: string
+          p_threshold?: number
+        }
+        Returns: {
+          insumo_id: string
+          name: string
+          score: number
+          unit: string
+        }[]
+      }
       normalize_name: { Args: { p_name: string }; Returns: string }
       normalize_qty: {
         Args: { from_unit: string; qty: number; to_unit: string }
@@ -2052,6 +2155,9 @@ export type Database = {
         Args: { p_receta_id: string; p_sub_receta_id: string }
         Returns: boolean
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
+      unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
       caja_tipo: "ingreso" | "egreso"

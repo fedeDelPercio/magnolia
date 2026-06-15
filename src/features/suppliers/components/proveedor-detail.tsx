@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeftIcon, ChevronDownIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, PencilIcon, TrashIcon, CheckCircleIcon, MoreHorizontalIcon, AlertTriangleIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronDownIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, PencilIcon, TrashIcon, CheckCircleIcon, MoreHorizontalIcon, AlertTriangleIcon, CameraIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { METODO_LABELS } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared } from '../actions'
 import { CompraDialog } from './compra-dialog'
 import { PagoDialog } from './pago-dialog'
+import { ComprobanteUploadDialog } from './comprobante-upload-dialog'
 import { RangePicker } from '@/features/dashboard/components/range-picker'
 import {
   DropdownMenu,
@@ -210,6 +211,7 @@ function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boo
 export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }: Props) {
   const router = useRouter()
   const [compraOpen, setCompraOpen] = useState(false)
+  const [comprobanteOpen, setComprobanteOpen] = useState(false)
   const [editingCompra, setEditingCompra] = useState<CompraWithItems | null>(null)
   const [pagoOpen, setPagoOpen] = useState(false)
   const [pagoDefaultMonto, setPagoDefaultMonto] = useState<number | undefined>(undefined)
@@ -294,6 +296,10 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }
           <RangePicker from={from} to={to} />
           <Button variant="outline" onClick={() => setPagoOpen(true)}>
             Registrar pago
+          </Button>
+          <Button variant="outline" onClick={() => setComprobanteOpen(true)}>
+            <CameraIcon className="size-4" />
+            Cargar comprobante
           </Button>
           <Button onClick={() => setCompraOpen(true)}>
             <PlusIcon className="size-4" />
@@ -636,6 +642,13 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }
         )
       })()}
 
+      <ComprobanteUploadDialog
+        open={comprobanteOpen}
+        onOpenChange={setComprobanteOpen}
+        proveedorId={proveedor.id}
+        proveedorName={proveedor.name}
+        insumos={insumos}
+      />
       <CompraDialog
         open={compraOpen}
         onOpenChange={(v) => { setCompraOpen(v); if (!v) setEditingCompra(null) }}
