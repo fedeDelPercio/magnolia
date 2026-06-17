@@ -212,6 +212,22 @@ export async function applyComprobante(
   return { compraId: compra.id }
 }
 
+// Re-fetch del insumo despues de editarlo desde el modal de revision, para
+// que la conversion (purchase_unit_label/factor) y precio queden sincronizados
+// sin tener que cerrar y reabrir el modal de comprobante.
+export async function refreshInsumoForComprobante(insumoId: string) {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { data, error } = await supabase
+    .from('insumos')
+    .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor')
+    .eq('tenant_id', tenantId)
+    .eq('id', insumoId)
+    .single()
+  if (error || !data) return null
+  return data
+}
+
 export async function discardComprobante(uploadId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: upload } = await supabase

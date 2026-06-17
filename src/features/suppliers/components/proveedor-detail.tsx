@@ -42,6 +42,7 @@ type Props = {
   compras: CompraWithItems[]
   pagos: PagoProveedor[]
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor'>[]
+  proveedoresList: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
   from: string
   to: string
 }
@@ -208,7 +209,7 @@ function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boo
   )
 }
 
-export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }: Props) {
+export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedoresList, from, to }: Props) {
   const router = useRouter()
   const [compraOpen, setCompraOpen] = useState(false)
   const [comprobanteOpen, setComprobanteOpen] = useState(false)
@@ -648,6 +649,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, from, to }
         proveedorId={proveedor.id}
         proveedorName={proveedor.name}
         insumos={insumos}
+        proveedoresList={proveedoresList}
       />
       <CompraDialog
         open={compraOpen}

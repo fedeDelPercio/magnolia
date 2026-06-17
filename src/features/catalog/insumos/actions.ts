@@ -210,3 +210,26 @@ export async function registrarAjusteStock(
     return { error: e instanceof Error ? e.message : 'Error desconocido' }
   }
 }
+
+// Fetch del insumo completo con su proveedor + stock para abrir el InsumoDialog
+// embebido desde el modal de comprobantes. Devolvemos null si no existe o no
+// pertenece al tenant.
+export async function getInsumoFullForEdit(insumoId: string) {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const [insumoRes, stockRes] = await Promise.all([
+    supabase
+      .from('insumos')
+      .select('*, proveedores(id, name)')
+      .eq('tenant_id', tenantId)
+      .eq('id', insumoId)
+      .single(),
+    supabase
+      .from('insumo_stock')
+      .select('stock_actual, stock_referencia, unit')
+      .eq('insumo_id', insumoId)
+      .maybeSingle(),
+  ])
+  if (insumoRes.error || !insumoRes.data) return null
+  return { ...insumoRes.data, stock: stockRes.data ?? null }
+}

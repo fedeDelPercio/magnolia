@@ -2,17 +2,20 @@
 
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { CameraIcon, Loader2Icon, TrashIcon, CheckCircleIcon, AlertTriangleIcon } from 'lucide-react'
+import { CameraIcon, Loader2Icon, TrashIcon, CheckCircleIcon, AlertTriangleIcon, PencilIcon } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { CurrencyInput } from '@/components/ui/currency-input'
 import { Button } from '@/components/ui/button'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import { formatCurrency } from '@/lib/format'
 import { UNIT_LABELS, type UnitKind } from '@/features/catalog/insumos/schemas'
-import { uploadAndParseComprobante, applyComprobante, discardComprobante, type ApplyItem } from '../comprobantes/actions'
-import { createInsumo } from '@/features/catalog/insumos/actions'
+import { InsumoDialog } from '@/features/catalog/insumos/components/insumo-dialog'
+import type { InsumoWithProveedor } from '@/features/catalog/insumos/queries'
+import { uploadAndParseComprobante, applyComprobante, discardComprobante, refreshInsumoForComprobante, type ApplyItem } from '../comprobantes/actions'
+import { createInsumo, getInsumoFullForEdit } from '@/features/catalog/insumos/actions'
 import type { ItemConMatch } from '../comprobantes/schemas'
 import type { Tables } from '@/types/database'
 
@@ -27,6 +30,7 @@ type Props = {
   proveedorId: string
   proveedorName: string
   insumos: InsumoOpt[]
+  proveedoresList: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
 }
 
 type Stage = 'pick' | 'parsing' | 'review'
@@ -53,6 +57,7 @@ export function ComprobanteUploadDialog({
   proveedorId,
   proveedorName,
   insumos,
+  proveedoresList,
 }: Props) {
   const [stage, setStage] = useState<Stage>('pick')
   const [uploadId, setUploadId] = useState<string | null>(null)
@@ -65,6 +70,34 @@ export function ComprobanteUploadDialog({
 
   // Insumos visibles para asignar (base + creados inline durante esta sesión)
   const [localInsumos, setLocalInsumos] = useState<InsumoOpt[]>(insumos)
+
+  // Edicion inline de un insumo asignado: abre el InsumoDialog encima del modal.
+  const [editingInsumo, setEditingInsumo] = useState<InsumoWithProveedor | null>(null)
+  const [loadingEdit, setLoadingEdit] = useState<string | null>(null)
+
+  async function openEditInsumo(insumoId: string) {
+    setLoadingEdit(insumoId)
+    const full = await getInsumoFullForEdit(insumoId)
+    setLoadingEdit(null)
+    if (!full) {
+      toast.error('No se pudo cargar el insumo')
+      return
+    }
+    setEditingInsumo(full as InsumoWithProveedor)
+  }
+
+  async function handleInsumoDialogClose(open: boolean) {
+    if (open) return
+    const wasEditing = editingInsumo?.id
+    setEditingInsumo(null)
+    if (!wasEditing) return
+    // Refrescar el insumo editado en el cache local para que la conversion y
+    // el label se actualicen sin tener que cerrar/reabrir el modal padre.
+    const refreshed = await refreshInsumoForComprobante(wasEditing)
+    if (refreshed) {
+      setLocalInsumos((prev) => prev.map((i) => (i.id === refreshed.id ? refreshed : i)))
+    }
+  }
 
   function reset() {
     setStage('pick')
@@ -328,14 +361,33 @@ export function ComprobanteUploadDialog({
                         <div className="mt-2 grid grid-cols-12 items-end gap-2">
                           <div className="col-span-6 space-y-1">
                             <label className="text-[11px] text-muted-foreground">Insumo a vincular</label>
-                            <SearchableSelect
-                              options={localInsumos.map((i) => ({ value: i.id, label: i.name }))}
-                              value={line.assignedInsumoId ?? ''}
-                              onValueChange={(v) => updateLine(idx, { assignedInsumoId: v })}
-                              onCreate={(search) => handleCreateInline(idx, search || line.detected.nombre)}
-                              placeholder="Sin asignar"
-                              triggerClassName="h-8 text-xs"
-                            />
+                            <div className="flex items-center gap-1">
+                              <SearchableSelect
+                                options={localInsumos.map((i) => ({ value: i.id, label: i.name }))}
+                                value={line.assignedInsumoId ?? ''}
+                                onValueChange={(v) => updateLine(idx, { assignedInsumoId: v })}
+                                onCreate={(search) => handleCreateInline(idx, search || line.detected.nombre)}
+                                placeholder="Sin asignar"
+                                triggerClassName="h-8 text-xs flex-1"
+                              />
+                              {line.assignedInsumoId && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 shrink-0"
+                                  title="Editar insumo (equivalencias, unidad, etc.)"
+                                  disabled={loadingEdit === line.assignedInsumoId}
+                                  onClick={() => openEditInsumo(line.assignedInsumoId!)}
+                                >
+                                  {loadingEdit === line.assignedInsumoId ? (
+                                    <Loader2Icon className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <PencilIcon className="size-3.5" />
+                                  )}
+                                </Button>
+                              )}
+                            </div>
                             {showSuggestion && (
                               <p className="text-[10px] text-muted-foreground">
                                 Sugerido: <button
@@ -361,13 +413,10 @@ export function ComprobanteUploadDialog({
                           </div>
                           <div className="col-span-3 space-y-1">
                             <label className="text-[11px] text-muted-foreground">Precio total</label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                            <CurrencyInput
                               className="h-8 text-xs"
                               value={line.totalInput}
-                              onChange={(e) => updateLine(idx, { totalInput: e.target.value })}
+                              onValueChange={(v) => updateLine(idx, { totalInput: v })}
                             />
                           </div>
                           <div className="col-span-1 flex justify-center">
@@ -417,6 +466,15 @@ export function ComprobanteUploadDialog({
           )}
         </DialogFooter>
       </DialogContent>
+      {editingInsumo && (
+        <InsumoDialog
+          open={!!editingInsumo}
+          onOpenChange={handleInsumoDialogClose}
+          insumo={editingInsumo}
+          mode="edit"
+          proveedores={proveedoresList}
+        />
+      )}
     </Dialog>
   )
 }

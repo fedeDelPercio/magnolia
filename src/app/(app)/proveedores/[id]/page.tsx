@@ -42,12 +42,20 @@ export default async function ProveedorPage({ params, searchParams }: Props) {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
-  const { data: insumos } = await supabase
-    .from('insumos')
-    .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor')
-    .eq('tenant_id', tenantId)
-    .eq('active', true)
-    .order('name')
+  const [insumosRes, proveedoresRes] = await Promise.all([
+    supabase
+      .from('insumos')
+      .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .order('name'),
+    supabase
+      .from('proveedores')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .order('name'),
+  ])
 
   return (
     <div className="space-y-6">
@@ -55,7 +63,8 @@ export default async function ProveedorPage({ params, searchParams }: Props) {
         proveedor={proveedor}
         compras={compras}
         pagos={pagos}
-        insumos={insumos ?? []}
+        insumos={insumosRes.data ?? []}
+        proveedoresList={proveedoresRes.data ?? []}
         from={from}
         to={to}
       />
