@@ -11,7 +11,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import { formatCurrency } from '@/lib/format'
 import { UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoKind } from '@/features/catalog/insumos/schemas'
-import { createInsumo } from '@/features/catalog/insumos/actions'
+import { createInsumo, getDespiecesByParents } from '@/features/catalog/insumos/actions'
 import { createCompra, updateCompra } from '../actions'
 import type { Tables } from '@/types/database'
 import type { CompraWithItems } from '../queries'
@@ -216,6 +216,17 @@ export function CompraDialog({
   }
 
   const selectedInsumo = localInsumos.find((i) => i.id === newInsumoId)
+
+  // Despiece del insumo seleccionado (si tiene). Si tiene, el costo se reparte
+  // entre las unidades hijas generadas y mostramos eso en el preview.
+  const [selectedDespiece, setSelectedDespiece] = useState<Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>>([])
+  useEffect(() => {
+    if (!newInsumoId) {
+      setSelectedDespiece([])
+      return
+    }
+    void getDespiecesByParents([newInsumoId]).then((m) => setSelectedDespiece(m[newInsumoId] ?? []))
+  }, [newInsumoId])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -423,7 +434,18 @@ export function CompraDialog({
               const changePct = prevPrice > 0 ? ((newUnitPrice - prevPrice) / prevPrice) * 100 : null
               const isLarge = changePct !== null && changePct >= 20
               const hasPresentation = factor !== 1
+              const hasDespiece = selectedDespiece.length > 0
               return (
+                <div className="space-y-1">
+                {hasDespiece && (() => {
+                  const sumQty = selectedDespiece.reduce((s, h) => s + h.qty_por_unidad, 0)
+                  const unitPriceHijo = sumQty > 0 ? total / (qtyInput * sumQty) : 0
+                  return (
+                    <p className="text-[11px] text-emerald-700">
+                      Va a sumar stock a: {selectedDespiece.map((h) => `${(qtyInput * h.qty_por_unidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${h.hijo_name}`).join(' · ')} · {formatCurrency(unitPriceHijo)} por unidad hija
+                    </p>
+                  )
+                })()}
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">
                     {hasPresentation && (
@@ -438,6 +460,7 @@ export function CompraDialog({
                       Último: {formatCurrency(prevPrice)} · {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
                     </span>
                   )}
+                </div>
                 </div>
               )
             })()}

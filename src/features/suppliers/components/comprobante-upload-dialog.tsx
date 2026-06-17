@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { CameraIcon, Loader2Icon, TrashIcon, CheckCircleIcon, AlertTriangleIcon, PencilIcon } from 'lucide-react'
 
@@ -15,7 +15,7 @@ import { UNIT_LABELS, type UnitKind } from '@/features/catalog/insumos/schemas'
 import { InsumoDialog } from '@/features/catalog/insumos/components/insumo-dialog'
 import type { InsumoWithProveedor } from '@/features/catalog/insumos/queries'
 import { uploadAndParseComprobante, applyComprobante, discardComprobante, refreshInsumoForComprobante, type ApplyItem } from '../comprobantes/actions'
-import { createInsumo, getInsumoFullForEdit } from '@/features/catalog/insumos/actions'
+import { createInsumo, getInsumoFullForEdit, getDespiecesByParents } from '@/features/catalog/insumos/actions'
 import type { ItemConMatch } from '../comprobantes/schemas'
 import type { Tables } from '@/types/database'
 
@@ -74,6 +74,20 @@ export function ComprobanteUploadDialog({
   // Edicion inline de un insumo asignado: abre el InsumoDialog encima del modal.
   const [editingInsumo, setEditingInsumo] = useState<InsumoWithProveedor | null>(null)
   const [loadingEdit, setLoadingEdit] = useState<string | null>(null)
+
+  // Cache de despieces de los insumos seleccionados: parent_id -> hijos[].
+  // Lo refetcheamos cuando cambian las asignaciones para que el preview refleje
+  // ediciones hechas en el modal anidado.
+  const [despieces, setDespieces] = useState<Record<string, Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>>>({})
+
+  useEffect(() => {
+    const ids = Array.from(new Set(lines.map((l) => l.assignedInsumoId).filter(Boolean) as string[]))
+    if (ids.length === 0) {
+      setDespieces({})
+      return
+    }
+    void getDespiecesByParents(ids).then(setDespieces)
+  }, [lines, localInsumos])
 
   async function openEditInsumo(insumoId: string) {
     setLoadingEdit(insumoId)
@@ -426,11 +440,23 @@ export function ComprobanteUploadDialog({
                               <AlertTriangleIcon className="size-4 text-amber-500" />
                             )}
                           </div>
-                          {insumo && qtyBase > 0 && total > 0 && (
-                            <p className="col-span-12 text-[10px] text-muted-foreground">
-                              = {qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {baseLabel} · {formatCurrency(unitPriceBase)} / {baseLabel}
-                            </p>
-                          )}
+                          {insumo && qtyBase > 0 && total > 0 && (() => {
+                            const hijos = line.assignedInsumoId ? despieces[line.assignedInsumoId] : null
+                            if (hijos && hijos.length > 0) {
+                              const sumQty = hijos.reduce((s, h) => s + h.qty_por_unidad, 0)
+                              const unitPriceHijo = sumQty > 0 ? total / (qty * sumQty) : 0
+                              return (
+                                <p className="col-span-12 text-[10px] text-emerald-700">
+                                  Va a sumar stock a: {hijos.map((h) => `${(qty * h.qty_por_unidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${h.hijo_name}`).join(' · ')} · {formatCurrency(unitPriceHijo)} por unidad hija
+                                </p>
+                              )
+                            }
+                            return (
+                              <p className="col-span-12 text-[10px] text-muted-foreground">
+                                = {qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {baseLabel} · {formatCurrency(unitPriceBase)} / {baseLabel}
+                              </p>
+                            )
+                          })()}
                         </div>
                       )}
                     </div>

@@ -33,10 +33,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
 import { insumoSchema, UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
-import { createInsumo, updateInsumo, fetchInsumoHistory, fetchStockAjustes, registrarAjusteStock } from '../actions'
+import { createInsumo, updateInsumo, fetchInsumoHistory, fetchStockAjustes, registrarAjusteStock, saveDespiece, fetchDespiece } from '../actions'
 import type { InsumoWithProveedor, PriceHistoryEntry, StockAjusteEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { DespieceEditor, type DespieceRow } from './despiece-editor'
 
 type Mode = 'view' | 'edit' | 'create'
 
@@ -92,6 +93,10 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
   const [ajusteNotas, setAjusteNotas] = useState('')
   const [ajusteSubmitting, setAjusteSubmitting] = useState(false)
 
+  // Despiece: toggle + filas. Si el insumo ya es padre se popula al abrir.
+  const [isDespieceParent, setIsDespieceParent] = useState(false)
+  const [despieceRows, setDespieceRows] = useState<DespieceRow[]>([])
+
   const perishable = form.watch('perishable')
   const trackStock = form.watch('track_stock')
   const selectedUnit = form.watch('unit')
@@ -120,15 +125,30 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
     if (insumo) {
       setPackQty('1')
       setPackTotal(String(insumo.current_price || ''))
+      setIsDespieceParent(!!insumo.is_despiece_parent)
       Promise.all([
         fetchInsumoHistory(insumo.id).then(({ data }) => setPriceHistory(data)),
         fetchStockAjustes(insumo.id).then(({ data }) => setStockAjustes(data)),
+        insumo.is_despiece_parent
+          ? fetchDespiece(insumo.id).then(({ data }) =>
+              setDespieceRows(
+                data.map((d) => ({
+                  hijo_id: d.hijo_id,
+                  qty_por_unidad: String(d.qty_por_unidad),
+                  hijo_name: d.hijo_name,
+                  hijo_unit: d.hijo_unit,
+                })),
+              ),
+            )
+          : Promise.resolve(setDespieceRows([])),
       ])
     } else {
       setPackQty('1')
       setPackTotal('')
       setPriceHistory([])
       setStockAjustes([])
+      setIsDespieceParent(false)
+      setDespieceRows([])
     }
     setShowHistory(false)
     setShowAjusteForm(false)
@@ -174,14 +194,39 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
   }
 
   async function onSubmit(values: InsumoFormValues) {
-    const result = insumo ? await updateInsumo(insumo.id, values) : await createInsumo(values)
+    // Si es padre con despiece, validamos antes de tocar nada
+    const despieceItems = isDespieceParent
+      ? despieceRows
+          .map((r) => ({ hijo_id: r.hijo_id, qty_por_unidad: parseFloat(r.qty_por_unidad) }))
+          .filter((r) => r.hijo_id && Number.isFinite(r.qty_por_unidad) && r.qty_por_unidad > 0)
+      : []
+    if (isDespieceParent && despieceItems.length === 0) {
+      toast.error('Agregá al menos un hijo con cantidad o destildá "Se despieza al comprarse"')
+      return
+    }
+
+    const result = insumo
+      ? await updateInsumo(insumo.id, values)
+      : await createInsumo(values)
 
     if (result.error) {
       toast.error(result.error)
-    } else {
-      toast.success(insumo ? 'Insumo actualizado' : 'Insumo creado')
-      onOpenChange(false)
+      return
     }
+
+    const targetId = insumo?.id ?? (result as { data?: { id: string } }).data?.id
+    if (targetId) {
+      // Guardar/limpiar despiece. Si pasamos de padre a no-padre, mandamos
+      // lista vacia y la action limpia el despiece + desmarca el flag.
+      const despieceResult = await saveDespiece(targetId, despieceItems)
+      if (despieceResult.error) {
+        toast.error(`Insumo guardado pero el despiece falló: ${despieceResult.error}`)
+        return
+      }
+    }
+
+    toast.success(insumo ? 'Insumo actualizado' : 'Insumo creado')
+    onOpenChange(false)
   }
 
   return (
@@ -696,6 +741,36 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                   </p>
                 )
               })()}
+            </div>
+
+            {/* Despiece — el insumo se compra entero (ej. cajon de pollo) y al
+                guardar la compra el stock se reparte automaticamente entre
+                los insumos hijos definidos aca. */}
+            <div className="rounded-xl border bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="despiece-toggle"
+                  checked={isDespieceParent}
+                  disabled={readOnly}
+                  onCheckedChange={(v) => setIsDespieceParent(v === true)}
+                />
+                <label htmlFor="despiece-toggle" className="cursor-pointer text-sm font-medium">
+                  Se despieza al comprarse
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Por cada unidad comprada de este insumo, se va a sumar stock a los hijos definidos
+                acá. El costo total se reparte entre todas las unidades hijas generadas. Este insumo
+                no acumula stock propio.
+              </p>
+              {isDespieceParent && (
+                <DespieceEditor
+                  parentId={insumo?.id ?? null}
+                  rows={despieceRows}
+                  onChange={setDespieceRows}
+                  disabled={readOnly}
+                />
+              )}
             </div>
 
             <FormField

@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -1083,6 +1083,69 @@ export type Database = {
           },
         ]
       }
+      insumo_despiece: {
+        Row: {
+          created_at: string
+          hijo_id: string
+          id: string
+          parent_id: string
+          qty_por_unidad: number
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          hijo_id: string
+          id?: string
+          parent_id: string
+          qty_por_unidad: number
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          hijo_id?: string
+          id?: string
+          parent_id?: string
+          qty_por_unidad?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insumo_despiece_hijo_id_fkey"
+            columns: ["hijo_id"]
+            isOneToOne: false
+            referencedRelation: "insumo_stock"
+            referencedColumns: ["insumo_id"]
+          },
+          {
+            foreignKeyName: "insumo_despiece_hijo_id_fkey"
+            columns: ["hijo_id"]
+            isOneToOne: false
+            referencedRelation: "insumos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumo_despiece_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "insumo_stock"
+            referencedColumns: ["insumo_id"]
+          },
+          {
+            foreignKeyName: "insumo_despiece_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "insumos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumo_despiece_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insumo_price_history: {
         Row: {
           created_by: string | null
@@ -1219,6 +1282,7 @@ export type Database = {
           created_at: string
           current_price: number
           id: string
+          is_despiece_parent: boolean
           kind: string
           name: string
           perishable: boolean
@@ -1237,6 +1301,7 @@ export type Database = {
           created_at?: string
           current_price?: number
           id?: string
+          is_despiece_parent?: boolean
           kind?: string
           name: string
           perishable?: boolean
@@ -1255,6 +1320,7 @@ export type Database = {
           created_at?: string
           current_price?: number
           id?: string
+          is_despiece_parent?: boolean
           kind?: string
           name?: string
           perishable?: boolean
@@ -2306,4 +2372,3 @@ export const Constants = {
     },
   },
 } as const
-

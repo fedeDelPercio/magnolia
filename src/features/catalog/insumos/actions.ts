@@ -233,3 +233,145 @@ export async function getInsumoFullForEdit(insumoId: string) {
   if (insumoRes.error || !insumoRes.data) return null
   return { ...insumoRes.data, stock: stockRes.data ?? null }
 }
+
+// ---- Despiece ----------------------------------------------
+
+export type DespieceItemInput = {
+  hijo_id: string
+  qty_por_unidad: number
+}
+
+// Reemplaza el set completo de despiece del padre por el nuevo. Si la lista
+// viene vacia, marca el insumo como no-padre y borra el despiece. Si tiene
+// items, marca is_despiece_parent=true y track_stock=false (el padre no
+// acumula stock propio cuando se despieza al comprar).
+export async function saveDespiece(
+  parentId: string,
+  items: DespieceItemInput[],
+): Promise<{ error?: string }> {
+  try {
+    const supabase = await createClient()
+    const tenantId = await getActiveTenantId()
+
+    // Validar que ningun hijo sea el propio padre y no haya duplicados
+    if (items.some((i) => i.hijo_id === parentId)) {
+      return { error: 'Un insumo no puede ser hijo de si mismo' }
+    }
+    const ids = new Set(items.map((i) => i.hijo_id))
+    if (ids.size !== items.length) return { error: 'Hay insumos hijos duplicados' }
+
+    const { error: delErr } = await supabase
+      .from('insumo_despiece')
+      .delete()
+      .eq('parent_id', parentId)
+    if (delErr) return { error: delErr.message }
+
+    if (items.length > 0) {
+      const { error: insErr } = await supabase.from('insumo_despiece').insert(
+        items.map((i) => ({
+          tenant_id: tenantId,
+          parent_id: parentId,
+          hijo_id: i.hijo_id,
+          qty_por_unidad: i.qty_por_unidad,
+        })),
+      )
+      if (insErr) return { error: insErr.message }
+    }
+
+    await supabase
+      .from('insumos')
+      .update({
+        is_despiece_parent: items.length > 0,
+        // Si pasamos a ser padre, no llevamos stock propio (el stock va a los hijos).
+        ...(items.length > 0 ? { track_stock: false } : {}),
+      })
+      .eq('id', parentId)
+
+    revalidatePath('/catalogo/insumos')
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Error desconocido' }
+  }
+}
+
+// Trae el despiece actual del padre para poblar la UI.
+export async function fetchDespiece(parentId: string): Promise<{
+  data: Array<{ hijo_id: string; qty_por_unidad: number; hijo_name: string; hijo_unit: string }>
+}> {
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from('insumo_despiece')
+      .select('hijo_id, qty_por_unidad, hijo:insumos!insumo_despiece_hijo_id_fkey(name, unit)')
+      .eq('parent_id', parentId)
+      .order('qty_por_unidad', { ascending: false })
+
+    const rows = (data ?? []) as unknown as Array<{
+      hijo_id: string
+      qty_por_unidad: number
+      hijo: { name: string; unit: string } | null
+    }>
+    return {
+      data: rows.map((r) => ({
+        hijo_id: r.hijo_id,
+        qty_por_unidad: Number(r.qty_por_unidad),
+        hijo_name: r.hijo?.name ?? '',
+        hijo_unit: r.hijo?.unit ?? '',
+      })),
+    }
+  } catch {
+    return { data: [] }
+  }
+}
+
+// Insumos elegibles como hijos de un despiece: del mismo tenant, activos, que
+// no sean el propio padre, y que no sean a su vez padres de otro despiece (no
+// anidamos despieces en este modelo).
+export async function listInsumosForDespiece(parentId: string | null): Promise<
+  Array<{ id: string; name: string; unit: string }>
+> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  let query = supabase
+    .from('insumos')
+    .select('id, name, unit')
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .eq('is_despiece_parent', false)
+    .order('name')
+  if (parentId) query = query.neq('id', parentId)
+  const { data } = await query
+  return data ?? []
+}
+
+// Trae los despieces de varios padres en una sola query. Devuelve un map
+// parent_id -> hijos[]. Usado por la UI de compras/comprobante para mostrar
+// preview de "esta compra va a generar X de pechuga + Y de patas".
+export async function getDespiecesByParents(
+  parentIds: string[],
+): Promise<Record<string, Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>>> {
+  if (parentIds.length === 0) return {}
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { data } = await supabase
+    .from('insumo_despiece')
+    .select('parent_id, qty_por_unidad, hijo:insumos!insumo_despiece_hijo_id_fkey(name, unit)')
+    .eq('tenant_id', tenantId)
+    .in('parent_id', parentIds)
+
+  const map: Record<string, Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>> = {}
+  for (const row of (data ?? []) as unknown as Array<{
+    parent_id: string
+    qty_por_unidad: number
+    hijo: { name: string; unit: string } | null
+  }>) {
+    const arr = map[row.parent_id] ?? []
+    arr.push({
+      hijo_name: row.hijo?.name ?? '',
+      qty_por_unidad: Number(row.qty_por_unidad),
+      hijo_unit: row.hijo?.unit ?? '',
+    })
+    map[row.parent_id] = arr
+  }
+  return map
+}

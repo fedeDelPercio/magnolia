@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
+import { expandDespiece } from '@/features/catalog/insumos/despiece'
 import type { ProveedorFormValues, CompraItemFormValues, PagoFormValues } from './schemas'
 
 // ---- Proveedores -------------------------------------------
@@ -168,8 +169,13 @@ export async function createCompra(
 
   if (compraErr) return { error: compraErr.message }
 
+  // Expandir padres con despiece a items por hijo, asi el stock view (que lee
+  // de compra_items) suma directo a los hijos sin necesidad de triggers ni
+  // ajustes manuales.
+  const expanded = await expandDespiece(supabase, tenantId, items)
+
   const { error: itemsErr } = await supabase.from('compra_items').insert(
-    items.map((item) => ({
+    expanded.map((item) => ({
       compra_id: compra.id,
       insumo_id: item.insumo_id,
       qty: item.qty,
@@ -180,7 +186,7 @@ export async function createCompra(
 
   if (itemsErr) return { error: itemsErr.message }
 
-  await updateInsumoPrices(supabase, tenantId, compra.id, proveedorId, items)
+  await updateInsumoPrices(supabase, tenantId, compra.id, proveedorId, expanded)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
@@ -213,8 +219,10 @@ export async function updateCompra(
 
   if (deleteErr) return { error: deleteErr.message }
 
+  const expanded = await expandDespiece(supabase, tenantId, items)
+
   const { error: itemsErr } = await supabase.from('compra_items').insert(
-    items.map((item) => ({
+    expanded.map((item) => ({
       compra_id: compraId,
       insumo_id: item.insumo_id,
       qty: item.qty,
@@ -225,7 +233,7 @@ export async function updateCompra(
 
   if (itemsErr) return { error: itemsErr.message }
 
-  await updateInsumoPrices(supabase, tenantId, compraId, proveedorId, items)
+  await updateInsumoPrices(supabase, tenantId, compraId, proveedorId, expanded)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)

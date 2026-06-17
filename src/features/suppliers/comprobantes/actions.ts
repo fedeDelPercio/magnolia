@@ -7,6 +7,7 @@ import { getActiveTenantId } from '@/lib/tenant/server'
 
 import { extractComprobante, COMPROBANTE_MODEL } from './claude-vision'
 import { matchItemsConInsumos } from './queries'
+import { expandDespiece } from '@/features/catalog/insumos/despiece'
 import type { ItemConMatch } from './schemas'
 import type { Json, Tables } from '@/types/database'
 
@@ -153,8 +154,12 @@ export async function applyComprobante(
 
   if (compraErr || !compra) return { error: compraErr?.message ?? 'No se pudo crear la compra' }
 
+  // Si alguno de los items apunta a un insumo padre con despiece, lo expandimos
+  // a items por hijo antes de insertar — mismo trato que createCompra.
+  const expanded = await expandDespiece(supabase, tenantId, items)
+
   const { error: itemsErr } = await supabase.from('compra_items').insert(
-    items.map((item) => ({
+    expanded.map((item) => ({
       compra_id: compra.id,
       insumo_id: item.insumo_id,
       qty: item.qty,
@@ -170,7 +175,7 @@ export async function applyComprobante(
   }
 
   // Actualizar current_price de los insumos (replicar el flow de createCompra)
-  for (const item of items) {
+  for (const item of expanded) {
     const { data: existing } = await supabase
       .from('insumos')
       .select('current_price, proveedor_id')
