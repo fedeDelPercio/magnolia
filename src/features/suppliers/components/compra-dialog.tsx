@@ -179,6 +179,25 @@ export function CompraDialog({
   }
 
   function addItem() {
+    // Validacion explicita con feedback para que el user entienda que falta,
+    // en lugar de un boton silencioso que no responde.
+    const insumo = localInsumos.find((i) => i.id === newInsumoId)
+    if (!insumo) {
+      toast.error('Elegí un insumo primero')
+      return
+    }
+    const qty = parseFloat(newQty)
+    if (!newQty || isNaN(qty) || qty <= 0) {
+      toast.error('Ingresá una cantidad mayor a 0')
+      document.getElementById('compra-qty-input')?.focus()
+      return
+    }
+    const total = parseFloat(newTotal)
+    if (!newTotal || isNaN(total) || total <= 0) {
+      toast.error('Ingresá el precio total')
+      document.getElementById('compra-total-input')?.focus()
+      return
+    }
     const item = buildPendingItem()
     if (!item) return
     setItems((prev) => [...prev, item])
@@ -309,6 +328,7 @@ export function CompraDialog({
                     : ''}
                 </label>
                 <Input
+                  id="compra-qty-input"
                   type="number"
                   min="0"
                   step="0.001"
@@ -321,6 +341,7 @@ export function CompraDialog({
               <div className="w-28 space-y-1">
                 <label className="text-xs text-muted-foreground">Precio total</label>
                 <Input
+                  id="compra-total-input"
                   type="number"
                   min="0"
                   step="0.01"
@@ -336,7 +357,7 @@ export function CompraDialog({
                 variant="outline"
                 className="size-8 shrink-0"
                 onClick={addItem}
-                disabled={!newInsumoId || !newQty || !newTotal}
+                title="Agregar item a la compra"
               >
                 <PlusIcon className="size-4" />
               </Button>
