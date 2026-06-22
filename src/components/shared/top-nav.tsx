@@ -252,7 +252,7 @@ export function TopNav() {
       {mobileOpen && (
         <>
           <div
-            className="fixed inset-0 z-50 bg-black/40 md:hidden"
+            className="fixed inset-0 z-[60] bg-black/40 md:hidden"
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
@@ -260,7 +260,7 @@ export function TopNav() {
             role="dialog"
             aria-modal="true"
             aria-label="Menú principal"
-            className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-border bg-background shadow-xl md:hidden"
+            className="fixed inset-y-0 left-0 z-[60] flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-border bg-background shadow-xl md:hidden"
           >
             <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
               <div className="flex items-center gap-2.5">
