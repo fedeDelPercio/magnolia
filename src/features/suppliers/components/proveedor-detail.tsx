@@ -325,7 +325,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
 
       {/* Saldo card */}
       <div className="rounded-xl border bg-card overflow-hidden">
-        <div className="grid grid-cols-3 divide-x">
+        <div className="grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-y-0 sm:divide-x">
           <div className="px-6 py-4">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total compras</p>
             <p className="mt-1.5 tabular-nums text-lg font-semibold">{formatCurrency(proveedor.total_compras)}</p>
