@@ -128,9 +128,9 @@ export function InsumosClient({ insumos, proveedores }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1">
-          <div className="relative max-w-xs flex-1">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2 md:flex-1 md:flex-row md:items-center">
+          <div className="relative md:max-w-xs md:flex-1">
             <SearchIcon className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
               placeholder="Buscar insumo..."
@@ -139,42 +139,99 @@ export function InsumosClient({ insumos, proveedores }: Props) {
               className="pl-8"
             />
           </div>
-          <div className="flex rounded-lg border overflow-hidden text-sm">
-            {KIND_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                onClick={() => setKindFilter(f.value)}
-                className={`px-3 py-1.5 transition-colors ${
-                  kindFilter === f.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border overflow-hidden text-sm">
+              {KIND_FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setKindFilter(f.value)}
+                  className={`px-3 py-1.5 transition-colors ${
+                    kindFilter === f.value
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-background text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setOnlyTrackStock((v) => !v)}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                onlyTrackStock
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <BoxIcon className="size-3.5" />
+              Con stock
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setOnlyTrackStock((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-              onlyTrackStock
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'bg-background text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            <BoxIcon className="size-3.5" />
-            Con stock
-          </button>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} className="md:shrink-0">
           <PlusIcon className="size-4" />
           Nuevo insumo
         </Button>
       </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      {/* Cards mobile */}
+      <div className="space-y-2 md:hidden">
+        {filtered.length === 0 ? (
+          <div className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground">
+            {search || kindFilter !== 'todos' || onlyTrackStock ? 'No se encontraron insumos' : 'Sin insumos. Creá el primero.'}
+          </div>
+        ) : (
+          filtered.map((insumo) => (
+            <div
+              key={insumo.id}
+              className={`rounded-xl border bg-card p-3 ${!insumo.active ? 'opacity-50' : ''}`}
+              onClick={() => openView(insumo)}
+            >
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="truncate font-medium">{insumo.name}</p>
+                    <p className="shrink-0 text-sm tabular-nums">{formatCurrency(insumo.current_price)}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {UNIT_LABELS[insumo.unit]} · {insumo.proveedores?.name ?? 'Sin proveedor'}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    {insumo.kind === 'descartable' && (
+                      <Badge variant="outline" className="text-xs border-blue-200 bg-blue-50 text-blue-700">Descartable</Badge>
+                    )}
+                    {insumo.perishable && <Badge variant="outline" className="text-xs">Perecedero</Badge>}
+                    {!insumo.active && <Badge variant="outline" className="text-xs">Inactivo</Badge>}
+                  </div>
+                  {insumo.track_stock && (
+                    <div className="mt-2">
+                      <StockBar insumo={insumo} />
+                    </div>
+                  )}
+                </div>
+                <div onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" />}>
+                      <MoreHorizontalIcon className="size-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEdit(insumo)}>Editar</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleToggleActive(insumo)}>
+                        {insumo.active ? 'Desactivar' : 'Activar'}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Tabla desktop */}
+      <div className="hidden rounded-xl border bg-card overflow-hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
