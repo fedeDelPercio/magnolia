@@ -80,12 +80,12 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0 }: P
   return (
     <div className="space-y-6">
       {/* Month nav */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" className="size-8" onClick={() => navigate(prevMonth(month))}>
             <ChevronLeftIcon className="size-4" />
           </Button>
-          <h2 className="text-base font-semibold w-40 text-center">{monthLabel(month)}</h2>
+          <h2 className="flex-1 text-center text-base font-semibold sm:w-40 sm:flex-none">{monthLabel(month)}</h2>
           <Button
             variant="outline"
             size="icon"
@@ -96,14 +96,14 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0 }: P
             <ChevronRightIcon className="size-4" />
           </Button>
         </div>
-        <Button onClick={() => setEgresoOpen(true)}>
+        <Button onClick={() => setEgresoOpen(true)} className="sm:shrink-0">
           <PlusIcon className="size-4" />
           Registrar egreso
         </Button>
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Ingresos</p>
           <p className="mt-1 tabular-nums font-semibold text-green-700">{formatCurrency(totalIngresos)}</p>

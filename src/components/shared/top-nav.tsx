@@ -114,8 +114,12 @@ export function TopNav() {
   return (
     <>
     <header className={cn(
-      "sticky top-0 border-b border-border/60 bg-background/70 backdrop-blur-xl",
-      mobileOpen ? "z-30" : "z-40",
+      "sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl",
+      // El header sticky con backdrop-filter compite con el overlay del drawer
+      // en mobile (crea su propio stacking context). En lugar de pelear con
+      // z-index, lo escondo en mobile mientras el drawer esta abierto: el
+      // drawer ya tiene su propio brand + cierre.
+      mobileOpen && "max-md:invisible",
     )}>
       <div className="mx-auto flex h-16 w-full max-w-[1400px] items-center gap-3 px-4 md:px-6">
         {/* Hamburger mobile */}
