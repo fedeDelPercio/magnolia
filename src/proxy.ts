@@ -30,8 +30,10 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup')
+  // Endpoints publicos / con su propia autenticacion (ej: Vercel cron + Bearer)
+  const isApiPublic = pathname.startsWith('/api/cron') || pathname.startsWith('/api/webhook')
 
-  if (!user && !isAuthRoute) {
+  if (!user && !isAuthRoute && !isApiPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
