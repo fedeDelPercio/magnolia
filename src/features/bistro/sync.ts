@@ -440,8 +440,11 @@ export async function syncRange(
   tenantId: string,
   params: SyncRangeParams,
   userId: string | null,
+  externalClient?: Client,
 ): Promise<SyncRangeResult> {
-  const client = await createClient()
+  // Para invocaciones de cron pasamos un cliente con service-role (sin cookies);
+  // para llamadas desde server actions usamos el cliente con cookies del user.
+  const client = externalClient ?? (await createClient())
 
   // Crear sync_run inicial
   const { data: runRow, error: runErr } = await client
