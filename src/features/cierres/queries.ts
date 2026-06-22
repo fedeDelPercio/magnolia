@@ -78,8 +78,8 @@ export async function getMonthlyDigitalTotal(month: string): Promise<number> {
   const { data, error } = await supabase
     .from('cierres_caja_active')
     .select('monto_tarjetas, monto_qr, monto_online')
-    .gte('fecha_cierre', from)
-    .lt('fecha_cierre', to)
+    .gte('fecha_cierre_local', from)
+    .lt('fecha_cierre_local', to)
   if (error) throw new Error(error.message)
   return (data ?? []).reduce(
     (sum, c) => sum + (c.monto_tarjetas ?? 0) + (c.monto_qr ?? 0) + (c.monto_online ?? 0),
@@ -102,8 +102,8 @@ export async function getMonthlyVentasSummary(month: string): Promise<MonthlyVen
   const { data, error } = await supabase
     .from('cierres_caja_active')
     .select('monto_efectivo, monto_tarjetas, monto_qr, monto_online')
-    .gte('fecha_cierre', from)
-    .lt('fecha_cierre', to)
+    .gte('fecha_cierre_local', from)
+    .lt('fecha_cierre_local', to)
   if (error) throw new Error(error.message)
   const rows = data ?? []
   const efectivo = rows.reduce((s, c) => s + (c.monto_efectivo ?? 0), 0)

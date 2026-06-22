@@ -150,8 +150,8 @@ export async function getIvaBalance(
       .from('cierres_caja_active')
       .select('monto_tarjetas, monto_qr, monto_online')
       .eq('tenant_id', tenantId)
-      .gte('fecha_cierre', from)
-      .lt('fecha_cierre', to),
+      .gte('fecha_cierre_local', from)
+      .lt('fecha_cierre_local', to),
     supabase
       .from('compras')
       .select('total, proveedores!inner(discrimina_iva)')

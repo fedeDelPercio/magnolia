@@ -105,20 +105,20 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
       .from('cierres_caja_active')
       .select('total_vendido, monto_salon, cubiertos, cantidad_ventas')
       .eq('tenant_id', tenantId)
-      .gte('fecha_cierre', from)
-      .lt('fecha_cierre', to),
+      .gte('fecha_cierre_local', from)
+      .lt('fecha_cierre_local', to),
     supabase
       .from('cierres_caja_active')
       .select('total_vendido')
       .eq('tenant_id', tenantId)
-      .gte('fecha_cierre', prevFrom)
-      .lt('fecha_cierre', prevTo),
+      .gte('fecha_cierre_local', prevFrom)
+      .lt('fecha_cierre_local', prevTo),
     supabase
       .from('cierre_caja_productos_active')
       .select('cantidad, monto_total, producto_id')
       .eq('cierre_tenant_id', tenantId)
-      .gte('cierre_fecha_cierre', from)
-      .lt('cierre_fecha_cierre', to),
+      .gte('cierre_fecha_local', from)
+      .lt('cierre_fecha_local', to),
     supabase
       .from('caja_movimientos')
       .select('monto, categoria')
@@ -299,19 +299,22 @@ export async function getFacturacionEvolution(
   const { data, error } = await supabase
     .from('cierres_caja_active')
     .select(
-      'fecha_cierre, monto_efectivo, monto_tarjetas, monto_qr, monto_online, monto_cuenta_cliente',
+      'fecha_cierre_local, monto_efectivo, monto_tarjetas, monto_qr, monto_online, monto_cuenta_cliente',
     )
     .eq('tenant_id', tenantId)
-    .gte('fecha_cierre', from)
-    .lt('fecha_cierre', to)
+    .gte('fecha_cierre_local', from)
+    .lt('fecha_cierre_local', to)
 
   if (error) throw new Error(error.message)
 
   // Agregar por bin
   const bins = new Map<string, EvolucionPunto>()
   for (const c of data ?? []) {
-    if (!c.fecha_cierre) continue
-    const d = new Date(c.fecha_cierre)
+    if (!c.fecha_cierre_local) continue
+    // Parsear como local (no UTC) — sino "2026-06-10" se interpreta como
+    // 21:00 del 9 en Argentina y los cierres salen movidos un dia.
+    const [y, m, dd] = c.fecha_cierre_local.split('-').map(Number)
+    const d = new Date(y!, m! - 1, dd!)
     const start = binStart(d, gran)
     const key = isoDate(start)
     const efectivo = Number(c.monto_efectivo) || 0
@@ -370,19 +373,19 @@ export async function getDailyVentas(from: string, to: string): Promise<DailyVen
 
   const { data, error } = await supabase
     .from('cierres_caja_active')
-    .select('fecha_cierre, total_vendido, monto_salon, monto_mostrador')
+    .select('fecha_cierre_local, total_vendido, monto_salon, monto_mostrador')
     .eq('tenant_id', tenantId)
-    .gte('fecha_cierre', from)
-    .lt('fecha_cierre', to)
-    .order('fecha_cierre')
+    .gte('fecha_cierre_local', from)
+    .lt('fecha_cierre_local', to)
+    .order('fecha_cierre_local')
 
   if (error) throw new Error(error.message)
 
   // Agrupar por día (puede haber más de 1 cierre por día)
   const byDay = new Map<string, DailyVentas>()
   for (const c of data ?? []) {
-    if (!c.fecha_cierre) continue
-    const fecha = c.fecha_cierre.slice(0, 10)
+    if (!c.fecha_cierre_local) continue
+    const fecha = c.fecha_cierre_local
     const cur = byDay.get(fecha) ?? { fecha, total: 0, salon: 0, mostrador: 0 }
     cur.total += Number(c.total_vendido) || 0
     cur.salon += Number(c.monto_salon) || 0
@@ -402,14 +405,14 @@ export async function getMixData(from: string, to: string): Promise<MixData> {
       .from('cierres_caja_active')
       .select('id, monto_salon, monto_mostrador, cubiertos')
       .eq('tenant_id', tenantId)
-      .gte('fecha_cierre', from)
-      .lt('fecha_cierre', to),
+      .gte('fecha_cierre_local', from)
+      .lt('fecha_cierre_local', to),
     supabase
       .from('cierre_caja_productos_active')
       .select('categoria, cierre_caja_id')
       .eq('cierre_tenant_id', tenantId)
-      .gte('cierre_fecha_cierre', from)
-      .lt('cierre_fecha_cierre', to),
+      .gte('cierre_fecha_local', from)
+      .lt('cierre_fecha_local', to),
   ])
 
   if (cierresRes.error) throw new Error(cierresRes.error.message)
@@ -445,8 +448,8 @@ export async function getMediosPago(from: string, to: string): Promise<MediosPag
     .from('cierres_caja_active')
     .select('monto_efectivo, monto_tarjetas, monto_qr, monto_online')
     .eq('tenant_id', tenantId)
-    .gte('fecha_cierre', from)
-    .lt('fecha_cierre', to)
+    .gte('fecha_cierre_local', from)
+    .lt('fecha_cierre_local', to)
 
   if (error) throw new Error(error.message)
 
@@ -470,8 +473,8 @@ export async function getTopProductos(
     .from('cierre_caja_productos_active')
     .select('nombre, cantidad, monto_total')
     .eq('cierre_tenant_id', tenantId)
-    .gte('cierre_fecha_cierre', from)
-    .lt('cierre_fecha_cierre', to)
+    .gte('cierre_fecha_local', from)
+    .lt('cierre_fecha_local', to)
 
   if (error) throw new Error(error.message)
 
@@ -536,8 +539,8 @@ export async function getProductosMasRentables(
       .from('cierre_caja_productos_active')
       .select('producto_id, cantidad, monto_total')
       .eq('cierre_tenant_id', tenantId)
-      .gte('cierre_fecha_cierre', from)
-      .lt('cierre_fecha_cierre', to),
+      .gte('cierre_fecha_local', from)
+      .lt('cierre_fecha_local', to),
     supabase
       .from('product_costs')
       .select('id, name, sale_price, total_cost')
@@ -604,8 +607,8 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
       .from('cierre_caja_productos_active')
       .select('producto_id, cantidad, monto_total')
       .eq('cierre_tenant_id', tenantId)
-      .gte('cierre_fecha_cierre', from)
-      .lt('cierre_fecha_cierre', to),
+      .gte('cierre_fecha_local', from)
+      .lt('cierre_fecha_local', to),
     supabase
       .from('product_costs')
       .select('id, name, sale_price, total_cost')
