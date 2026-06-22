@@ -137,10 +137,34 @@ export function ComprobanteUploadDialog({
   }
 
   async function handleFile(file: File) {
+    // Validacion en cliente antes de subir, asi el modal no queda colgado
+    // si el archivo es muy pesado o un formato no soportado por el SDK.
+    const MAX_MB = 18
+    if (file.size > MAX_MB * 1024 * 1024) {
+      const sizeMB = (file.size / 1024 / 1024).toFixed(1)
+      toast.error(`El archivo pesa ${sizeMB} MB. El maximo es ${MAX_MB} MB — comprimilo o sacale una foto de menor calidad.`)
+      return
+    }
+    const lowerName = file.name.toLowerCase()
+    if (lowerName.endsWith('.heic') || lowerName.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif') {
+      toast.error('Las fotos HEIC de iPhone/Mac no estan soportadas. Convertilas a JPG/PNG antes (en Vista Previa: Archivo → Exportar → JPEG).')
+      return
+    }
+
     setStage('parsing')
     const fd = new FormData()
     fd.append('file', file)
-    const result = await uploadAndParseComprobante(proveedorId, fd)
+    let result
+    try {
+      result = await uploadAndParseComprobante(proveedorId, fd)
+    } catch (e) {
+      // El server action puede tirar fetch error si el body excede limites o si
+      // el navegador corta la conexion. Antes esto dejaba el modal colgado.
+      const msg = e instanceof Error ? e.message : 'Error desconocido'
+      toast.error(`No se pudo subir el comprobante: ${msg}. Probá con un archivo mas chico.`)
+      setStage('pick')
+      return
+    }
     if (result.error || !result.items) {
       toast.error(result.error ?? 'No se pudo procesar el comprobante')
       setStage('pick')
