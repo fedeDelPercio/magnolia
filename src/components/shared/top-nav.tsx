@@ -112,6 +112,7 @@ export function TopNav() {
   const activeItem = NAV.find((i) => isActive(i, pathname))
 
   return (
+    <>
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl">
       <div className="mx-auto flex h-16 w-full max-w-[1400px] items-center gap-3 px-4 md:px-6">
         {/* Hamburger mobile */}
@@ -245,7 +246,9 @@ export function TopNav() {
         )
       })()}
 
-      {/* Drawer mobile — overlay + panel deslizable desde la izquierda */}
+    </header>
+      {/* Drawer mobile — sibling del header para que `fixed` no quede atrapado
+          por el backdrop-filter del header (regla CSS). */}
       {mobileOpen && (
         <>
           <div
@@ -338,6 +341,6 @@ export function TopNav() {
           </aside>
         </>
       )}
-    </header>
+    </>
   )
 }
