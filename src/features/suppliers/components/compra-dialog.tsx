@@ -256,7 +256,7 @@ export function CompraDialog({
 
         <div className="space-y-4">
           {/* Header fields */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-sm font-medium">Fecha</label>
               <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
