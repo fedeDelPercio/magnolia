@@ -24,7 +24,7 @@ import {
 
 import { formatCurrency } from '@/lib/format'
 import { UNIT_LABELS, type UnitKind } from '../schemas'
-import { toggleInsumoActive } from '../actions'
+import { toggleInsumoActive, deleteInsumo } from '../actions'
 import { InsumoDialog } from './insumo-dialog'
 import type { InsumoWithProveedor } from '../queries'
 import type { Tables } from '@/types/database'
@@ -116,6 +116,21 @@ export function InsumosClient({ insumos, proveedores }: Props) {
         toast.error(result.error)
       } else {
         toast.success(insumo.active ? 'Insumo desactivado' : 'Insumo activado')
+      }
+    })
+  }
+
+  function handleDelete(insumo: InsumoWithProveedor) {
+    const ok = window.confirm(
+      `¿Eliminar "${insumo.name}"? Se va a borrar el insumo y todas sus referencias (compras, recetas, productos, historial). Esta accion no se puede deshacer.`,
+    )
+    if (!ok) return
+    startTransition(async () => {
+      const result = await deleteInsumo(insumo.id)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success(`Insumo "${insumo.name}" eliminado`)
       }
     })
   }
@@ -221,6 +236,12 @@ export function InsumosClient({ insumos, proveedores }: Props) {
                       <DropdownMenuItem onClick={() => handleToggleActive(insumo)}>
                         {insumo.active ? 'Desactivar' : 'Activar'}
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDelete(insumo)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        Eliminar
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -305,6 +326,12 @@ export function InsumosClient({ insumos, proveedores }: Props) {
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleToggleActive(insumo)}>
                           {insumo.active ? 'Desactivar' : 'Activar'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleDelete(insumo)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          Eliminar
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

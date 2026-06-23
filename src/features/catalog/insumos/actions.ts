@@ -375,3 +375,34 @@ export async function getDespiecesByParents(
   }
   return map
 }
+
+// Borra el insumo de forma destructiva: arrastra TODAS las referencias
+// (compra_items, ingredientes en recetas/productos, despieces, historial,
+// ajustes). Las compras y recetas que usaban este insumo van a quedar sin
+// esa linea — eso es intencional, decision explicita del usuario.
+export async function deleteInsumo(id: string): Promise<{ error?: string }> {
+  try {
+    const supabase = await createClient()
+
+    // Borrar todas las referencias en orden, ignorando errores individuales
+    // (si una tabla no existe o esta vacia no nos importa).
+    await Promise.all([
+      supabase.from('compra_items').delete().eq('insumo_id', id),
+      supabase.from('receta_ingredientes').delete().eq('insumo_id', id),
+      supabase.from('producto_descartables').delete().eq('insumo_id', id),
+      supabase.from('insumo_despiece').delete().eq('parent_id', id),
+      supabase.from('insumo_despiece').delete().eq('hijo_id', id),
+      supabase.from('insumo_price_history').delete().eq('insumo_id', id),
+      supabase.from('insumo_stock_ajustes').delete().eq('insumo_id', id),
+    ])
+
+    const { error } = await supabase.from('insumos').delete().eq('id', id)
+    if (error) return { error: error.message }
+
+    revalidatePath('/catalogo/insumos')
+    revalidatePath('/proveedores')
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Error desconocido' }
+  }
+}
