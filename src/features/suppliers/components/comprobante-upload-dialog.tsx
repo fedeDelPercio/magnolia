@@ -14,8 +14,9 @@ import { formatCurrency } from '@/lib/format'
 import { UNIT_LABELS, type UnitKind } from '@/features/catalog/insumos/schemas'
 import { InsumoDialog } from '@/features/catalog/insumos/components/insumo-dialog'
 import type { InsumoWithProveedor } from '@/features/catalog/insumos/queries'
-import { uploadAndParseComprobante, applyComprobante, discardComprobante, refreshInsumoForComprobante, type ApplyItem } from '../comprobantes/actions'
+import { parseUploadedComprobante, applyComprobante, discardComprobante, refreshInsumoForComprobante, getComprobanteUploadPath, type ApplyItem } from '../comprobantes/actions'
 import { createInsumo, getInsumoFullForEdit, getDespiecesByParents } from '@/features/catalog/insumos/actions'
+import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import type { ItemConMatch } from '../comprobantes/schemas'
 import type { Tables } from '@/types/database'
 
@@ -139,7 +140,7 @@ export function ComprobanteUploadDialog({
   async function handleFile(file: File) {
     // Validacion en cliente antes de subir, asi el modal no queda colgado
     // si el archivo es muy pesado o un formato no soportado por el SDK.
-    const MAX_MB = 18
+    const MAX_MB = 15
     if (file.size > MAX_MB * 1024 * 1024) {
       const sizeMB = (file.size / 1024 / 1024).toFixed(1)
       toast.error(`El archivo pesa ${sizeMB} MB. El maximo es ${MAX_MB} MB — comprimilo o sacale una foto de menor calidad.`)
@@ -152,16 +153,38 @@ export function ComprobanteUploadDialog({
     }
 
     setStage('parsing')
-    const fd = new FormData()
-    fd.append('file', file)
+
+    // 1) Pedir un storage path al server (devuelve algo como `{tenantId}/uuid-name.pdf`)
+    let uploadPath: string
+    try {
+      const { path } = await getComprobanteUploadPath(file.name)
+      uploadPath = path
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error desconocido'
+      toast.error(`No se pudo iniciar la subida: ${msg}`)
+      setStage('pick')
+      return
+    }
+
+    // 2) Subir el archivo DIRECTO a Supabase Storage (no pasa por server actions
+    //    asi no choca contra el limite de 4.5MB de Vercel para payloads).
+    const supabase = createSupabaseBrowser()
+    const { error: uploadErr } = await supabase.storage
+      .from('comprobantes')
+      .upload(uploadPath, file, { contentType: file.type, upsert: false })
+    if (uploadErr) {
+      toast.error(`Fallo la subida del archivo: ${uploadErr.message}`)
+      setStage('pick')
+      return
+    }
+
+    // 3) Avisar al server que ya esta subido y parsear con IA
     let result
     try {
-      result = await uploadAndParseComprobante(proveedorId, fd)
+      result = await parseUploadedComprobante(proveedorId, uploadPath, file.type)
     } catch (e) {
-      // El server action puede tirar fetch error si el body excede limites o si
-      // el navegador corta la conexion. Antes esto dejaba el modal colgado.
       const msg = e instanceof Error ? e.message : 'Error desconocido'
-      toast.error(`No se pudo subir el comprobante: ${msg}. Probá con un archivo mas chico.`)
+      toast.error(`No se pudo procesar el comprobante: ${msg}`)
       setStage('pick')
       return
     }

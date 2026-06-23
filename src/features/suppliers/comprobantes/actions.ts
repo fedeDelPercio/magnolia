@@ -23,33 +23,46 @@ export type UploadResult = {
   error?: string
 }
 
-// Sube el archivo a Storage, crea row en comprobante_uploads, llama a la IA
-// y devuelve los items con matches listos para revisión por el user.
-// Lo hago todo en una sola action para simplificar el flow del cliente
-// (un solo loading state, un solo error path).
-export async function uploadAndParseComprobante(
-  proveedorId: string,
-  formData: FormData,
-): Promise<UploadResult> {
-  const file = formData.get('file')
-  if (!(file instanceof File)) return { error: 'Archivo no recibido' }
-  if (file.size > MAX_SIZE) return { error: 'El archivo supera los 15 MB' }
+// Devuelve un path unico bajo {tenantId}/ para que el cliente suba el archivo
+// directo al bucket. El upload directo no pasa por el server action y esquiva
+// el limite de payload de 4.5MB de Vercel.
+export async function getComprobanteUploadPath(fileName: string): Promise<{ path: string }> {
+  const tenantId = await getActiveTenantId()
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  return { path: `${tenantId}/${crypto.randomUUID()}-${safeName}` }
+}
 
+// Parsea un archivo que YA fue subido a Storage por el cliente (directo, sin
+// pasar por el server action — esto evita el limite de 4.5MB de Vercel para
+// payloads de server actions). Crea la row en comprobante_uploads, baja el
+// archivo, lo manda a la IA y devuelve items con matches.
+export async function parseUploadedComprobante(
+  proveedorId: string,
+  storagePath: string,
+  mimeType: string,
+): Promise<UploadResult> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const storagePath = `${tenantId}/${crypto.randomUUID()}-${safeName}`
+  // Validacion de seguridad: el path tiene que empezar con el tenant del user
+  // para evitar que alguien intente parsear archivos de otro tenant.
+  if (!storagePath.startsWith(`${tenantId}/`)) {
+    return { error: 'Path invalido' }
+  }
 
-  // 1) Upload a Storage
-  const { error: uploadErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
-  if (uploadErr) return { error: `Storage: ${uploadErr.message}` }
+  // 1) Bajar el archivo de Storage
+  const { data: blob, error: dlErr } = await supabase.storage.from(BUCKET).download(storagePath)
+  if (dlErr || !blob) {
+    return { error: `No se pudo leer el archivo subido: ${dlErr?.message ?? 'desconocido'}` }
+  }
+  if (blob.size > MAX_SIZE) {
+    await supabase.storage.from(BUCKET).remove([storagePath])
+    return { error: 'El archivo supera los 15 MB' }
+  }
+  const buffer = Buffer.from(await blob.arrayBuffer())
 
   // 2) Crear row pending
   const { data: row, error: insertErr } = await supabase
@@ -58,7 +71,7 @@ export async function uploadAndParseComprobante(
       tenant_id: tenantId,
       proveedor_id: proveedorId,
       storage_path: storagePath,
-      mime_type: file.type,
+      mime_type: mimeType,
       status: 'parsing',
       ai_model: COMPROBANTE_MODEL,
       uploaded_by: user?.id ?? null,
@@ -66,13 +79,12 @@ export async function uploadAndParseComprobante(
     .select('id')
     .single()
   if (insertErr || !row) {
-    // Cleanup del archivo subido
     await supabase.storage.from(BUCKET).remove([storagePath])
     return { error: `DB: ${insertErr?.message ?? 'no row'}` }
   }
 
   // 3) Llamar a la IA
-  const vision = await extractComprobante(buffer, file.type)
+  const vision = await extractComprobante(buffer, mimeType)
   if (vision.error || !vision.extract) {
     await supabase
       .from('comprobante_uploads')
