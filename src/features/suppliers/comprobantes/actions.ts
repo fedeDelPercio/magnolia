@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 
 import { extractComprobante, COMPROBANTE_MODEL } from './claude-vision'
+import { normalizeAliasText } from './normalize'
 import { matchItemsConInsumos } from './queries'
 import { expandDespiece } from '@/features/catalog/insumos/despiece'
 import type { ItemConMatch } from './schemas'
@@ -97,8 +98,8 @@ export async function parseUploadedComprobante(
     return { error: vision.error ?? 'La IA no devolvió datos' }
   }
 
-  // 4) Fuzzy match contra insumos del tenant
-  const itemsConMatch = await matchItemsConInsumos(vision.extract.items)
+  // 4) Match contra insumos del tenant (aliases primero, fuzzy de fallback)
+  const itemsConMatch = await matchItemsConInsumos(vision.extract.items, proveedorId)
 
   // 5) Guardar parsed + matches
   await supabase
@@ -125,6 +126,10 @@ export type ApplyItem = {
   qty: number
   unit: Tables<'insumos'>['unit']
   unit_price: number
+  // Texto crudo detectado por la IA en el comprobante; se usa para memorizar
+  // el alias (texto -> insumo) para este proveedor y auto-matchear la
+  // proxima vez. Opcional para mantener compat con flows que no traen el texto.
+  raw_text?: string
 }
 
 // Crea la compra + items con los valores aprobados por el user. La conversión
@@ -165,6 +170,38 @@ export async function applyComprobante(
     .single()
 
   if (compraErr || !compra) return { error: compraErr?.message ?? 'No se pudo crear la compra' }
+
+  // Memorizar (raw_text -> insumo_id) por proveedor para auto-matchear la
+  // proxima factura del mismo proveedor con el mismo texto. Se hace ANTES
+  // del expandDespiece porque queremos aprender el insumo que el user vio
+  // y aprobo (el padre), no los hijos expandidos. Dedup por texto normalizado
+  // para evitar conflicts ON CONFLICT del mismo upsert.
+  const aliasInputs = items
+    .map((it) => ({
+      raw: (it.raw_text ?? '').trim(),
+      insumo_id: it.insumo_id,
+    }))
+    .filter((it) => it.raw.length > 0)
+  const aliasByNormalized = new Map<string, { raw: string; insumo_id: string }>()
+  for (const a of aliasInputs) {
+    const norm = normalizeAliasText(a.raw)
+    if (norm && !aliasByNormalized.has(norm)) aliasByNormalized.set(norm, a)
+  }
+  if (aliasByNormalized.size > 0) {
+    const rows = Array.from(aliasByNormalized.entries()).map(([normalized, a]) => ({
+      tenant_id: tenantId,
+      proveedor_id: proveedorId,
+      insumo_id: a.insumo_id,
+      raw_text: a.raw,
+      raw_text_normalized: normalized,
+    }))
+    // Si el alias ya existe pero apunta a otro insumo, lo actualizamos al
+    // nuevo (el ultimo match aprobado por el user gana). Incrementamos hit_count.
+    await supabase.from('insumo_aliases').upsert(rows, {
+      onConflict: 'tenant_id,proveedor_id,raw_text_normalized',
+      ignoreDuplicates: false,
+    })
+  }
 
   // Si alguno de los items apunta a un insumo padre con despiece, lo expandimos
   // a items por hijo antes de insertar — mismo trato que createCompra.

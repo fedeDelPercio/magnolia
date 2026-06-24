@@ -1083,6 +1083,78 @@ export type Database = {
           },
         ]
       }
+      insumo_aliases: {
+        Row: {
+          created_at: string
+          hit_count: number
+          id: string
+          insumo_id: string
+          proveedor_id: string
+          raw_text: string
+          raw_text_normalized: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          hit_count?: number
+          id?: string
+          insumo_id: string
+          proveedor_id: string
+          raw_text: string
+          raw_text_normalized: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          hit_count?: number
+          id?: string
+          insumo_id?: string
+          proveedor_id?: string
+          raw_text?: string
+          raw_text_normalized?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insumo_aliases_insumo_id_fkey"
+            columns: ["insumo_id"]
+            isOneToOne: false
+            referencedRelation: "insumo_stock"
+            referencedColumns: ["insumo_id"]
+          },
+          {
+            foreignKeyName: "insumo_aliases_insumo_id_fkey"
+            columns: ["insumo_id"]
+            isOneToOne: false
+            referencedRelation: "insumos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumo_aliases_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumo_aliases_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumo_aliases_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insumo_despiece: {
         Row: {
           created_at: string

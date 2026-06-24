@@ -35,4 +35,8 @@ export type ItemConMatch = {
   candidates: InsumoMatch[]
   // Sugerencia primaria pre-seleccionada (o null si no hay match confiable)
   suggested_insumo_id: string | null
+  // 'alias': vino de insumo_aliases (match aprendido antes para este proveedor)
+  // 'fuzzy': vino de pg_trgm sobre el catalogo
+  // null: sin sugerencia confiable
+  match_source: 'alias' | 'fuzzy' | null
 }

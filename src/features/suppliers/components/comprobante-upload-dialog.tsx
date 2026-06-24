@@ -46,6 +46,9 @@ type LineDraft = {
   qtyInput: string         // cantidad EN unidad de compra del insumo (cajón, kg, etc)
   totalInput: string       // precio total facturado
   discarded: boolean
+  // 'alias' = la asignacion inicial vino de la memoria de matches previos
+  // para este proveedor (insumo_aliases). Sirve para mostrar un badge.
+  initialSource: ItemConMatch['match_source']
 }
 
 function todayStr() {
@@ -200,6 +203,9 @@ export function ComprobanteUploadDialog({
 
     setLines(
       result.items.map((it) => {
+        // Buscar primero en localInsumos (incluye alias matches contra insumos
+        // que pueden no estar en el prop original `insumos` si la pagina cacheo)
+        // y caer a la lista base como fallback.
         const insumo = it.suggested_insumo_id
           ? insumos.find((i) => i.id === it.suggested_insumo_id) ?? null
           : null
@@ -209,10 +215,11 @@ export function ComprobanteUploadDialog({
         return {
           detected: it.detected,
           candidates: it.candidates,
-          assignedInsumoId: insumo?.id ?? null,
+          assignedInsumoId: insumo?.id ?? it.suggested_insumo_id ?? null,
           qtyInput: String(it.detected.cantidad ?? ''),
           totalInput: String(it.detected.precio_total ?? ''),
           discarded: false,
+          initialSource: it.match_source,
         }
       }),
     )
@@ -273,6 +280,7 @@ export function ComprobanteUploadDialog({
         qty: qtyBase,
         unit: insumo.unit,
         unit_price: total / qtyBase,
+        raw_text: line.detected.nombre,
       })
     }
     return items
@@ -401,7 +409,17 @@ export function ComprobanteUploadDialog({
                     >
                       <div className="flex items-start gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{line.detected.nombre}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">{line.detected.nombre}</p>
+                            {line.initialSource === 'alias' && line.assignedInsumoId === line.candidates[0]?.insumo_id && (
+                              <span
+                                className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200"
+                                title="Este texto ya estaba memorizado para este proveedor"
+                              >
+                                memorizado
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             IA detectó: {line.detected.cantidad} {line.detected.unidad ?? '?'} · {formatCurrency(line.detected.precio_total)}
                           </p>
