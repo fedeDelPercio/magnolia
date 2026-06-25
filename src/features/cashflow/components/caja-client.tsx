@@ -12,10 +12,12 @@ import { cn } from '@/lib/utils'
 import { EgresoDialog } from './egreso-dialog'
 import { BistroCajaCard } from './bistro-caja-card'
 import { CajaMayorCard } from './caja-mayor-card'
+import { CuentaDigitalCard } from './cuenta-digital-card'
 import { UltimoCierreTile } from './ultimo-cierre-tile'
 import type { CajaMovimiento } from '../queries'
 import type { BistroCajaSummary } from '../bistro-caja-queries'
 import type { CajaMayorSummary, UltimoCierre } from '../caja-mayor-queries'
+import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
 import type { MonthlyVentasSummary } from '@/features/cierres/queries'
 import { METODO_LABELS } from '@/features/suppliers/schemas'
 
@@ -57,9 +59,10 @@ type Props = {
   bistroCaja?: BistroCajaSummary
   cajaMayor?: CajaMayorSummary
   ultimoCierre?: UltimoCierre
+  cuentaDigital?: CuentaDigitalSummary
 }
 
-export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bistroCaja, cajaMayor, ultimoCierre }: Props) {
+export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
 
@@ -114,24 +117,25 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bis
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Ingresos</p>
-          <p className="mt-1 tabular-nums font-semibold text-green-700">{formatCurrency(totalIngresos)}</p>
+          <p className="mt-1 tabular-nums font-semibold text-green-700 text-2xl sm:text-3xl">{formatCurrency(totalIngresos)}</p>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Egresos</p>
-          <p className="mt-1 tabular-nums font-semibold text-red-600">{formatCurrency(totalEgresos)}</p>
+          <p className="mt-1 tabular-nums font-semibold text-red-600 text-2xl sm:text-3xl">{formatCurrency(totalEgresos)}</p>
         </div>
         <div className={`rounded-xl border p-4 ${saldo >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Resultado</p>
-          <p className={`mt-1 tabular-nums font-semibold text-lg ${saldo >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+          <p className={`mt-1 tabular-nums font-semibold text-2xl sm:text-3xl ${saldo >= 0 ? 'text-green-700' : 'text-red-600'}`}>
             {formatCurrency(saldo)}
           </p>
         </div>
       </div>
 
-      {/* Tile + Caja Mayor en grilla 2 columnas */}
-      {(ultimoCierre !== undefined || cajaMayor) && (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      {/* Cuentas: Ultimo cierre + Caja Mayor + Cuenta Digital */}
+      {(ultimoCierre !== undefined || cajaMayor || cuentaDigital) && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {ultimoCierre !== undefined && <UltimoCierreTile ultimo={ultimoCierre} />}
+          {cuentaDigital && <CuentaDigitalCard summary={cuentaDigital} />}
           {cajaMayor && <CajaMayorCard summary={cajaMayor} month={month} />}
         </div>
       )}

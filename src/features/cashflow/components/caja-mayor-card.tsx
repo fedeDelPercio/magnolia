@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { PlusIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon } from 'lucide-react'
+import { PlusIcon, MinusIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -13,16 +13,24 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { registrarEgresoCajaMayor, deleteCajaMayorMovimiento } from '../caja-mayor-actions'
-import type { CajaMayorSummary } from '../caja-mayor-queries'
+import {
+  registrarEgresoCajaMayor,
+  registrarIngresoCajaMayor,
+  deleteCajaMayorMovimiento,
+} from '../caja-mayor-actions'
+import type { CajaMayorMovimiento, CajaMayorSummary } from '../caja-mayor-queries'
 
 type Props = { summary: CajaMayorSummary; month: string }
 
-// Card de "Caja Mayor" en /caja. Muestra saldo acumulado, ingresos/egresos
-// del mes y la lista del mes. Permite registrar egresos manuales (los ingresos
-// vendran auto cuando se vincule con un RETIRO de Bistro tipo "CAJA MAYOR").
-export function CajaMayorCard({ summary, month }: Props) {
-  const [dialogOpen, setDialogOpen] = useState(false)
+const ORIGEN_LABEL: Record<CajaMayorMovimiento['origen'], string> = {
+  externo: 'externo',
+  caja_efectivo: 'caja efectivo',
+  cuenta_digital: 'cuenta digital',
+}
+
+export function CajaMayorCard({ summary }: Props) {
+  const [ingresoOpen, setIngresoOpen] = useState(false)
+  const [egresoOpen, setEgresoOpen] = useState(false)
 
   const saldoTone = summary.saldo > 0
     ? 'text-emerald-700'
@@ -32,8 +40,8 @@ export function CajaMayorCard({ summary, month }: Props) {
 
   return (
     <div className="rounded-xl border bg-card p-4">
-      <div className="flex items-start justify-between mb-3">
-        <div>
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <div className="min-w-0">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Caja mayor</p>
           <p className={cn('mt-1 text-2xl font-semibold tabular-nums', saldoTone)}>
             {formatCurrency(summary.saldo)}
@@ -42,10 +50,16 @@ export function CajaMayorCard({ summary, month }: Props) {
             Saldo acumulado · tesorería del local fuera del POS
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
-          <PlusIcon className="size-3.5 mr-1" />
-          Egreso
-        </Button>
+        <div className="flex flex-col gap-1 shrink-0">
+          <Button size="sm" variant="outline" onClick={() => setIngresoOpen(true)}>
+            <PlusIcon className="size-3.5 mr-1" />
+            Ingreso
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setEgresoOpen(true)}>
+            <MinusIcon className="size-3.5 mr-1" />
+            Egreso
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
@@ -71,12 +85,13 @@ export function CajaMayorCard({ summary, month }: Props) {
         </div>
       )}
 
-      <EgresoDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <IngresoDialog open={ingresoOpen} onOpenChange={setIngresoOpen} />
+      <EgresoDialog open={egresoOpen} onOpenChange={setEgresoOpen} />
     </div>
   )
 }
 
-function MovimientoRow({ m }: { m: CajaMayorSummary['movimientosMes'][number] }) {
+function MovimientoRow({ m }: { m: CajaMayorMovimiento }) {
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
 
@@ -85,10 +100,7 @@ function MovimientoRow({ m }: { m: CajaMayorSummary['movimientosMes'][number] })
     setDeleting(true)
     const res = await deleteCajaMayorMovimiento(m.id)
     setDeleting(false)
-    if (res.error) {
-      toast.error(res.error)
-      return
-    }
+    if (res.error) { toast.error(res.error); return }
     toast.success('Movimiento borrado')
     router.refresh()
   }
@@ -108,6 +120,9 @@ function MovimientoRow({ m }: { m: CajaMayorSummary['movimientosMes'][number] })
           <p className="font-medium truncate">{m.descripcion ?? '(sin descripción)'}</p>
           <p className="text-[10px] text-muted-foreground">
             {formatDate(m.fecha)}
+            {m.tipo === 'ingreso' && m.origen !== 'externo' && (
+              <span className="ml-1 text-sky-700">· desde {ORIGEN_LABEL[m.origen]}</span>
+            )}
             {m.source === 'bistro' && <span className="ml-1 text-sky-700">· auto Bistro</span>}
           </p>
         </div>
@@ -153,21 +168,12 @@ function EgresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const m = parseFloat(monto)
-    if (isNaN(m) || m <= 0) {
-      toast.error('Monto inválido')
-      return
-    }
-    if (!descripcion.trim()) {
-      toast.error('Pone una descripción')
-      return
-    }
+    if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
+    if (!descripcion.trim()) { toast.error('Pone una descripción'); return }
     setSaving(true)
     const res = await registrarEgresoCajaMayor({ fecha, monto: m, descripcion: descripcion.trim() })
     setSaving(false)
-    if (res.error) {
-      toast.error(res.error)
-      return
-    }
+    if (res.error) { toast.error(res.error); return }
     toast.success('Egreso registrado')
     reset()
     onOpenChange(false)
@@ -182,46 +188,102 @@ function EgresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1">
-            <Label htmlFor="cm-fecha">Fecha</Label>
-            <Input
-              id="cm-fecha"
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              required
-            />
+            <Label htmlFor="cm-eg-fecha">Fecha</Label>
+            <Input id="cm-eg-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="cm-monto">Monto</Label>
-            <Input
-              id="cm-monto"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="50000"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-              required
-            />
+            <Label htmlFor="cm-eg-monto">Monto</Label>
+            <Input id="cm-eg-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="cm-desc">Descripción</Label>
-            <Textarea
-              id="cm-desc"
-              placeholder="Ej: pago alquiler junio"
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              required
-              rows={2}
-            />
+            <Label htmlFor="cm-eg-desc">Descripción</Label>
+            <Textarea id="cm-eg-desc" placeholder="Ej: pago alquiler junio" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows={2} />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Registrar egreso'}
-            </Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Registrar egreso'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const router = useRouter()
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
+  const [monto, setMonto] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [origen, setOrigen] = useState<'externo' | 'caja_efectivo' | 'cuenta_digital'>('caja_efectivo')
+  const [saving, setSaving] = useState(false)
+
+  function reset() {
+    setFecha(new Date().toISOString().slice(0, 10))
+    setMonto('')
+    setDescripcion('')
+    setOrigen('caja_efectivo')
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const m = parseFloat(monto)
+    if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
+    if (!descripcion.trim()) { toast.error('Pone una descripción'); return }
+    setSaving(true)
+    const res = await registrarIngresoCajaMayor({
+      fecha,
+      monto: m,
+      descripcion: descripcion.trim(),
+      origen,
+    })
+    setSaving(false)
+    if (res.error) { toast.error(res.error); return }
+    toast.success('Ingreso registrado')
+    reset()
+    onOpenChange(false)
+    router.refresh()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Registrar ingreso a Caja Mayor</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="cm-in-origen">De dónde sale el dinero</Label>
+            <select
+              id="cm-in-origen"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              value={origen}
+              onChange={(e) => setOrigen(e.target.value as typeof origen)}
+            >
+              <option value="caja_efectivo">Caja efectivo (Bistro)</option>
+              <option value="cuenta_digital">Cuenta digital</option>
+              <option value="externo">Externo (aporte, préstamo, etc.)</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              {origen === 'caja_efectivo' && 'Se descuenta del saldo de caja efectivo.'}
+              {origen === 'cuenta_digital' && 'Se descuenta del saldo de cuenta digital.'}
+              {origen === 'externo' && 'No descuenta de otra cuenta — entra desde afuera.'}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cm-in-fecha">Fecha</Label>
+            <Input id="cm-in-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cm-in-monto">Monto</Label>
+            <Input id="cm-in-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cm-in-desc">Descripción</Label>
+            <Textarea id="cm-in-desc" placeholder="Ej: cierre de caja del 24/06" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows={2} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Registrar ingreso'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

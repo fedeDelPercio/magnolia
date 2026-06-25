@@ -1,0 +1,199 @@
+import { createClient } from '@/lib/supabase/server'
+import { getActiveTenantId } from '@/lib/tenant/server'
+
+// Mismos tipos digitales que ya considera el resto del sistema
+const DIGITAL_METHODS = new Set([
+  'TARJETA', 'TARJETA DE CREDITO', 'TARJETA DE DEBITO', 'TARJETAS',
+  'QR', 'MERCADO PAGO QR',
+  'ONLINE', 'MERCADO PAGO', 'TRANSFERENCIA',
+])
+const VENTA_TYPES = new Set([
+  'VENTA',
+  'VENTA (Multipago)',
+  'VENTA (Pago parcial)',
+  'COMANDA',
+  'COMANDA (Multipago)',
+  'COMANDA (Pago parcial)',
+])
+
+export type CuentaDigitalMovimiento = {
+  id: string
+  fecha: string
+  tipo: 'ingreso' | 'egreso'
+  monto: number                 // monto NETO (descontando impuestos en ingresos)
+  descripcion: string
+  source: 'bistro_venta' | 'caja_movimiento' | 'traspaso_caja_mayor'
+}
+
+export type CuentaDigitalSummary = {
+  saldo: number                 // ingresos netos acumulados - egresos acumulados
+  ingresosMes: number           // ventas digital del mes (neto)
+  egresosMes: number            // transferencias del mes + traspasos a caja mayor del mes
+  taxRate: number               // porcentaje aplicado para neto
+  movimientosMes: CuentaDigitalMovimiento[]
+}
+
+// Saldo y movimientos:
+//
+//   ingresos = ventas Bistro tarjetas+qr+online * (1 - taxRate)
+//   egresos  = pagos a proveedor donde el pago.metodo='transferencia'
+//            + caja_movimientos egresos manuales con categoria 'Egreso digital'
+//            + caja_mayor_movimientos con origen='cuenta_digital'
+//
+// Acumulado = hasta el fin del mes seleccionado.
+export async function getCuentaDigitalSummary(month: string, taxRate: number): Promise<CuentaDigitalSummary> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const from = `${month}-01`
+  const [y, m] = month.split('-').map(Number)
+  const nextMonth = m === 12 ? `${y! + 1}-01-01` : `${y}-${String(m! + 1).padStart(2, '0')}-01`
+  const taxFactor = 1 - taxRate / 100
+
+  const [
+    ventasAcc,
+    ventasMes,
+    cajaAcc,
+    cajaMes,
+    pagosByMetodo,
+    traspasosAcc,
+    traspasosMes,
+  ] = await Promise.all([
+    supabase
+      .from('bistro_transacciones')
+      .select('amount_total, payment_method, transaction_type')
+      .eq('tenant_id', tenantId)
+      .lt('fecha_local', nextMonth),
+    supabase
+      .from('bistro_transacciones')
+      .select('fecha_local, amount_total, payment_method, transaction_type')
+      .eq('tenant_id', tenantId)
+      .gte('fecha_local', from)
+      .lt('fecha_local', nextMonth),
+    supabase
+      .from('caja_movimientos')
+      .select('id, fecha, monto, descripcion, ref_kind, ref_id, categoria')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'egreso')
+      .lt('fecha', nextMonth),
+    supabase
+      .from('caja_movimientos')
+      .select('id, fecha, monto, descripcion, ref_kind, ref_id, categoria')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'egreso')
+      .gte('fecha', from)
+      .lt('fecha', nextMonth)
+      .order('fecha', { ascending: false }),
+    supabase
+      .from('pagos_proveedor')
+      .select('id, metodo')
+      .eq('tenant_id', tenantId),
+    supabase
+      .from('caja_mayor_movimientos')
+      .select('monto')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('origen', 'cuenta_digital')
+      .lt('fecha', nextMonth),
+    supabase
+      .from('caja_mayor_movimientos')
+      .select('id, fecha, monto, descripcion')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('origen', 'cuenta_digital')
+      .gte('fecha', from)
+      .lt('fecha', nextMonth)
+      .order('fecha', { ascending: false }),
+  ])
+
+  // Index de pagos por id -> metodo
+  const pagoMetodo = new Map<string, string>()
+  for (const p of pagosByMetodo.data ?? []) pagoMetodo.set(p.id, p.metodo ?? '')
+
+  function isEgresoDigital(r: { ref_kind: string | null; ref_id: string | null; categoria: string }): boolean {
+    if (r.categoria === 'Egreso digital') return true
+    if (r.ref_kind === 'pago_proveedor' && r.ref_id) {
+      return pagoMetodo.get(r.ref_id) === 'transferencia'
+    }
+    return false
+  }
+
+  // 1. Ingresos acumulados (ventas digital * factor)
+  let ingresosAcc = 0
+  for (const r of ventasAcc.data ?? []) {
+    const type = r.transaction_type ?? ''
+    const method = (r.payment_method ?? '').toUpperCase()
+    if (!VENTA_TYPES.has(type) || !DIGITAL_METHODS.has(method)) continue
+    ingresosAcc += Number(r.amount_total) || 0
+  }
+  ingresosAcc = ingresosAcc * taxFactor
+
+  // 2. Ingresos del mes (agregados por dia para no listar miles de comandas)
+  let ingresosMes = 0
+  const ingresosByDay = new Map<string, number>()
+  for (const r of ventasMes.data ?? []) {
+    const type = r.transaction_type ?? ''
+    const method = (r.payment_method ?? '').toUpperCase()
+    if (!VENTA_TYPES.has(type) || !DIGITAL_METHODS.has(method)) continue
+    const neto = (Number(r.amount_total) || 0) * taxFactor
+    ingresosMes += neto
+    const key = r.fecha_local ?? ''
+    ingresosByDay.set(key, (ingresosByDay.get(key) ?? 0) + neto)
+  }
+
+  // 3. Egresos: caja_movimientos digitales (acumulado)
+  let egresosAcc = 0
+  for (const r of cajaAcc.data ?? []) {
+    if (isEgresoDigital(r)) egresosAcc += Number(r.monto) || 0
+  }
+  // + traspasos a caja mayor
+  egresosAcc += (traspasosAcc.data ?? []).reduce((s, r) => s + (Number(r.monto) || 0), 0)
+
+  // 4. Egresos del mes (con detalle)
+  let egresosMes = 0
+  const movimientosMes: CuentaDigitalMovimiento[] = []
+  for (const r of cajaMes.data ?? []) {
+    if (!isEgresoDigital(r)) continue
+    const monto = Number(r.monto) || 0
+    egresosMes += monto
+    movimientosMes.push({
+      id: r.id,
+      fecha: r.fecha,
+      tipo: 'egreso',
+      monto,
+      descripcion: r.descripcion ?? r.categoria,
+      source: 'caja_movimiento',
+    })
+  }
+  for (const t of traspasosMes.data ?? []) {
+    const monto = Number(t.monto) || 0
+    egresosMes += monto
+    movimientosMes.push({
+      id: `traspaso-${t.id}`,
+      fecha: t.fecha,
+      tipo: 'egreso',
+      monto,
+      descripcion: t.descripcion ?? 'Traspaso a caja mayor',
+      source: 'traspaso_caja_mayor',
+    })
+  }
+
+  // Agregar ingresos por dia al final
+  for (const [fecha, total] of ingresosByDay) {
+    movimientosMes.push({
+      id: `ventas-${fecha}`,
+      fecha,
+      tipo: 'ingreso',
+      monto: total,
+      descripcion: `Ventas digital (neto ${100 - taxRate}%)`,
+      source: 'bistro_venta',
+    })
+  }
+
+  return {
+    saldo: ingresosAcc - egresosAcc,
+    ingresosMes,
+    egresosMes,
+    taxRate,
+    movimientosMes: movimientosMes.sort((a, b) => b.fecha.localeCompare(a.fecha)),
+  }
+}

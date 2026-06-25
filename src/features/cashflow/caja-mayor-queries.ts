@@ -9,6 +9,7 @@ export type CajaMayorMovimiento = {
   descripcion: string | null
   source: 'manual' | 'bistro'
   bistro_tx_id: string | null
+  origen: 'externo' | 'caja_efectivo' | 'cuenta_digital'
   created_at: string
 }
 
@@ -36,7 +37,7 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
       .lt('fecha', nextMonth),
     supabase
       .from('caja_mayor_movimientos')
-      .select('id, fecha, tipo, monto, descripcion, source, bistro_tx_id, created_at')
+      .select('id, fecha, tipo, monto, descripcion, source, bistro_tx_id, origen, created_at')
       .eq('tenant_id', tenantId)
       .gte('fecha', from)
       .lt('fecha', nextMonth)
@@ -68,6 +69,7 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
       descripcion: m.descripcion,
       source: m.source as 'manual' | 'bistro',
       bistro_tx_id: m.bistro_tx_id,
+      origen: (m.origen ?? 'externo') as 'externo' | 'caja_efectivo' | 'cuenta_digital',
       created_at: m.created_at,
     })
   }

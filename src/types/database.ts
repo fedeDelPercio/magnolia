@@ -306,6 +306,7 @@ export type Database = {
           fecha: string
           id: string
           monto: number
+          origen: string
           source: string
           tenant_id: string
           tipo: string
@@ -318,6 +319,7 @@ export type Database = {
           fecha: string
           id?: string
           monto: number
+          origen?: string
           source?: string
           tenant_id: string
           tipo: string
@@ -330,6 +332,7 @@ export type Database = {
           fecha?: string
           id?: string
           monto?: number
+          origen?: string
           source?: string
           tenant_id?: string
           tipo?: string

@@ -29,8 +29,9 @@ export type BistroCajaSummary = {
   ventasEfectivo: number        // suma de ventas EFECTIVO del mes
   depositos: number             // suma de depositos
   retiros: number               // suma de retiros (valor absoluto)
+  traspasosACajaMayor: number   // suma de "ingresos a caja mayor con origen=caja_efectivo" del mes
   cierres: number               // suma de cierres reportados (saldo final efectivo segun Bistro)
-  saldoEsperado: number         // aperturas + ventas + depositos - retiros
+  saldoEsperado: number         // aperturas + ventas + depositos - retiros - traspasosACajaMayor
   diferencia: number            // cierres - saldoEsperado (deberia ser 0 si todo cuadra)
   retirosByMotivo: Array<{ motivo: string; total: number; count: number }>
   movimientos: BistroCajaMovimiento[]
@@ -53,23 +54,40 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
   const [year, mon] = month.split('-').map(Number)
   const nextMonth = mon === 12 ? `${year! + 1}-01-01` : `${year}-${String(mon! + 1).padStart(2, '0')}-01`
 
-  const { data, error } = await supabase
-    .from('bistro_transacciones')
-    .select('id, fecha_hora, fecha_local, transaction_type, payment_method, amount_total, user_name, comments')
-    .eq('tenant_id', tenantId)
-    .gte('fecha_local', from)
-    .lt('fecha_local', nextMonth)
-    .order('fecha_hora', { ascending: true })
+  const [txRes, traspasosRes] = await Promise.all([
+    supabase
+      .from('bistro_transacciones')
+      .select('id, fecha_hora, fecha_local, transaction_type, payment_method, amount_total, user_name, comments')
+      .eq('tenant_id', tenantId)
+      .gte('fecha_local', from)
+      .lt('fecha_local', nextMonth)
+      .order('fecha_hora', { ascending: true }),
+    // Traspasos del mes que salieron de caja efectivo -> a caja mayor (manual)
+    supabase
+      .from('caja_mayor_movimientos')
+      .select('monto')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('origen', 'caja_efectivo')
+      .gte('fecha', from)
+      .lt('fecha', nextMonth),
+  ])
 
-  if (error) throw new Error(error.message)
-  const rows = data ?? []
-  if (rows.length === 0) {
+  if (txRes.error) throw new Error(txRes.error.message)
+  const rows = txRes.data ?? []
+  const traspasosACajaMayor = (traspasosRes.data ?? []).reduce(
+    (s, r) => s + (Number(r.monto) || 0),
+    0,
+  )
+
+  if (rows.length === 0 && traspasosACajaMayor === 0) {
     return {
       hasData: false,
       aperturas: 0,
       ventasEfectivo: 0,
       depositos: 0,
       retiros: 0,
+      traspasosACajaMayor: 0,
       cierres: 0,
       saldoEsperado: 0,
       diferencia: 0,
@@ -112,7 +130,7 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
     }
   }
 
-  const saldoEsperado = aperturas + ventasEfectivo + depositos - retiros
+  const saldoEsperado = aperturas + ventasEfectivo + depositos - retiros - traspasosACajaMayor
   const diferencia = cierres - saldoEsperado
 
   const retirosByMotivo = Array.from(retirosMap.entries())
@@ -120,11 +138,12 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
     .sort((a, b) => b.total - a.total)
 
   return {
-    hasData: aperturas > 0 || cierres > 0 || retiros > 0 || depositos > 0 || ventasEfectivo > 0,
+    hasData: aperturas > 0 || cierres > 0 || retiros > 0 || depositos > 0 || ventasEfectivo > 0 || traspasosACajaMayor > 0,
     aperturas,
     ventasEfectivo,
     depositos,
     retiros,
+    traspasosACajaMayor,
     cierres,
     saldoEsperado,
     diferencia,
