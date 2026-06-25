@@ -47,10 +47,9 @@ export function BistroCajaCard({ summary }: Props) {
 
       {helpOpen && (
         <div className="mb-3 rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground space-y-1">
-          <p><strong>Saldo inicial / final:</strong> primer APERTURA y último CIERRE del mes.</p>
-          <p><strong>Variación real:</strong> cuánto cambió el saldo físico (final − inicial).</p>
-          <p><strong>Cambio neto:</strong> lo que la suma de movimientos del mes dice que debería haber cambiado.</p>
-          <p><strong>Diferencia:</strong> faltante/sobrante = variación real − cambio neto. Si es 0, todo cuadra.</p>
+          <p><strong>Saldo inicial / final:</strong> primer APERTURA y último CIERRE del mes en Bistro.</p>
+          <p><strong>Cambio neto:</strong> lo que la suma de movimientos (ventas + depósitos − retiros − traspasos) dice que debería haber cambiado el saldo.</p>
+          <p><strong>Diferencia:</strong> faltante o sobrante real = (saldo final − inicial) − cambio neto. Si es 0, todo cuadra. Negativo = falta plata, positivo = sobra.</p>
         </div>
       )}
 
@@ -80,13 +79,6 @@ export function BistroCajaCard({ summary }: Props) {
             <div className="flex justify-between text-muted-foreground pt-1.5 border-t">
               <span>Saldo final (último cierre{summary.saldoFinalFecha ? ` ${formatDateShort(summary.saldoFinalFecha)}` : ''})</span>
               <span className="tabular-nums">{formatCurrency(summary.saldoFinal ?? 0)}</span>
-            </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>Variación real (final − inicial)</span>
-              <span className={cn('tabular-nums', (summary.variacionReal ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600')}>
-                {(summary.variacionReal ?? 0) >= 0 ? '+ ' : '− '}
-                {formatCurrency(Math.abs(summary.variacionReal ?? 0))}
-              </span>
             </div>
             <div className={cn(
               'flex justify-between font-semibold pt-1.5 border-t',
