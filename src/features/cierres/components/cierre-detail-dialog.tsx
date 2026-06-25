@@ -67,7 +67,9 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
       toast.error(result.error)
       return
     }
-    toast.success(producto_id ? 'Producto mapeado y ventas actualizadas' : 'Mapeo removido')
+    toast.success(producto_id
+      ? 'Producto mapeado. Próximos cierres con el mismo nombre se asignan automáticamente.'
+      : 'Mapeo removido')
     router.refresh()
   }
 

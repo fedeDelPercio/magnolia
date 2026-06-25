@@ -390,11 +390,27 @@ export async function updateCierreProductoMapping(
         })
       }
 
-      // 5. Guardar alias para futuros cierres
+      // 5. Guardar alias para futuros cierres. Como el unique index es
+      // funcional (lower(trim(alias))), no podemos usar onConflict — hacemos
+      // delete del alias previo si existe y luego insert. Esto garantiza que
+      // si el mismo texto ya estaba asignado a otro producto, se reemplaza
+      // por el nuevo (el ultimo mapeo manual del user gana).
       if (saveAsAlias) {
-        await supabase
+        const aliasNorm = cp.nombre.trim().toLowerCase()
+        const { data: existing } = await supabase
           .from('producto_aliases')
-          .insert({ tenant_id: tenantId, producto_id: newProductoId, alias: cp.nombre, source: 'bistrosoft' })
+          .select('id, alias, producto_id')
+          .eq('tenant_id', tenantId)
+          .eq('source', 'bistrosoft')
+        const dup = (existing ?? []).find((a) => a.alias.trim().toLowerCase() === aliasNorm)
+        if (dup && dup.producto_id !== newProductoId) {
+          await supabase.from('producto_aliases').delete().eq('id', dup.id)
+        }
+        if (!dup || dup.producto_id !== newProductoId) {
+          await supabase
+            .from('producto_aliases')
+            .insert({ tenant_id: tenantId, producto_id: newProductoId, alias: cp.nombre, source: 'bistrosoft' })
+        }
       }
     }
 
