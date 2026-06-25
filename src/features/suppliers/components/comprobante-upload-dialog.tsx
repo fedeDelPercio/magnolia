@@ -158,7 +158,9 @@ export function ComprobanteUploadDialog({
   async function handleFile(file: File) {
     // Validacion en cliente antes de subir, asi el modal no queda colgado
     // si el archivo es muy pesado o un formato no soportado por el SDK.
-    const MAX_MB = 15
+    // Tope = Claude Vision (~32MB para PDFs). El archivo va directo a Storage,
+    // no pasa por server actions, asi que no aplica el 4.5MB de Vercel.
+    const MAX_MB = 30
     if (file.size > MAX_MB * 1024 * 1024) {
       const sizeMB = (file.size / 1024 / 1024).toFixed(1)
       toast.error(`El archivo pesa ${sizeMB} MB. El maximo es ${MAX_MB} MB — comprimilo o sacale una foto de menor calidad.`)

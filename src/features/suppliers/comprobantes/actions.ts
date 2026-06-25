@@ -13,7 +13,7 @@ import type { ItemConMatch } from './schemas'
 import type { Json, Tables } from '@/types/database'
 
 const BUCKET = 'comprobantes'
-const MAX_SIZE = 15 * 1024 * 1024
+const MAX_SIZE = 30 * 1024 * 1024
 
 export type UploadResult = {
   uploadId?: string
@@ -61,7 +61,7 @@ export async function parseUploadedComprobante(
   }
   if (blob.size > MAX_SIZE) {
     await supabase.storage.from(BUCKET).remove([storagePath])
-    return { error: 'El archivo supera los 15 MB' }
+    return { error: 'El archivo supera los 30 MB' }
   }
   const buffer = Buffer.from(await blob.arrayBuffer())
 
