@@ -92,63 +92,121 @@ export function CajaMayorCard({ summary }: Props) {
 }
 
 function MovimientoRow({ m }: { m: CajaMayorMovimiento }) {
+  const [deleteOpen, setDeleteOpen] = useState(false)
+
+  return (
+    <>
+      <div className="flex items-center justify-between px-3 py-2 text-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className={cn(
+            'rounded-full p-1 shrink-0',
+            m.tipo === 'ingreso' ? 'bg-emerald-100' : 'bg-red-100',
+          )}>
+            {m.tipo === 'ingreso'
+              ? <ArrowUpIcon className="size-3 text-emerald-700" />
+              : <ArrowDownIcon className="size-3 text-red-600" />}
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium truncate">{m.descripcion ?? '(sin descripción)'}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {formatDate(m.fecha)}
+              {m.tipo === 'ingreso' && m.origen !== 'externo' && (
+                <span className="ml-1 text-sky-700">· desde {ORIGEN_LABEL[m.origen]}</span>
+              )}
+              {m.source === 'bistro' && <span className="ml-1 text-sky-700">· auto Bistro</span>}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <span className={cn(
+            'tabular-nums font-medium',
+            m.tipo === 'ingreso' ? 'text-emerald-700' : 'text-red-600',
+          )}>
+            {m.tipo === 'ingreso' ? '+' : '−'} {formatCurrency(m.monto)}
+          </span>
+          {m.source === 'manual' && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
+              title="Borrar movimiento"
+            >
+              <TrashIcon className="size-3" />
+            </Button>
+          )}
+        </div>
+      </div>
+      <DeleteMovimientoDialog open={deleteOpen} onOpenChange={setDeleteOpen} m={m} />
+    </>
+  )
+}
+
+// Dialog explicito de borrado que muestra el EFECTO de la operacion sobre las
+// otras cuentas para que el user no tenga que adivinar. Ej: si borro un
+// ingreso con origen=cuenta_digital, aviso que la plata "vuelve" a digital.
+function DeleteMovimientoDialog({
+  open, onOpenChange, m,
+}: { open: boolean; onOpenChange: (v: boolean) => void; m: CajaMayorMovimiento }) {
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
 
   async function handleDelete() {
-    if (!window.confirm('¿Borrar este movimiento?')) return
     setDeleting(true)
     const res = await deleteCajaMayorMovimiento(m.id)
     setDeleting(false)
     if (res.error) { toast.error(res.error); return }
     toast.success('Movimiento borrado')
+    onOpenChange(false)
     router.refresh()
   }
 
+  const efectoCajaMayor = m.tipo === 'ingreso'
+    ? `Caja mayor: − ${formatCurrency(m.monto)}`
+    : `Caja mayor: + ${formatCurrency(m.monto)}`
+
+  const efectoOrigen = m.tipo === 'ingreso' && m.origen !== 'externo'
+    ? m.origen === 'caja_efectivo'
+      ? `Caja efectivo: + ${formatCurrency(m.monto)} (vuelve la plata)`
+      : `Cuenta digital: + ${formatCurrency(m.monto)} (vuelve la plata)`
+    : null
+
   return (
-    <div className="flex items-center justify-between px-3 py-2 text-xs">
-      <div className="flex items-center gap-2 min-w-0">
-        <div className={cn(
-          'rounded-full p-1 shrink-0',
-          m.tipo === 'ingreso' ? 'bg-emerald-100' : 'bg-red-100',
-        )}>
-          {m.tipo === 'ingreso'
-            ? <ArrowUpIcon className="size-3 text-emerald-700" />
-            : <ArrowDownIcon className="size-3 text-red-600" />}
-        </div>
-        <div className="min-w-0">
-          <p className="font-medium truncate">{m.descripcion ?? '(sin descripción)'}</p>
-          <p className="text-[10px] text-muted-foreground">
-            {formatDate(m.fecha)}
-            {m.tipo === 'ingreso' && m.origen !== 'externo' && (
-              <span className="ml-1 text-sky-700">· desde {ORIGEN_LABEL[m.origen]}</span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>¿Borrar este movimiento?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div className="rounded-md border bg-muted/30 p-3 text-xs">
+            <p className="font-medium">{m.descripcion ?? '(sin descripción)'}</p>
+            <p className="text-muted-foreground mt-0.5">
+              {formatDate(m.fecha)} · {m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de {formatCurrency(m.monto)}
+              {m.tipo === 'ingreso' && m.origen !== 'externo' && ` desde ${ORIGEN_LABEL[m.origen]}`}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Efecto</p>
+            <p className="text-xs">{efectoCajaMayor}</p>
+            {efectoOrigen && <p className="text-xs">{efectoOrigen}</p>}
+            {!efectoOrigen && m.tipo === 'ingreso' && (
+              <p className="text-xs text-muted-foreground">
+                (no afecta otras cuentas — fue un ingreso externo)
+              </p>
             )}
-            {m.source === 'bistro' && <span className="ml-1 text-sky-700">· auto Bistro</span>}
-          </p>
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <span className={cn(
-          'tabular-nums font-medium',
-          m.tipo === 'ingreso' ? 'text-emerald-700' : 'text-red-600',
-        )}>
-          {m.tipo === 'ingreso' ? '+' : '−'} {formatCurrency(m.monto)}
-        </span>
-        {m.source === 'manual' && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-6 text-muted-foreground hover:text-destructive"
-            onClick={handleDelete}
-            disabled={deleting}
-            title="Borrar movimiento"
-          >
-            <TrashIcon className="size-3" />
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={deleting}>
+            Cancelar
           </Button>
-        )}
-      </div>
-    </div>
+          <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>
+            {deleting ? 'Borrando...' : 'Borrar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -169,9 +227,8 @@ function EgresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
     e.preventDefault()
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
-    if (!descripcion.trim()) { toast.error('Pone una descripción'); return }
     setSaving(true)
-    const res = await registrarEgresoCajaMayor({ fecha, monto: m, descripcion: descripcion.trim() })
+    const res = await registrarEgresoCajaMayor({ fecha, monto: m, descripcion: descripcion.trim() || null })
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
     toast.success('Egreso registrado')
@@ -196,8 +253,8 @@ function EgresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
             <Input id="cm-eg-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="cm-eg-desc">Descripción</Label>
-            <Textarea id="cm-eg-desc" placeholder="Ej: pago alquiler junio" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows={2} />
+            <Label htmlFor="cm-eg-desc">Descripción (opcional)</Label>
+            <Textarea id="cm-eg-desc" placeholder="Ej: pago alquiler junio" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
@@ -228,12 +285,11 @@ function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     e.preventDefault()
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
-    if (!descripcion.trim()) { toast.error('Pone una descripción'); return }
     setSaving(true)
     const res = await registrarIngresoCajaMayor({
       fecha,
       monto: m,
-      descripcion: descripcion.trim(),
+      descripcion: descripcion.trim() || null,
       origen,
     })
     setSaving(false)
@@ -278,8 +334,8 @@ function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
             <Input id="cm-in-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="cm-in-desc">Descripción</Label>
-            <Textarea id="cm-in-desc" placeholder="Ej: cierre de caja del 24/06" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows={2} />
+            <Label htmlFor="cm-in-desc">Descripción (opcional)</Label>
+            <Textarea id="cm-in-desc" placeholder="Ej: cierre de caja del 24/06" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>

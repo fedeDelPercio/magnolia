@@ -115,9 +115,8 @@ function EgresoDigitalDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     e.preventDefault()
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
-    if (!descripcion.trim()) { toast.error('Pone una descripción'); return }
     setSaving(true)
-    const res = await registrarEgresoDigital({ fecha, monto: m, descripcion: descripcion.trim() })
+    const res = await registrarEgresoDigital({ fecha, monto: m, descripcion: descripcion.trim() || 'Egreso digital' })
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
     toast.success('Egreso digital registrado')
@@ -142,8 +141,8 @@ function EgresoDigitalDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <Input id="dig-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="dig-desc">Descripción</Label>
-            <Textarea id="dig-desc" placeholder="Ej: transferencia banco, MP, etc." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows={2} />
+            <Label htmlFor="dig-desc">Descripción (opcional)</Label>
+            <Textarea id="dig-desc" placeholder="Ej: transferencia banco, MP, etc." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>

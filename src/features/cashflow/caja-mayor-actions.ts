@@ -9,7 +9,7 @@ import { getActiveTenantId } from '@/lib/tenant/server'
 const baseSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha invalida'),
   monto: z.number().positive('El monto tiene que ser mayor a 0'),
-  descripcion: z.string().trim().min(1, 'Pone una descripcion').max(500),
+  descripcion: z.string().trim().max(500).optional().nullable(),
 })
 
 const egresoSchema = baseSchema
@@ -35,7 +35,7 @@ export async function registrarEgresoCajaMayor(input: EgresoInput): Promise<{ er
     fecha: parsed.data.fecha,
     tipo: 'egreso',
     monto: parsed.data.monto,
-    descripcion: parsed.data.descripcion,
+    descripcion: parsed.data.descripcion ?? null,
     source: 'manual',
     origen: 'externo',
     created_by: user?.id ?? null,
@@ -66,7 +66,7 @@ export async function registrarIngresoCajaMayor(input: IngresoInput): Promise<{ 
     fecha: parsed.data.fecha,
     tipo: 'ingreso',
     monto: parsed.data.monto,
-    descripcion: parsed.data.descripcion,
+    descripcion: parsed.data.descripcion ?? null,
     source: 'manual',
     origen: parsed.data.origen,
     created_by: user?.id ?? null,
@@ -113,7 +113,7 @@ export async function registrarEgresoDigital(input: EgresoDigitalInput): Promise
     fecha: parsed.data.fecha,
     tipo: 'egreso',
     monto: parsed.data.monto,
-    descripcion: parsed.data.descripcion,
+    descripcion: parsed.data.descripcion ?? null,
     categoria: 'Egreso digital',
   })
 
