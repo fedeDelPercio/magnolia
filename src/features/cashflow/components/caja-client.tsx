@@ -10,7 +10,9 @@ import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { EgresoDialog } from './egreso-dialog'
+import { BistroCajaCard } from './bistro-caja-card'
 import type { CajaMovimiento } from '../queries'
+import type { BistroCajaSummary } from '../bistro-caja-queries'
 import type { MonthlyVentasSummary } from '@/features/cierres/queries'
 import { METODO_LABELS } from '@/features/suppliers/schemas'
 
@@ -49,9 +51,10 @@ type Props = {
   month: string
   ventasSummary?: MonthlyVentasSummary
   taxRate?: number
+  bistroCaja?: BistroCajaSummary
 }
 
-export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0 }: Props) {
+export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bistroCaja }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
 
@@ -119,6 +122,9 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0 }: P
           </p>
         </div>
       </div>
+
+      {/* Caja efectivo Bistro (solo si hay aperturas/cierres del mes) */}
+      {bistroCaja && <BistroCajaCard summary={bistroCaja} />}
 
       {/* Ventas del mes (cierres) */}
       {ventasTotal > 0 && (
