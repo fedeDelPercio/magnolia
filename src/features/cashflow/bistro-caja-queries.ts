@@ -25,21 +25,23 @@ export type BistroCajaMovimiento = {
 
 export type BistroCajaSummary = {
   hasData: boolean
-  aperturas: number             // suma de aperturas del mes (efectivo inicial cargado)
-  ventasEfectivo: number        // suma de ventas EFECTIVO del mes
-  depositos: number             // suma de depositos
-  retiros: number               // suma de retiros (valor absoluto)
-  traspasosACajaMayor: number   // suma de "ingresos a caja mayor con origen=caja_efectivo" del mes
-  cierres: number               // suma de cierres reportados (saldo final efectivo segun Bistro)
-  saldoEsperado: number         // aperturas + ventas + depositos - retiros - traspasosACajaMayor
-  diferencia: number            // cierres - saldoEsperado (deberia ser 0 si todo cuadra)
+  // Saldos puntuales en el mes
+  saldoInicial: number          // primera APERTURA DE CAJA del mes (lo que habia antes de mover nada)
+  saldoFinal: number | null     // ultimo CIERRE DE CAJA del mes (null si el mes esta en curso y aun no cerro)
+  saldoFinalFecha: string | null
+  // Lo que se movio en el mes
+  ventasEfectivo: number
+  depositos: number
+  retiros: number
+  traspasosACajaMayor: number
+  cambioNeto: number            // ventas + depositos - retiros - traspasos (lo que DEBERIA haber cambiado el saldo)
+  // Comparacion vs realidad
+  variacionReal: number | null  // saldoFinal - saldoInicial (lo que efectivamente cambio el saldo segun los cierres)
+  diferencia: number | null     // variacionReal - cambioNeto (descuadre real del mes; null si todavia no cerro)
   retirosByMotivo: Array<{ motivo: string; total: number; count: number }>
   movimientos: BistroCajaMovimiento[]
 }
 
-// Extrae la categoria del comment de un RETIRO. Carolina los registra con
-// formato "CATEGORIA - detalle" (ej: "COMPRA DE INSUMOS - tapas",
-// "OTROS - rcm sof"). Si no hay separador devolvemos el comment crudo.
 function motivoFromComment(comment: string | null): string {
   if (!comment) return 'Sin motivo'
   const dashIdx = comment.indexOf(' - ')
@@ -83,26 +85,35 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
   if (rows.length === 0 && traspasosACajaMayor === 0) {
     return {
       hasData: false,
-      aperturas: 0,
+      saldoInicial: 0,
+      saldoFinal: null,
+      saldoFinalFecha: null,
       ventasEfectivo: 0,
       depositos: 0,
       retiros: 0,
       traspasosACajaMayor: 0,
-      cierres: 0,
-      saldoEsperado: 0,
-      diferencia: 0,
+      cambioNeto: 0,
+      variacionReal: null,
+      diferencia: null,
       retirosByMotivo: [],
       movimientos: [],
     }
   }
 
-  let aperturas = 0
-  let cierres = 0
   let ventasEfectivo = 0
   let retiros = 0
   let depositos = 0
   const retirosMap = new Map<string, { total: number; count: number }>()
   const movimientos: BistroCajaMovimiento[] = []
+
+  // Tomamos la PRIMERA apertura del mes y el ULTIMO cierre del mes.
+  // Las rows vienen ordenadas por fecha_hora ASC, asi que el primero que
+  // encontramos es saldoInicial; vamos sobre-escribiendo saldoFinal hasta
+  // procesar todo para quedarnos con el ultimo cierre.
+  let saldoInicial = 0
+  let saldoInicialEncontrado = false
+  let saldoFinal: number | null = null
+  let saldoFinalFecha: string | null = null
 
   for (const r of rows) {
     const amount = Number(r.amount_total) || 0
@@ -110,10 +121,14 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
     const method = r.payment_method ?? ''
 
     if (type === 'APERTURA DE CAJA' || type === 'AJUSTE EN APERTURA DE CAJA') {
-      aperturas += amount
+      if (!saldoInicialEncontrado) {
+        saldoInicial = amount
+        saldoInicialEncontrado = true
+      }
       movimientos.push(toMovimiento(r, 'apertura', amount))
     } else if (type === 'CIERRE DE CAJA' || type === 'AJUSTE EN CIERRE CAJA') {
-      cierres += amount
+      saldoFinal = amount
+      saldoFinalFecha = r.fecha_local ?? null
       movimientos.push(toMovimiento(r, 'cierre', amount))
     } else if (type === 'RETIRO') {
       retiros += Math.abs(amount)
@@ -126,26 +141,28 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
       movimientos.push(toMovimiento(r, 'deposito', amount))
     } else if (VENTA_TYPES.has(type) && method.toUpperCase() === 'EFECTIVO') {
       ventasEfectivo += amount
-      // Las ventas individuales no se listan; solo afectan totales.
     }
   }
 
-  const saldoEsperado = aperturas + ventasEfectivo + depositos - retiros - traspasosACajaMayor
-  const diferencia = cierres - saldoEsperado
+  const cambioNeto = ventasEfectivo + depositos - retiros - traspasosACajaMayor
+  const variacionReal = saldoFinal !== null ? saldoFinal - saldoInicial : null
+  const diferencia = variacionReal !== null ? variacionReal - cambioNeto : null
 
   const retirosByMotivo = Array.from(retirosMap.entries())
     .map(([motivo, v]) => ({ motivo, total: v.total, count: v.count }))
     .sort((a, b) => b.total - a.total)
 
   return {
-    hasData: aperturas > 0 || cierres > 0 || retiros > 0 || depositos > 0 || ventasEfectivo > 0 || traspasosACajaMayor > 0,
-    aperturas,
+    hasData: true,
+    saldoInicial,
+    saldoFinal,
+    saldoFinalFecha,
     ventasEfectivo,
     depositos,
     retiros,
     traspasosACajaMayor,
-    cierres,
-    saldoEsperado,
+    cambioNeto,
+    variacionReal,
     diferencia,
     retirosByMotivo,
     movimientos: movimientos.sort((a, b) => b.fecha_hora.localeCompare(a.fecha_hora)),

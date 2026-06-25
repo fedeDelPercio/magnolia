@@ -1,27 +1,33 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronUpIcon, InfoIcon } from 'lucide-react'
 
-import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
+import { formatCurrency, formatDateShort } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { BistroCajaSummary } from '../bistro-caja-queries'
 
 type Props = { summary: BistroCajaSummary }
 
-// Card de "Caja efectivo segun Bistrosoft" para /caja. Muestra el flujo del mes:
-// aperturas + ventas efectivo + depositos - retiros = saldo esperado, contra
-// el saldo reportado por los cierres de Bistro. Si hay diferencia, la muestra
-// en rojo. Tiene 2 secciones colapsables: detalle de retiros por motivo y
-// movimientos administrativos individuales.
+// Card de "Caja efectivo segun Bistrosoft" para /caja. Logica nueva:
+//
+//   Cambio neto del mes = ventas + depositos - retiros - traspasos
+//     (lo que la matematica dice que DEBERIA haber cambiado el saldo).
+//   Variacion real      = saldoFinal - saldoInicial
+//     (lo que efectivamente cambio el saldo de la caja segun el primer
+//     APERTURA y el ultimo CIERRE del mes).
+//   Diferencia          = variacionReal - cambioNeto
+//     (faltante o sobrante real del mes; idealmente cero).
 export function BistroCajaCard({ summary }: Props) {
   const [retirosOpen, setRetirosOpen] = useState(false)
   const [movsOpen, setMovsOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   if (!summary.hasData) return null
 
-  const difAbs = Math.abs(summary.diferencia)
-  const cuadra = difAbs < 1 // tolerancia de redondeo
+  const mesEnCurso = summary.saldoFinal === null
+  const difAbs = summary.diferencia !== null ? Math.abs(summary.diferencia) : 0
+  const cuadra = !mesEnCurso && difAbs < 1
 
   return (
     <div className="rounded-xl border bg-card p-4 text-sm">
@@ -29,33 +35,70 @@ export function BistroCajaCard({ summary }: Props) {
         <p className="text-xs text-muted-foreground uppercase tracking-wide">
           Caja efectivo (Bistrosoft)
         </p>
-        <span className="text-[10px] text-muted-foreground">
-          según APERTURA / RETIRO / DEPÓSITO / CIERRE registrados en Bistro
-        </span>
+        <button
+          type="button"
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+          onClick={() => setHelpOpen((v) => !v)}
+        >
+          <InfoIcon className="size-3" />
+          ¿cómo se calcula?
+        </button>
       </div>
 
+      {helpOpen && (
+        <div className="mb-3 rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground space-y-1">
+          <p><strong>Saldo inicial / final:</strong> primer APERTURA y último CIERRE del mes.</p>
+          <p><strong>Variación real:</strong> cuánto cambió el saldo físico (final − inicial).</p>
+          <p><strong>Cambio neto:</strong> lo que la suma de movimientos del mes dice que debería haber cambiado.</p>
+          <p><strong>Diferencia:</strong> faltante/sobrante = variación real − cambio neto. Si es 0, todo cuadra.</p>
+        </div>
+      )}
+
       <div className="space-y-1">
-        <Row label="Aperturas del mes" value={summary.aperturas} sign="+" />
+        <Row label="Saldo inicial (apertura)" value={summary.saldoInicial} muted />
         <Row label="Ventas efectivo" value={summary.ventasEfectivo} sign="+" />
         <Row label="Depósitos" value={summary.depositos} sign="+" />
         <Row label="Retiros" value={-summary.retiros} sign="−" />
+        {summary.traspasosACajaMayor > 0 && (
+          <Row label="Traspasos a caja mayor" value={-summary.traspasosACajaMayor} sign="−" />
+        )}
         <div className="flex justify-between font-medium pt-1.5 border-t">
-          <span>Saldo esperado</span>
-          <span className="tabular-nums">{formatCurrency(summary.saldoEsperado)}</span>
-        </div>
-        <div className="flex justify-between text-muted-foreground">
-          <span>Saldo reportado en cierres</span>
-          <span className="tabular-nums">{formatCurrency(summary.cierres)}</span>
-        </div>
-        <div className={cn(
-          'flex justify-between font-semibold pt-1.5 border-t',
-          cuadra ? 'text-emerald-700' : 'text-amber-700',
-        )}>
-          <span>{cuadra ? 'Cuadra ✓' : 'Diferencia'}</span>
-          <span className="tabular-nums">
-            {cuadra ? formatCurrency(0) : formatCurrency(summary.diferencia)}
+          <span>Cambio neto del mes</span>
+          <span className={cn('tabular-nums', summary.cambioNeto >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+            {summary.cambioNeto >= 0 ? '+ ' : '− '}
+            {formatCurrency(Math.abs(summary.cambioNeto))}
           </span>
         </div>
+
+        {mesEnCurso ? (
+          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+            Mes en curso · todavía no hay cierre final para comparar. Saldo esperado al cierre:{' '}
+            <strong className="tabular-nums">{formatCurrency(summary.saldoInicial + summary.cambioNeto)}</strong>.
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between text-muted-foreground pt-1.5 border-t">
+              <span>Saldo final (último cierre{summary.saldoFinalFecha ? ` ${formatDateShort(summary.saldoFinalFecha)}` : ''})</span>
+              <span className="tabular-nums">{formatCurrency(summary.saldoFinal ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Variación real (final − inicial)</span>
+              <span className={cn('tabular-nums', (summary.variacionReal ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+                {(summary.variacionReal ?? 0) >= 0 ? '+ ' : '− '}
+                {formatCurrency(Math.abs(summary.variacionReal ?? 0))}
+              </span>
+            </div>
+            <div className={cn(
+              'flex justify-between font-semibold pt-1.5 border-t',
+              cuadra ? 'text-emerald-700' : 'text-amber-700',
+            )}>
+              <span>{cuadra ? 'Cuadra ✓' : 'Diferencia (faltante/sobrante)'}</span>
+              <span className="tabular-nums">
+                {cuadra ? formatCurrency(0) : formatCurrency(summary.diferencia ?? 0)}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Retiros por motivo */}
@@ -126,12 +169,15 @@ export function BistroCajaCard({ summary }: Props) {
   )
 }
 
-function Row({ label, value, sign }: { label: string; value: number; sign: '+' | '−' }) {
+function Row({ label, value, sign, muted }: { label: string; value: number; sign?: '+' | '−'; muted?: boolean }) {
   return (
     <div className="flex justify-between">
       <span className="text-muted-foreground">{label}</span>
-      <span className={cn('tabular-nums', sign === '+' ? 'text-emerald-700' : 'text-red-600')}>
-        {sign} {formatCurrency(Math.abs(value))}
+      <span className={cn(
+        'tabular-nums',
+        muted ? 'text-foreground' : sign === '+' ? 'text-emerald-700' : 'text-red-600',
+      )}>
+        {sign ? `${sign} ` : ''}{formatCurrency(Math.abs(value))}
       </span>
     </div>
   )
