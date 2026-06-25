@@ -3,7 +3,7 @@ import { getBistroCajaMovimientos } from '@/features/cashflow/bistro-caja-querie
 import { getCajaMayorSummary, getUltimoCierreCaja } from '@/features/cashflow/caja-mayor-queries'
 import { getCuentaDigitalSummary } from '@/features/cashflow/cuenta-digital-queries'
 import { getMonthlyVentasSummary } from '@/features/cierres/queries'
-import { getDigitalTaxRate } from '@/features/config/queries'
+import { getCostoProcesadorDigital } from '@/features/config/queries'
 import { CajaClient } from '@/features/cashflow/components/caja-client'
 import { PageHeader } from '@/components/shared/page-header'
 
@@ -14,7 +14,10 @@ type Props = { searchParams: Promise<{ month?: string }> }
 export default async function CajaPage({ searchParams }: Props) {
   const { month: rawMonth } = await searchParams
   const month = rawMonth ?? new Date().toISOString().slice(0, 7)
-  const taxRate = await getDigitalTaxRate()
+  // En /caja descontamos el costo del procesador (Mercado Pago default 6%) —
+  // NO el IVA digital del 21%, que sirve solo para la balanza fiscal del
+  // dashboard. Eso refleja el dinero que efectivamente queda disponible.
+  const costoProcesadorPct = await getCostoProcesadorDigital()
 
   const [movimientos, ventasSummary, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital] = await Promise.all([
     getCajaMovimientos(month),
@@ -22,7 +25,7 @@ export default async function CajaPage({ searchParams }: Props) {
     getBistroCajaMovimientos(month),
     getCajaMayorSummary(month),
     getUltimoCierreCaja(),
-    getCuentaDigitalSummary(month, taxRate),
+    getCuentaDigitalSummary(month, costoProcesadorPct),
   ])
 
   return (
@@ -40,7 +43,7 @@ export default async function CajaPage({ searchParams }: Props) {
         movimientos={movimientos}
         month={month}
         ventasSummary={ventasSummary}
-        taxRate={taxRate}
+        costoProcesadorPct={costoProcesadorPct}
         bistroCaja={bistroCaja}
         cajaMayor={cajaMayor}
         ultimoCierre={ultimoCierre}

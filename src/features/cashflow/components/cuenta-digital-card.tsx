@@ -37,7 +37,7 @@ export function CuentaDigitalCard({ summary }: Props) {
             {formatCurrency(summary.saldo)}
           </p>
           <p className="mt-0.5 text-[10px] text-muted-foreground">
-            ventas netas (−{summary.taxRate}%) − transferencias
+            ventas netas (−{summary.costoProcesadorPct}% proc.) − transferencias
           </p>
         </div>
         <div className="flex gap-1 shrink-0">

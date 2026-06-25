@@ -1,4 +1,5 @@
-import { getDigitalTaxRate, getLimiteChequesMensual } from '@/features/config/queries'
+import { getCostoProcesadorDigital, getDigitalTaxRate, getLimiteChequesMensual } from '@/features/config/queries'
+import { CostoProcesadorForm } from '@/features/config/components/costo-procesador-form'
 import { DigitalTaxForm } from '@/features/config/components/digital-tax-form'
 import { LimiteChequesForm } from '@/features/config/components/limite-cheques-form'
 import { getGooglePlaceId, getGooglePlaceName } from '@/features/reviews/queries'
@@ -20,8 +21,9 @@ function formatRunDate(iso: string): string {
 }
 
 export default async function Page() {
-  const [taxRate, limiteCheques, placeId, placeName, bistroMeta, bistroRuns] = await Promise.all([
+  const [taxRate, costoProcesador, limiteCheques, placeId, placeName, bistroMeta, bistroRuns] = await Promise.all([
     getDigitalTaxRate(),
+    getCostoProcesadorDigital(),
     getLimiteChequesMensual(),
     getGooglePlaceId(),
     getGooglePlaceName(),
@@ -43,12 +45,25 @@ export default async function Page() {
       />
 
       <section className="card-editorial p-6">
-        <h2 className="text-card-title">Medios de pago digitales</h2>
+        <h2 className="text-card-title">Medios de pago digitales · IVA</h2>
         <p className="mt-1 text-card-sub">
-          Porcentaje de impuestos que aplica sobre Tarjetas, QR y Online.
+          IVA que aplica sobre Tarjetas, QR y Online. Se usa para la balanza de
+          crédito fiscal en el dashboard, no para el flujo de caja.
         </p>
         <div className="mt-4">
           <DigitalTaxForm initialValue={taxRate} />
+        </div>
+      </section>
+
+      <section className="card-editorial p-6">
+        <h2 className="text-card-title">Medios de pago digitales · Costo de procesador</h2>
+        <p className="mt-1 text-card-sub">
+          Comisión que cobra el procesador (Mercado Pago, banco, etc.) sobre las
+          ventas digitales. Se descuenta en /caja para reflejar el neto real que
+          queda disponible.
+        </p>
+        <div className="mt-4">
+          <CostoProcesadorForm initialValue={costoProcesador} />
         </div>
       </section>
 

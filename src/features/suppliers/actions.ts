@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import { expandDespiece } from '@/features/catalog/insumos/despiece'
+import { revertTrackingForCompra } from './stock-tracking'
 import type { ProveedorFormValues, CompraItemFormValues, PagoFormValues } from './schemas'
 
 // ---- Proveedores -------------------------------------------
@@ -172,7 +173,7 @@ export async function createCompra(
   // Activar tracking de stock + setear stock_inicial cuando el user lo pidio.
   // Sobre items ORIGINALES (no expanded). Si el insumo ya tenia track_stock=true
   // lo ignoramos para no pisar stock real.
-  await activateTrackingForItems(supabase, items)
+  await activateTrackingForItems(supabase, items, compra.id)
 
   // Expandir padres con despiece a items por hijo, asi el stock view (que lee
   // de compra_items) suma directo a los hijos sin necesidad de triggers ni
@@ -201,10 +202,12 @@ export async function createCompra(
 
 // Activa track_stock=true en los insumos cuyos items vienen con start_tracking,
 // usando la qty del item como stock_inicial. Si el insumo ya estaba en true,
-// no toca nada (preserva el stock real).
+// no toca nada (preserva el stock real). Guarda el compra_id que disparo el
+// tracking para poder revertirlo si despues se borra esa compra.
 async function activateTrackingForItems(
   supabase: Awaited<ReturnType<typeof createClient>>,
   items: CompraItemFormValues[],
+  compraId: string,
 ): Promise<void> {
   const conTracking = items.filter((it) => it.start_tracking && it.insumo_id)
   if (conTracking.length === 0) return
@@ -217,10 +220,11 @@ async function activateTrackingForItems(
     if (yaTrackeados.has(it.insumo_id)) continue
     await supabase
       .from('insumos')
-      .update({ track_stock: true, stock_inicial: it.qty })
+      .update({ track_stock: true, stock_inicial: it.qty, stock_inicial_compra_id: compraId })
       .eq('id', it.insumo_id)
   }
 }
+
 
 export async function updateCompra(
   compraId: string,
@@ -275,11 +279,16 @@ export async function deleteCompra(
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
 
+  // Si esta compra disparo el tracking de algun insumo (F2), revertir el
+  // track_stock + stock_inicial antes de borrar para que no quede stock fantasma.
+  await revertTrackingForCompra(supabase, compraId)
+
   const { error } = await supabase.from('compras').delete().eq('id', compraId)
   if (error) return { error: error.message }
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
+  revalidatePath('/catalogo/insumos')
   return {}
 }
 

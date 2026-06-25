@@ -120,6 +120,10 @@ export async function updateInsumo(
         shelf_life_days: values.perishable ? (values.shelf_life_days ?? null) : null,
         track_stock: values.track_stock,
         stock_inicial: values.track_stock ? (values.stock_inicial ?? 0) : 0,
+        // Si se apaga el tracking, limpiamos la trazabilidad de la compra que
+        // lo habia activado (sino la FK queda apuntando a una compra cuyo
+        // tracking ya no esta vigente).
+        ...(values.track_stock ? {} : { stock_inicial_compra_id: null }),
         purchase_unit_label: values.purchase_unit_label ?? null,
         purchase_unit_factor: values.purchase_unit_factor ?? null,
       })

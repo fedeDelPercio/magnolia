@@ -55,14 +55,17 @@ type Props = {
   movimientos: CajaMovimiento[]
   month: string
   ventasSummary?: MonthlyVentasSummary
-  taxRate?: number
+  // Costo del procesador digital (Mercado Pago, banco, etc.). Se descuenta
+  // sobre las ventas digitales para mostrar el neto real en caja. NO es IVA:
+  // el IVA digital queda en /dashboard como balanza fiscal aparte.
+  costoProcesadorPct?: number
   bistroCaja?: BistroCajaSummary
   cajaMayor?: CajaMayorSummary
   ultimoCierre?: UltimoCierre
   cuentaDigital?: CuentaDigitalSummary
 }
 
-export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital }: Props) {
+export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorPct = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
 
@@ -79,8 +82,8 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bis
 
   const saldo = totalIngresos - totalEgresos
   const digitalBruto = ventasSummary?.digital ?? 0
-  const digitalImpuestos = taxRate > 0 ? digitalBruto * (taxRate / 100) : 0
-  const digitalNeto = digitalBruto - digitalImpuestos
+  const digitalCostoProcesador = costoProcesadorPct > 0 ? digitalBruto * (costoProcesadorPct / 100) : 0
+  const digitalNeto = digitalBruto - digitalCostoProcesador
 
   function navigate(newMonth: string) {
     router.push(`/caja?month=${newMonth}`)
@@ -161,11 +164,11 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bis
               <span className="text-muted-foreground">Medios digitales (bruto)</span>
               <span className="tabular-nums">{formatCurrency(digitalBruto)}</span>
             </div>
-            {taxRate > 0 && digitalBruto > 0 && (
+            {costoProcesadorPct > 0 && digitalBruto > 0 && (
               <>
                 <div className="flex justify-between text-red-600 pl-3">
-                  <span>− Imp. digitales ({taxRate}%)</span>
-                  <span className="tabular-nums">− {formatCurrency(digitalImpuestos)}</span>
+                  <span>− Costo procesador ({costoProcesadorPct}%)</span>
+                  <span className="tabular-nums">− {formatCurrency(digitalCostoProcesador)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground pl-3">
                   <span>Neto digital</span>
@@ -176,7 +179,7 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bis
             <div className="flex justify-between font-semibold pt-1.5 border-t">
               <span>Total ventas</span>
               <span className="tabular-nums text-green-700">
-                {formatCurrency(taxRate > 0 ? (ventasSummary?.efectivo ?? 0) + digitalNeto : ventasTotal)}
+                {formatCurrency(costoProcesadorPct > 0 ? (ventasSummary?.efectivo ?? 0) + digitalNeto : ventasTotal)}
               </span>
             </div>
           </div>

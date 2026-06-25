@@ -9,6 +9,7 @@ import { extractComprobante, COMPROBANTE_MODEL } from './claude-vision'
 import { normalizeAliasText } from './normalize'
 import { matchItemsConInsumos } from './queries'
 import { expandDespiece } from '@/features/catalog/insumos/despiece'
+import { revertTrackingForCompra } from '../stock-tracking'
 import type { ItemConMatch } from './schemas'
 import type { Json, Tables } from '@/types/database'
 
@@ -210,6 +211,8 @@ export async function applyComprobante(
   // los items donde el user lo pidio explicitamente. Hacemos sobre los items
   // ORIGINALES (no expandidos): si el user marca el padre, activa el padre.
   // Si el insumo ya tiene track_stock=true, ignoramos para no pisar stock real.
+  // Guardamos compra.id en stock_inicial_compra_id para poder revertir si esta
+  // compra despues se borra (evita stock fantasma en el catalogo).
   const itemsConTracking = items.filter((it) => it.start_tracking && it.insumo_id)
   if (itemsConTracking.length > 0) {
     const { data: insumosState } = await supabase
@@ -221,7 +224,7 @@ export async function applyComprobante(
       if (yaTrackeados.has(it.insumo_id)) continue
       await supabase
         .from('insumos')
-        .update({ track_stock: true, stock_inicial: it.qty })
+        .update({ track_stock: true, stock_inicial: it.qty, stock_inicial_compra_id: compra.id })
         .eq('id', it.insumo_id)
     }
   }
@@ -241,7 +244,8 @@ export async function applyComprobante(
   )
 
   if (itemsErr) {
-    // Rollback manual: borrar la compra creada
+    // Rollback manual: revertir tracking activado y borrar la compra
+    await revertTrackingForCompra(supabase, compra.id)
     await supabase.from('compras').delete().eq('id', compra.id)
     return { error: itemsErr.message }
   }

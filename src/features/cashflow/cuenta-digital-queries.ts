@@ -30,25 +30,27 @@ export type CuentaDigitalSummary = {
   saldo: number                 // ingresos netos acumulados - egresos acumulados
   ingresosMes: number           // ventas digital del mes (neto)
   egresosMes: number            // transferencias del mes + traspasos a caja mayor del mes
-  taxRate: number               // porcentaje aplicado para neto
+  costoProcesadorPct: number    // costo del procesador aplicado (MP, banco, etc.)
   movimientosMes: CuentaDigitalMovimiento[]
 }
 
 // Saldo y movimientos:
 //
-//   ingresos = ventas Bistro tarjetas+qr+online * (1 - taxRate)
+//   ingresos = ventas Bistro tarjetas+qr+online * (1 - costoProcesadorPct)
 //   egresos  = pagos a proveedor donde el pago.metodo='transferencia'
 //            + caja_movimientos egresos manuales con categoria 'Egreso digital'
 //            + caja_mayor_movimientos con origen='cuenta_digital'
 //
 // Acumulado = hasta el fin del mes seleccionado.
-export async function getCuentaDigitalSummary(month: string, taxRate: number): Promise<CuentaDigitalSummary> {
+// costoProcesadorPct = comision del procesador digital (Mercado Pago, banco).
+// No se confunde con el IVA digital, que vive en /dashboard como balanza fiscal.
+export async function getCuentaDigitalSummary(month: string, costoProcesadorPct: number): Promise<CuentaDigitalSummary> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
   const from = `${month}-01`
   const [y, m] = month.split('-').map(Number)
   const nextMonth = m === 12 ? `${y! + 1}-01-01` : `${y}-${String(m! + 1).padStart(2, '0')}-01`
-  const taxFactor = 1 - taxRate / 100
+  const netoFactor = 1 - costoProcesadorPct / 100
 
   const [
     ventasAccRows,
@@ -131,7 +133,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
     return false
   }
 
-  // 1. Ingresos acumulados (ventas digital * factor)
+  // 1. Ingresos acumulados (ventas digital * netoFactor)
   let ingresosAcc = 0
   for (const r of ventasAccRows) {
     const type = r.transaction_type ?? ''
@@ -139,7 +141,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
     if (!VENTA_TYPES.has(type) || !DIGITAL_METHODS.has(method)) continue
     ingresosAcc += Number(r.amount_total) || 0
   }
-  ingresosAcc = ingresosAcc * taxFactor
+  ingresosAcc = ingresosAcc * netoFactor
 
   // 2. Ingresos del mes (agregados por dia para no listar miles de comandas)
   let ingresosMes = 0
@@ -148,7 +150,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
     const type = r.transaction_type ?? ''
     const method = (r.payment_method ?? '').toUpperCase()
     if (!VENTA_TYPES.has(type) || !DIGITAL_METHODS.has(method)) continue
-    const neto = (Number(r.amount_total) || 0) * taxFactor
+    const neto = (Number(r.amount_total) || 0) * netoFactor
     ingresosMes += neto
     const key = r.fecha_local ?? ''
     ingresosByDay.set(key, (ingresosByDay.get(key) ?? 0) + neto)
@@ -198,7 +200,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
       fecha,
       tipo: 'ingreso',
       monto: total,
-      descripcion: `Ventas digital (neto ${100 - taxRate}%)`,
+      descripcion: `Ventas digital (neto ${(100 - costoProcesadorPct).toFixed(2)}%)`,
       source: 'bistro_venta',
     })
   }
@@ -207,7 +209,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
     saldo: ingresosAcc - egresosAcc,
     ingresosMes,
     egresosMes,
-    taxRate,
+    costoProcesadorPct,
     movimientosMes: movimientosMes.sort((a, b) => b.fecha.localeCompare(a.fecha)),
   }
 }

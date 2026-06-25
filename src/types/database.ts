@@ -1420,6 +1420,7 @@ export type Database = {
           purchase_unit_label: string | null
           shelf_life_days: number | null
           stock_inicial: number
+          stock_inicial_compra_id: string | null
           tenant_id: string
           track_stock: boolean
           unit: Database["public"]["Enums"]["unit_kind"]
@@ -1439,6 +1440,7 @@ export type Database = {
           purchase_unit_label?: string | null
           shelf_life_days?: number | null
           stock_inicial?: number
+          stock_inicial_compra_id?: string | null
           tenant_id: string
           track_stock?: boolean
           unit: Database["public"]["Enums"]["unit_kind"]
@@ -1458,6 +1460,7 @@ export type Database = {
           purchase_unit_label?: string | null
           shelf_life_days?: number | null
           stock_inicial?: number
+          stock_inicial_compra_id?: string | null
           tenant_id?: string
           track_stock?: boolean
           unit?: Database["public"]["Enums"]["unit_kind"]
@@ -1476,6 +1479,13 @@ export type Database = {
             columns: ["proveedor_id"]
             isOneToOne: false
             referencedRelation: "saldos_proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insumos_stock_inicial_compra_id_fkey"
+            columns: ["stock_inicial_compra_id"]
+            isOneToOne: false
+            referencedRelation: "compras"
             referencedColumns: ["id"]
           },
           {
