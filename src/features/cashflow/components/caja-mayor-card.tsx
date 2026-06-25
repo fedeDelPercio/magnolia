@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { PlusIcon, MinusIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon } from 'lucide-react'
+import { PlusIcon, MinusIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon, ListIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -31,6 +31,7 @@ const ORIGEN_LABEL: Record<CajaMayorMovimiento['origen'], string> = {
 export function CajaMayorCard({ summary }: Props) {
   const [ingresoOpen, setIngresoOpen] = useState(false)
   const [egresoOpen, setEgresoOpen] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   const saldoTone = summary.saldo > 0
     ? 'text-emerald-700'
@@ -39,55 +40,64 @@ export function CajaMayorCard({ summary }: Props) {
       : 'text-muted-foreground'
 
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex items-start justify-between mb-3 gap-2">
+    <div className="rounded-xl border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Caja mayor</p>
-          <p className={cn('mt-1 text-2xl font-semibold tabular-nums', saldoTone)}>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Caja mayor</p>
+          <p className={cn('mt-0.5 text-xl font-semibold tabular-nums', saldoTone)}>
             {formatCurrency(summary.saldo)}
           </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Saldo acumulado · tesorería del local fuera del POS
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            tesorería fuera del POS
           </p>
         </div>
-        <div className="flex flex-col gap-1 shrink-0">
-          <Button size="sm" variant="outline" onClick={() => setIngresoOpen(true)}>
-            <PlusIcon className="size-3.5 mr-1" />
-            Ingreso
+        <div className="flex gap-1 shrink-0">
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setDetailOpen(true)}>
+            <ListIcon className="size-3" />
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setEgresoOpen(true)}>
-            <MinusIcon className="size-3.5 mr-1" />
-            Egreso
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setIngresoOpen(true)}>
+            <PlusIcon className="size-3 mr-0.5" />
+            In
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setEgresoOpen(true)}>
+            <MinusIcon className="size-3 mr-0.5" />
+            Eg
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-        <div className="rounded-md border bg-muted/30 p-2">
-          <p className="text-muted-foreground">Ingresos del mes</p>
-          <p className="mt-0.5 tabular-nums font-medium text-emerald-700">+ {formatCurrency(summary.ingresosMes)}</p>
-        </div>
-        <div className="rounded-md border bg-muted/30 p-2">
-          <p className="text-muted-foreground">Egresos del mes</p>
-          <p className="mt-0.5 tabular-nums font-medium text-red-600">− {formatCurrency(summary.egresosMes)}</p>
-        </div>
+      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+        <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
+        <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
       </div>
-
-      {summary.movimientosMes.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-4">
-          Sin movimientos en este mes.
-        </p>
-      ) : (
-        <div className="rounded-md border divide-y max-h-72 overflow-y-auto">
-          {summary.movimientosMes.map((m) => (
-            <MovimientoRow key={m.id} m={m} />
-          ))}
-        </div>
-      )}
 
       <IngresoDialog open={ingresoOpen} onOpenChange={setIngresoOpen} />
       <EgresoDialog open={egresoOpen} onOpenChange={setEgresoOpen} />
+      <DetalleDialog open={detailOpen} onOpenChange={setDetailOpen} summary={summary} />
     </div>
+  )
+}
+
+function DetalleDialog({
+  open, onOpenChange, summary,
+}: { open: boolean; onOpenChange: (v: boolean) => void; summary: CajaMayorSummary }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Detalle · Caja Mayor del mes</DialogTitle>
+        </DialogHeader>
+        {summary.movimientosMes.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">Sin movimientos en este mes.</p>
+        ) : (
+          <div className="rounded-md border divide-y max-h-96 overflow-y-auto">
+            {summary.movimientosMes.map((m) => (
+              <MovimientoRow key={m.id} m={m} />
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
