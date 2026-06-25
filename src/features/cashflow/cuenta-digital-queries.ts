@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPaged } from '@/lib/supabase/paginate'
 import { getActiveTenantId } from '@/lib/tenant/server'
 
 // Mismos tipos digitales que ya considera el resto del sistema
@@ -50,39 +51,52 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
   const taxFactor = 1 - taxRate / 100
 
   const [
-    ventasAcc,
-    ventasMes,
-    cajaAcc,
-    cajaMes,
-    pagosByMetodo,
+    ventasAccRows,
+    ventasMesRows,
+    cajaAccRows,
+    cajaMesRows,
+    pagosByMetodoRows,
     traspasosAcc,
     traspasosMes,
   ] = await Promise.all([
-    supabase
-      .from('bistro_transacciones')
-      .select('amount_total, payment_method, transaction_type')
-      .eq('tenant_id', tenantId)
-      .lt('fecha_local', nextMonth),
-    supabase
-      .from('bistro_transacciones')
-      .select('fecha_local, amount_total, payment_method, transaction_type')
-      .eq('tenant_id', tenantId)
-      .gte('fecha_local', from)
-      .lt('fecha_local', nextMonth),
-    supabase
-      .from('caja_movimientos')
-      .select('id, fecha, monto, descripcion, ref_kind, ref_id, categoria')
-      .eq('tenant_id', tenantId)
-      .eq('tipo', 'egreso')
-      .lt('fecha', nextMonth),
-    supabase
-      .from('caja_movimientos')
-      .select('id, fecha, monto, descripcion, ref_kind, ref_id, categoria')
-      .eq('tenant_id', tenantId)
-      .eq('tipo', 'egreso')
-      .gte('fecha', from)
-      .lt('fecha', nextMonth)
-      .order('fecha', { ascending: false }),
+    // Ventas acumuladas — pagina porque puede haber decenas de miles de rows
+    fetchAllPaged<{ amount_total: number; payment_method: string | null; transaction_type: string | null }>((rf, rt) =>
+      supabase
+        .from('bistro_transacciones')
+        .select('amount_total, payment_method, transaction_type')
+        .eq('tenant_id', tenantId)
+        .lt('fecha_local', nextMonth)
+        .range(rf, rt),
+    ),
+    fetchAllPaged<{ fecha_local: string | null; amount_total: number; payment_method: string | null; transaction_type: string | null }>((rf, rt) =>
+      supabase
+        .from('bistro_transacciones')
+        .select('fecha_local, amount_total, payment_method, transaction_type')
+        .eq('tenant_id', tenantId)
+        .gte('fecha_local', from)
+        .lt('fecha_local', nextMonth)
+        .range(rf, rt),
+    ),
+    fetchAllPaged<{ id: string; fecha: string; monto: number; descripcion: string | null; ref_kind: string | null; ref_id: string | null; categoria: string }>((rf, rt) =>
+      supabase
+        .from('caja_movimientos')
+        .select('id, fecha, monto, descripcion, ref_kind, ref_id, categoria')
+        .eq('tenant_id', tenantId)
+        .eq('tipo', 'egreso')
+        .lt('fecha', nextMonth)
+        .range(rf, rt),
+    ),
+    fetchAllPaged<{ id: string; fecha: string; monto: number; descripcion: string | null; ref_kind: string | null; ref_id: string | null; categoria: string }>((rf, rt) =>
+      supabase
+        .from('caja_movimientos')
+        .select('id, fecha, monto, descripcion, ref_kind, ref_id, categoria')
+        .eq('tenant_id', tenantId)
+        .eq('tipo', 'egreso')
+        .gte('fecha', from)
+        .lt('fecha', nextMonth)
+        .order('fecha', { ascending: false })
+        .range(rf, rt),
+    ),
     supabase
       .from('pagos_proveedor')
       .select('id, metodo')
@@ -107,7 +121,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
 
   // Index de pagos por id -> metodo
   const pagoMetodo = new Map<string, string>()
-  for (const p of pagosByMetodo.data ?? []) pagoMetodo.set(p.id, p.metodo ?? '')
+  for (const p of pagosByMetodoRows.data ?? []) pagoMetodo.set(p.id, p.metodo ?? '')
 
   function isEgresoDigital(r: { ref_kind: string | null; ref_id: string | null; categoria: string }): boolean {
     if (r.categoria === 'Egreso digital') return true
@@ -119,7 +133,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
 
   // 1. Ingresos acumulados (ventas digital * factor)
   let ingresosAcc = 0
-  for (const r of ventasAcc.data ?? []) {
+  for (const r of ventasAccRows) {
     const type = r.transaction_type ?? ''
     const method = (r.payment_method ?? '').toUpperCase()
     if (!VENTA_TYPES.has(type) || !DIGITAL_METHODS.has(method)) continue
@@ -130,7 +144,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
   // 2. Ingresos del mes (agregados por dia para no listar miles de comandas)
   let ingresosMes = 0
   const ingresosByDay = new Map<string, number>()
-  for (const r of ventasMes.data ?? []) {
+  for (const r of ventasMesRows) {
     const type = r.transaction_type ?? ''
     const method = (r.payment_method ?? '').toUpperCase()
     if (!VENTA_TYPES.has(type) || !DIGITAL_METHODS.has(method)) continue
@@ -142,7 +156,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
 
   // 3. Egresos: caja_movimientos digitales (acumulado)
   let egresosAcc = 0
-  for (const r of cajaAcc.data ?? []) {
+  for (const r of cajaAccRows) {
     if (isEgresoDigital(r)) egresosAcc += Number(r.monto) || 0
   }
   // + traspasos a caja mayor
@@ -151,7 +165,7 @@ export async function getCuentaDigitalSummary(month: string, taxRate: number): P
   // 4. Egresos del mes (con detalle)
   let egresosMes = 0
   const movimientosMes: CuentaDigitalMovimiento[] = []
-  for (const r of cajaMes.data ?? []) {
+  for (const r of cajaMesRows) {
     if (!isEgresoDigital(r)) continue
     const monto = Number(r.monto) || 0
     egresosMes += monto

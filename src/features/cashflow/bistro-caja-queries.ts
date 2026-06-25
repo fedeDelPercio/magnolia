@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPaged } from '@/lib/supabase/paginate'
 import { getActiveTenantId } from '@/lib/tenant/server'
 
 // Tipos de transaccion de Bistro que afectan caja en efectivo.
@@ -56,14 +57,19 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
   const [year, mon] = month.split('-').map(Number)
   const nextMonth = mon === 12 ? `${year! + 1}-01-01` : `${year}-${String(mon! + 1).padStart(2, '0')}-01`
 
-  const [txRes, traspasosRes] = await Promise.all([
-    supabase
-      .from('bistro_transacciones')
-      .select('id, fecha_hora, fecha_local, transaction_type, payment_method, amount_total, user_name, comments')
-      .eq('tenant_id', tenantId)
-      .gte('fecha_local', from)
-      .lt('fecha_local', nextMonth)
-      .order('fecha_hora', { ascending: true }),
+  // bistro_transacciones puede tener miles de rows por mes (cada COMANDA es 1 row).
+  // Paginar para superar el limite default de 1000 de Supabase.
+  const [rows, traspasosRes] = await Promise.all([
+    fetchAllPaged((rangeFrom, rangeTo) =>
+      supabase
+        .from('bistro_transacciones')
+        .select('id, fecha_hora, fecha_local, transaction_type, payment_method, amount_total, user_name, comments')
+        .eq('tenant_id', tenantId)
+        .gte('fecha_local', from)
+        .lt('fecha_local', nextMonth)
+        .order('fecha_hora', { ascending: true })
+        .range(rangeFrom, rangeTo),
+    ),
     // Traspasos del mes que salieron de caja efectivo -> a caja mayor (manual)
     supabase
       .from('caja_mayor_movimientos')
@@ -75,8 +81,6 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
       .lt('fecha', nextMonth),
   ])
 
-  if (txRes.error) throw new Error(txRes.error.message)
-  const rows = txRes.data ?? []
   const traspasosACajaMayor = (traspasosRes.data ?? []).reduce(
     (s, r) => s + (Number(r.monto) || 0),
     0,
