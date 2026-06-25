@@ -1,5 +1,6 @@
 import { getCajaMovimientos } from '@/features/cashflow/queries'
 import { getBistroCajaMovimientos } from '@/features/cashflow/bistro-caja-queries'
+import { getCajaMayorSummary, getUltimoCierreCaja } from '@/features/cashflow/caja-mayor-queries'
 import { getMonthlyVentasSummary } from '@/features/cierres/queries'
 import { getDigitalTaxRate } from '@/features/config/queries'
 import { CajaClient } from '@/features/cashflow/components/caja-client'
@@ -13,11 +14,13 @@ export default async function CajaPage({ searchParams }: Props) {
   const { month: rawMonth } = await searchParams
   const month = rawMonth ?? new Date().toISOString().slice(0, 7)
 
-  const [movimientos, ventasSummary, taxRate, bistroCaja] = await Promise.all([
+  const [movimientos, ventasSummary, taxRate, bistroCaja, cajaMayor, ultimoCierre] = await Promise.all([
     getCajaMovimientos(month),
     getMonthlyVentasSummary(month),
     getDigitalTaxRate(),
     getBistroCajaMovimientos(month),
+    getCajaMayorSummary(month),
+    getUltimoCierreCaja(),
   ])
 
   return (
@@ -37,6 +40,8 @@ export default async function CajaPage({ searchParams }: Props) {
         ventasSummary={ventasSummary}
         taxRate={taxRate}
         bistroCaja={bistroCaja}
+        cajaMayor={cajaMayor}
+        ultimoCierre={ultimoCierre}
       />
     </div>
   )

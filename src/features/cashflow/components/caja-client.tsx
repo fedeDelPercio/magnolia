@@ -11,8 +11,11 @@ import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { EgresoDialog } from './egreso-dialog'
 import { BistroCajaCard } from './bistro-caja-card'
+import { CajaMayorCard } from './caja-mayor-card'
+import { UltimoCierreTile } from './ultimo-cierre-tile'
 import type { CajaMovimiento } from '../queries'
 import type { BistroCajaSummary } from '../bistro-caja-queries'
+import type { CajaMayorSummary, UltimoCierre } from '../caja-mayor-queries'
 import type { MonthlyVentasSummary } from '@/features/cierres/queries'
 import { METODO_LABELS } from '@/features/suppliers/schemas'
 
@@ -52,9 +55,11 @@ type Props = {
   ventasSummary?: MonthlyVentasSummary
   taxRate?: number
   bistroCaja?: BistroCajaSummary
+  cajaMayor?: CajaMayorSummary
+  ultimoCierre?: UltimoCierre
 }
 
-export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bistroCaja }: Props) {
+export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bistroCaja, cajaMayor, ultimoCierre }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
 
@@ -122,6 +127,14 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bis
           </p>
         </div>
       </div>
+
+      {/* Tile + Caja Mayor en grilla 2 columnas */}
+      {(ultimoCierre !== undefined || cajaMayor) && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {ultimoCierre !== undefined && <UltimoCierreTile ultimo={ultimoCierre} />}
+          {cajaMayor && <CajaMayorCard summary={cajaMayor} month={month} />}
+        </div>
+      )}
 
       {/* Caja efectivo Bistro (solo si hay aperturas/cierres del mes) */}
       {bistroCaja && <BistroCajaCard summary={bistroCaja} />}

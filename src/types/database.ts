@@ -297,6 +297,60 @@ export type Database = {
           },
         ]
       }
+      caja_mayor_movimientos: {
+        Row: {
+          bistro_tx_id: string | null
+          created_at: string
+          created_by: string | null
+          descripcion: string | null
+          fecha: string
+          id: string
+          monto: number
+          source: string
+          tenant_id: string
+          tipo: string
+        }
+        Insert: {
+          bistro_tx_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          descripcion?: string | null
+          fecha: string
+          id?: string
+          monto: number
+          source?: string
+          tenant_id: string
+          tipo: string
+        }
+        Update: {
+          bistro_tx_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          descripcion?: string | null
+          fecha?: string
+          id?: string
+          monto?: number
+          source?: string
+          tenant_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caja_mayor_movimientos_bistro_tx_id_fkey"
+            columns: ["bistro_tx_id"]
+            isOneToOne: true
+            referencedRelation: "bistro_transacciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_mayor_movimientos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       caja_movimientos: {
         Row: {
           categoria: string
