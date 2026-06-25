@@ -45,7 +45,7 @@ export default async function ProveedorPage({ params, searchParams }: Props) {
   const [insumosRes, proveedoresRes] = await Promise.all([
     supabase
       .from('insumos')
-      .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor')
+      .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor, track_stock')
       .eq('tenant_id', tenantId)
       .eq('active', true)
       .order('name'),

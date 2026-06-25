@@ -169,6 +169,11 @@ export async function createCompra(
 
   if (compraErr) return { error: compraErr.message }
 
+  // Activar tracking de stock + setear stock_inicial cuando el user lo pidio.
+  // Sobre items ORIGINALES (no expanded). Si el insumo ya tenia track_stock=true
+  // lo ignoramos para no pisar stock real.
+  await activateTrackingForItems(supabase, items)
+
   // Expandir padres con despiece a items por hijo, asi el stock view (que lee
   // de compra_items) suma directo a los hijos sin necesidad de triggers ni
   // ajustes manuales.
@@ -192,6 +197,29 @@ export async function createCompra(
   revalidatePath(`/proveedores/${proveedorId}`)
   revalidatePath('/catalogo/insumos')
   return { id: compra.id }
+}
+
+// Activa track_stock=true en los insumos cuyos items vienen con start_tracking,
+// usando la qty del item como stock_inicial. Si el insumo ya estaba en true,
+// no toca nada (preserva el stock real).
+async function activateTrackingForItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  items: CompraItemFormValues[],
+): Promise<void> {
+  const conTracking = items.filter((it) => it.start_tracking && it.insumo_id)
+  if (conTracking.length === 0) return
+  const { data: insumosState } = await supabase
+    .from('insumos')
+    .select('id, track_stock')
+    .in('id', conTracking.map((it) => it.insumo_id))
+  const yaTrackeados = new Set((insumosState ?? []).filter((i) => i.track_stock).map((i) => i.id))
+  for (const it of conTracking) {
+    if (yaTrackeados.has(it.insumo_id)) continue
+    await supabase
+      .from('insumos')
+      .update({ track_stock: true, stock_inicial: it.qty })
+      .eq('id', it.insumo_id)
+  }
 }
 
 export async function updateCompra(

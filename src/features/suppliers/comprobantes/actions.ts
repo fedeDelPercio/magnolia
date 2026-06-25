@@ -130,6 +130,9 @@ export type ApplyItem = {
   // el alias (texto -> insumo) para este proveedor y auto-matchear la
   // proxima vez. Opcional para mantener compat con flows que no traen el texto.
   raw_text?: string
+  // Si true Y el insumo no tenia track_stock activo, lo activa ahora y
+  // setea stock_inicial = qty (de ESTA compra). Si ya tenia tracking, ignora.
+  start_tracking?: boolean
 }
 
 // Crea la compra + items con los valores aprobados por el user. La conversión
@@ -203,6 +206,26 @@ export async function applyComprobante(
     })
   }
 
+  // Activar tracking de stock + setear stock_inicial = qty de esta compra para
+  // los items donde el user lo pidio explicitamente. Hacemos sobre los items
+  // ORIGINALES (no expandidos): si el user marca el padre, activa el padre.
+  // Si el insumo ya tiene track_stock=true, ignoramos para no pisar stock real.
+  const itemsConTracking = items.filter((it) => it.start_tracking && it.insumo_id)
+  if (itemsConTracking.length > 0) {
+    const { data: insumosState } = await supabase
+      .from('insumos')
+      .select('id, track_stock')
+      .in('id', itemsConTracking.map((it) => it.insumo_id))
+    const yaTrackeados = new Set((insumosState ?? []).filter((i) => i.track_stock).map((i) => i.id))
+    for (const it of itemsConTracking) {
+      if (yaTrackeados.has(it.insumo_id)) continue
+      await supabase
+        .from('insumos')
+        .update({ track_stock: true, stock_inicial: it.qty })
+        .eq('id', it.insumo_id)
+    }
+  }
+
   // Si alguno de los items apunta a un insumo padre con despiece, lo expandimos
   // a items por hijo antes de insertar — mismo trato que createCompra.
   const expanded = await expandDespiece(supabase, tenantId, items)
@@ -274,7 +297,7 @@ export async function refreshInsumoForComprobante(insumoId: string) {
   const tenantId = await getActiveTenantId()
   const { data, error } = await supabase
     .from('insumos')
-    .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor')
+    .select('id, name, unit, current_price, purchase_unit_label, purchase_unit_factor, track_stock')
     .eq('tenant_id', tenantId)
     .eq('id', insumoId)
     .single()

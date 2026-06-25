@@ -57,6 +57,9 @@ export const compraItemSchema = z.object({
   qty: z.number().positive('Cantidad requerida'),
   unit: z.enum(UNIDADES),
   unit_price: z.number().positive('Precio requerido'),
+  // Si true Y el insumo no tenia track_stock activo, lo activa al crear la
+  // compra y setea stock_inicial = qty.
+  start_tracking: z.boolean().optional(),
 })
 export type CompraItemFormValues = z.infer<typeof compraItemSchema>
 

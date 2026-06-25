@@ -25,7 +25,7 @@ import {
 
 type InsumoOpt = Pick<
   Tables<'insumos'>,
-  'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor'
+  'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor' | 'track_stock'
 >
 
 type NewInsumoForm = {
@@ -40,6 +40,9 @@ type LineItem = {
   qty: number
   unit: Tables<'insumos'>['unit']
   unit_price: number
+  // Activa tracking del insumo + setea stock_inicial = qty al guardar la compra.
+  // Solo aplica si el insumo NO tiene track_stock activo todavia.
+  start_tracking?: boolean
 }
 
 type Props = {
@@ -220,7 +223,7 @@ export function CompraDialog({
       toast.error('Agregá al menos un ítem')
       return
     }
-    const mapped = allItems.map((i) => ({ insumo_id: i.insumo_id, qty: i.qty, unit: i.unit, unit_price: i.unit_price }))
+    const mapped = allItems.map((i) => ({ insumo_id: i.insumo_id, qty: i.qty, unit: i.unit, unit_price: i.unit_price, start_tracking: i.start_tracking ?? false }))
     setSaving(true)
     const result = isEdit
       ? await updateCompra(compra!.id, proveedorId, fecha, dueDate || null, notes || null, mapped)
@@ -278,29 +281,46 @@ export function CompraDialog({
 
             {items.length > 0 && (
               <div className="rounded-lg border divide-y text-sm">
-                {items.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between px-3 py-2">
-                    <div>
-                      <span className="font-medium">{item.insumo_name}</span>
-                      <span className="ml-2 text-muted-foreground">
-                        {item.qty} {UNIT_LABELS[item.unit]}
-                        <span className="ml-1 text-xs">({formatCurrency(item.unit_price)} / {UNIT_LABELS[item.unit]})</span>
-                      </span>
+                {items.map((item, idx) => {
+                  const insumoData = localInsumos.find((i) => i.id === item.insumo_id)
+                  const canStartTracking = insumoData && !insumoData.track_stock
+                  return (
+                    <div key={idx} className="px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">{item.insumo_name}</span>
+                          <span className="ml-2 text-muted-foreground">
+                            {item.qty} {UNIT_LABELS[item.unit]}
+                            <span className="ml-1 text-xs">({formatCurrency(item.unit_price)} / {UNIT_LABELS[item.unit]})</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="tabular-nums">{formatCurrency(item.qty * item.unit_price)}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeItem(idx)}
+                          >
+                            <TrashIcon className="size-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      {canStartTracking && (
+                        <label className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={item.start_tracking ?? false}
+                            onChange={(e) => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, start_tracking: e.target.checked } : it))}
+                            className="size-3 cursor-pointer"
+                          />
+                          Empezar a contabilizar stock con esta compra ({item.qty} {UNIT_LABELS[item.unit]} como stock inicial)
+                        </label>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="tabular-nums">{formatCurrency(item.qty * item.unit_price)}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-6 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeItem(idx)}
-                      >
-                        <TrashIcon className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
                 <div className="flex justify-end px-3 py-2 font-medium">
                   Total: {formatCurrency(total)}
                 </div>

@@ -22,7 +22,7 @@ import type { Tables } from '@/types/database'
 
 type InsumoOpt = Pick<
   Tables<'insumos'>,
-  'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor'
+  'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor' | 'track_stock'
 >
 
 type Props = {
@@ -30,9 +30,15 @@ type Props = {
   onOpenChange: (open: boolean) => void
   proveedorId: string
   proveedorName: string
+  // Si el proveedor discrimina IVA (Factura A), los montos del comprobante
+  // vienen sin IVA y hay que multiplicar todo por 1.21 para reflejar el costo
+  // real. Default false (Factura B / sin discriminacion).
+  proveedorDiscriminaIva?: boolean
   insumos: InsumoOpt[]
   proveedoresList: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
 }
+
+const IVA_FACTOR = 1.21
 
 type Stage = 'pick' | 'parsing' | 'review'
 
@@ -49,6 +55,9 @@ type LineDraft = {
   // 'alias' = la asignacion inicial vino de la memoria de matches previos
   // para este proveedor (insumo_aliases). Sirve para mostrar un badge.
   initialSource: ItemConMatch['match_source']
+  // Si true, al aplicar la compra activamos track_stock=true en el insumo
+  // (si no lo tenia) y seteamos stock_inicial = qty de esta compra.
+  startTracking: boolean
 }
 
 function todayStr() {
@@ -60,9 +69,15 @@ export function ComprobanteUploadDialog({
   onOpenChange,
   proveedorId,
   proveedorName,
+  proveedorDiscriminaIva = false,
   insumos,
   proveedoresList,
 }: Props) {
+  // Permite al user toggle el IVA si el default del proveedor no aplica a
+  // este comprobante puntual (ej. el proveedor discrimina pero esta es una
+  // factura B excepcional). Inicializa con el flag del proveedor.
+  const [aplicarIva, setAplicarIva] = useState(proveedorDiscriminaIva)
+  useEffect(() => { setAplicarIva(proveedorDiscriminaIva) }, [proveedorDiscriminaIva, open])
   const [stage, setStage] = useState<Stage>('pick')
   const [uploadId, setUploadId] = useState<string | null>(null)
   const [fecha, setFecha] = useState(todayStr())
@@ -220,6 +235,7 @@ export function ComprobanteUploadDialog({
           totalInput: String(it.detected.precio_total ?? ''),
           discarded: false,
           initialSource: it.match_source,
+          startTracking: false,
         }
       }),
     )
@@ -260,11 +276,12 @@ export function ComprobanteUploadDialog({
 
   function buildApplyItems(): ApplyItem[] {
     const items: ApplyItem[] = []
+    const ivaMul = aplicarIva ? IVA_FACTOR : 1
     for (const line of lines) {
       if (line.discarded || !line.assignedInsumoId) continue
       const qty = parseFloat(line.qtyInput)
-      const total = parseFloat(line.totalInput)
-      if (isNaN(qty) || qty <= 0 || isNaN(total) || total <= 0) continue
+      const totalNeto = parseFloat(line.totalInput)
+      if (isNaN(qty) || qty <= 0 || isNaN(totalNeto) || totalNeto <= 0) continue
 
       const insumo = localInsumos.find((i) => i.id === line.assignedInsumoId)
       if (!insumo) continue
@@ -275,12 +292,15 @@ export function ComprobanteUploadDialog({
           ? Number(insumo.purchase_unit_factor)
           : 1
       const qtyBase = qty * factor
+      // Aplicamos IVA al total — el unit_price queda multiplicado proporcional.
+      const totalConIva = totalNeto * ivaMul
       items.push({
         insumo_id: insumo.id,
         qty: qtyBase,
         unit: insumo.unit,
-        unit_price: total / qtyBase,
+        unit_price: totalConIva / qtyBase,
         raw_text: line.detected.nombre,
+        start_tracking: line.startTracking,
       })
     }
     return items
@@ -376,6 +396,25 @@ export function ComprobanteUploadDialog({
                 <strong>La IA observó:</strong> {observaciones}
               </div>
             )}
+
+            <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
+              <div className="text-xs">
+                <label className="flex items-center gap-2 font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aplicarIva}
+                    onChange={(e) => setAplicarIva(e.target.checked)}
+                    className="size-4 cursor-pointer"
+                  />
+                  Aplicar IVA 21% al total
+                </label>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {proveedorDiscriminaIva
+                    ? 'El proveedor discrimina IVA: la factura viene sin IVA y se suma para reflejar el costo real.'
+                    : 'El proveedor NO discrimina IVA por default. Activá manualmente si esta factura lo necesita.'}
+                </p>
+              </div>
+            </div>
 
             <div className="space-y-2">
               <p className="text-sm font-medium">
@@ -505,6 +544,17 @@ export function ComprobanteUploadDialog({
                               <AlertTriangleIcon className="size-4 text-amber-500" />
                             )}
                           </div>
+                          {insumo && !insumo.track_stock && qtyBase > 0 && (
+                            <label className="col-span-12 mt-1 flex items-center gap-2 text-[10px] text-muted-foreground cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={line.startTracking}
+                                onChange={(e) => updateLine(idx, { startTracking: e.target.checked })}
+                                className="size-3 cursor-pointer"
+                              />
+                              Empezar a contabilizar stock con esta compra ({qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 2 })} {baseLabel} como stock inicial)
+                            </label>
+                          )}
                           {insumo && qtyBase > 0 && total > 0 && (() => {
                             const hijos = line.assignedInsumoId ? despieces[line.assignedInsumoId] : null
                             if (hijos && hijos.length > 0) {
@@ -534,7 +584,17 @@ export function ComprobanteUploadDialog({
               <span>
                 <strong>{aplicables}</strong> de {lines.length} items listos
               </span>
-              <span className="tabular-nums font-medium">Total facturado: {formatCurrency(computedTotal)}</span>
+              <span className="tabular-nums font-medium">
+                {aplicarIva ? (
+                  <>
+                    Total: <span className="text-muted-foreground line-through mr-1">{formatCurrency(computedTotal)}</span>
+                    <span className="text-emerald-700">{formatCurrency(computedTotal * IVA_FACTOR)}</span>
+                    <span className="text-[10px] text-muted-foreground ml-1">(+IVA)</span>
+                  </>
+                ) : (
+                  <>Total facturado: {formatCurrency(computedTotal)}</>
+                )}
+              </span>
             </div>
           </div>
         )}

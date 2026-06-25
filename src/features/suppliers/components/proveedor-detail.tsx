@@ -41,7 +41,7 @@ type Props = {
   proveedor: SaldoProveedor
   compras: CompraWithItems[]
   pagos: PagoProveedor[]
-  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price' | 'purchase_unit_label' | 'purchase_unit_factor' | 'track_stock'>[]
   proveedoresList: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
   from: string
   to: string
@@ -648,6 +648,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
         onOpenChange={setComprobanteOpen}
         proveedorId={proveedor.id}
         proveedorName={proveedor.name}
+        proveedorDiscriminaIva={proveedor.discrimina_iva ?? false}
         insumos={insumos}
         proveedoresList={proveedoresList}
       />
