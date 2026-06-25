@@ -47,9 +47,10 @@ export function BistroCajaCard({ summary }: Props) {
 
       {helpOpen && (
         <div className="mb-3 rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground space-y-1">
-          <p><strong>Saldo inicial / final:</strong> primer APERTURA y último CIERRE del mes en Bistro.</p>
-          <p><strong>Cambio neto:</strong> lo que la suma de movimientos (ventas + depósitos − retiros − traspasos) dice que debería haber cambiado el saldo.</p>
-          <p><strong>Diferencia:</strong> faltante o sobrante real = (saldo final − inicial) − cambio neto. Si es 0, todo cuadra. Negativo = falta plata, positivo = sobra.</p>
+          <p><strong>Saldo inicial:</strong> primer APERTURA de caja del mes en Bistro.</p>
+          <p><strong>Saldo proyectado:</strong> lo que la matemática dice que debería haber al cierre (inicial + ventas + depósitos − retiros − traspasos).</p>
+          <p><strong>Saldo real:</strong> último CIERRE de caja del mes (lo que efectivamente había).</p>
+          <p><strong>Diferencia:</strong> saldo real − proyectado. Si es 0, todo cuadra. Negativo = falta plata, positivo = sobra.</p>
         </div>
       )}
 
@@ -62,22 +63,20 @@ export function BistroCajaCard({ summary }: Props) {
           <Row label="Traspasos a caja mayor" value={-summary.traspasosACajaMayor} sign="−" />
         )}
         <div className="flex justify-between font-medium pt-1.5 border-t">
-          <span>Cambio neto del mes</span>
-          <span className={cn('tabular-nums', summary.cambioNeto >= 0 ? 'text-emerald-700' : 'text-red-600')}>
-            {summary.cambioNeto >= 0 ? '+ ' : '− '}
-            {formatCurrency(Math.abs(summary.cambioNeto))}
+          <span>Saldo proyectado</span>
+          <span className="tabular-nums">
+            {formatCurrency(summary.saldoInicial + summary.cambioNeto)}
           </span>
         </div>
 
         {mesEnCurso ? (
           <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-            Mes en curso · todavía no hay cierre final para comparar. Saldo esperado al cierre:{' '}
-            <strong className="tabular-nums">{formatCurrency(summary.saldoInicial + summary.cambioNeto)}</strong>.
+            Mes en curso · todavía no hay cierre final para comparar con el proyectado.
           </div>
         ) : (
           <>
-            <div className="flex justify-between text-muted-foreground pt-1.5 border-t">
-              <span>Saldo final (último cierre{summary.saldoFinalFecha ? ` ${formatDateShort(summary.saldoFinalFecha)}` : ''})</span>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Saldo real (último cierre{summary.saldoFinalFecha ? ` ${formatDateShort(summary.saldoFinalFecha)}` : ''})</span>
               <span className="tabular-nums">{formatCurrency(summary.saldoFinal ?? 0)}</span>
             </div>
             <div className={cn(
