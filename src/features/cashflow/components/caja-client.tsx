@@ -133,7 +133,7 @@ export function CajaClient({ movimientos, month, ventasSummary, taxRate = 0, bis
 
       {/* Cuentas: Ultimo cierre + Caja Mayor + Cuenta Digital */}
       {(ultimoCierre !== undefined || cajaMayor || cuentaDigital) && (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {ultimoCierre !== undefined && <UltimoCierreTile ultimo={ultimoCierre} />}
           {cuentaDigital && <CuentaDigitalCard summary={cuentaDigital} />}
           {cajaMayor && <CajaMayorCard summary={cajaMayor} month={month} />}
