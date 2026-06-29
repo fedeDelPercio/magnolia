@@ -31,6 +31,10 @@ function dateFromYYYYMMDD(s: string): Date {
   return new Date(y!, m! - 1, d!)
 }
 
+function isValidYYYYMMDD(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s)
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) {
@@ -54,8 +58,34 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, message: 'No hay tenants con Bistrosoft configurado', synced: [] })
   }
 
-  const ayer = yesterdayInArgentina()
-  const ayerDate = dateFromYYYYMMDD(ayer)
+  // Rango override opcional via ?from=YYYY-MM-DD&to=YYYY-MM-DD para backfills.
+  // Si no se pasa, se sincroniza el dia anterior en hora Argentina (default cron).
+  const url = new URL(request.url)
+  const fromParam = url.searchParams.get('from')
+  const toParam = url.searchParams.get('to')
+
+  let rangeFromStr: string
+  let rangeToStr: string
+  if (fromParam || toParam) {
+    if (!fromParam || !toParam || !isValidYYYYMMDD(fromParam) || !isValidYYYYMMDD(toParam)) {
+      return NextResponse.json(
+        { error: 'Parametros from/to deben ser YYYY-MM-DD y venir ambos' },
+        { status: 400 },
+      )
+    }
+    if (fromParam > toParam) {
+      return NextResponse.json({ error: '"from" debe ser <= "to"' }, { status: 400 })
+    }
+    rangeFromStr = fromParam
+    rangeToStr = toParam
+  } else {
+    const ayer = yesterdayInArgentina()
+    rangeFromStr = ayer
+    rangeToStr = ayer
+  }
+
+  const rangeFromDate = dateFromYYYYMMDD(rangeFromStr)
+  const rangeToDate = dateFromYYYYMMDD(rangeToStr)
 
   const results: Array<{
     tenantId: string
@@ -71,7 +101,7 @@ export async function GET(request: Request) {
     try {
       const result = await syncRange(
         cred.tenant_id,
-        { from: ayerDate, to: ayerDate },
+        { from: rangeFromDate, to: rangeToDate },
         null,
         admin,
       )
@@ -99,7 +129,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    date: ayer,
+    range: { from: rangeFromStr, to: rangeToStr },
     tenants: results.length,
     synced: results,
   })
