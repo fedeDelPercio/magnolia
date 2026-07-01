@@ -110,12 +110,12 @@ function ProductoRow({
   }
 
   // Columnas fijas: nombre (flex) | monto (128px, alineado a la derecha) |
-  // select+sugerencia (240px) | accion (32px). items-center alinea todo al
-  // eje vertical. La sugerencia vive dentro de la celda del select para
-  // no romper la alineacion de las otras columnas.
+  // select+sugerencia (240px) | accion (88px). items-start alinea al tope
+  // asi el boton "Crear" queda al mismo alto que el select en la misma
+  // fila, aunque abajo del select haya "Sugerido: ...".
   return (
-    <div className="grid grid-cols-[1fr_128px_240px_32px] items-center gap-3 px-3 py-2">
-      <div className="flex items-center gap-2 min-w-0">
+    <div className="grid grid-cols-[1fr_128px_240px_88px] items-start gap-3 px-3 py-2">
+      <div className="flex h-7 items-center gap-2 min-w-0">
         {mapped ? (
           <CheckIcon className="size-3.5 shrink-0 text-emerald-600" />
         ) : (
@@ -125,13 +125,13 @@ function ProductoRow({
         <span className="truncate">{line.nombre}</span>
       </div>
 
-      <span className="tabular-nums text-muted-foreground text-right">
+      <span className="flex h-7 items-center justify-end tabular-nums text-muted-foreground">
         {formatCurrency(line.monto_total)}
       </span>
 
       <div className="min-w-0 space-y-0.5">
         {mapped && showMatchedAsReadonly ? (
-          <span className="block text-xs text-muted-foreground truncate">
+          <span className="flex h-7 items-center text-xs text-muted-foreground truncate">
             → {options.find((o) => o.value === match!.producto_id)?.label ?? 'producto'}
           </span>
         ) : (
@@ -144,7 +144,8 @@ function ProductoRow({
           />
         )}
         {suggestion && (
-          <p className="text-[10px] leading-tight text-muted-foreground truncate">
+          // pl-3 alinea el texto con el placeholder interno del SearchableSelect
+          <p className="pl-3 text-[10px] leading-tight text-muted-foreground truncate">
             Sugerido:{' '}
             <button
               type="button"
@@ -158,13 +159,13 @@ function ProductoRow({
         )}
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex h-7 items-center justify-end">
         {!mapped && (
           <Button
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 gap-1 px-2 text-xs"
+            className="h-7 gap-1 px-3 text-xs"
             onClick={handleCreate}
             disabled={creating}
           >
