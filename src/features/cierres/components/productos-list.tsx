@@ -97,9 +97,11 @@ function ProductoRow({
 
   // Sugerencia por similitud (solo cuando no esta mapeado). Se recalcula
   // solo si cambia el nombre o el catalogo de opciones — no en cada render.
+  // Threshold bajo (0.2) para que casi siempre haya sugerencia, aunque sea
+  // debil — el user decide si aceptarla.
   const suggestion = useMemo(() => {
     if (mapped) return null
-    return topSuggestion(line.nombre, options)
+    return topSuggestion(line.nombre, options, null, 0.2)
   }, [line.nombre, options, mapped])
 
   function handleCreate() {
@@ -107,8 +109,12 @@ function ProductoRow({
     onCreate()
   }
 
+  // Columnas fijas: nombre (flex) | monto (128px, alineado a la derecha) |
+  // select+sugerencia (240px) | accion (32px). items-center alinea todo al
+  // eje vertical. La sugerencia vive dentro de la celda del select para
+  // no romper la alineacion de las otras columnas.
   return (
-    <div className="grid grid-cols-[1fr_auto_240px_auto] items-start gap-x-3 gap-y-1 px-3 py-2">
+    <div className="grid grid-cols-[1fr_128px_240px_32px] items-center gap-3 px-3 py-2">
       <div className="flex items-center gap-2 min-w-0">
         {mapped ? (
           <CheckIcon className="size-3.5 shrink-0 text-emerald-600" />
@@ -119,64 +125,67 @@ function ProductoRow({
         <span className="truncate">{line.nombre}</span>
       </div>
 
-      <span className="tabular-nums text-muted-foreground">{formatCurrency(line.monto_total)}</span>
+      <span className="tabular-nums text-muted-foreground text-right">
+        {formatCurrency(line.monto_total)}
+      </span>
 
-      {mapped && showMatchedAsReadonly ? (
-        <span className="text-xs text-muted-foreground truncate">
-          → {options.find((o) => o.value === match!.producto_id)?.label ?? 'producto'}
-        </span>
-      ) : (
-        <SearchableSelect
-          options={options}
-          value={match?.producto_id ?? ''}
-          onValueChange={onMap}
-          placeholder={mapped ? '' : 'Mapear a producto...'}
-          triggerClassName="h-7 text-xs"
-        />
-      )}
+      <div className="min-w-0 space-y-0.5">
+        {mapped && showMatchedAsReadonly ? (
+          <span className="block text-xs text-muted-foreground truncate">
+            → {options.find((o) => o.value === match!.producto_id)?.label ?? 'producto'}
+          </span>
+        ) : (
+          <SearchableSelect
+            options={options}
+            value={match?.producto_id ?? ''}
+            onValueChange={onMap}
+            placeholder={mapped ? '' : 'Mapear a producto...'}
+            triggerClassName="h-7 text-xs w-full"
+          />
+        )}
+        {suggestion && (
+          <p className="text-[10px] leading-tight text-muted-foreground truncate">
+            Sugerido:{' '}
+            <button
+              type="button"
+              className="underline hover:text-foreground"
+              onClick={() => onMap(suggestion.value)}
+            >
+              {suggestion.label}
+            </button>{' '}
+            ({Math.round(suggestion.score * 100)}%)
+          </p>
+        )}
+      </div>
 
-      {!mapped && (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7 gap-1 px-2 text-xs"
-          onClick={handleCreate}
-          disabled={creating}
-        >
-          {creating ? <Loader2Icon className="size-3 animate-spin" /> : <PlusIcon className="size-3" />}
-          Crear
-        </Button>
-      )}
-      {mapped && !showMatchedAsReadonly && (
-        <button
-          type="button"
-          onClick={() => onMap(null)}
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-muted hover:text-muted-foreground"
-          title="Quitar mapeo"
-        >
-          <XIcon className="size-3.5" />
-        </button>
-      )}
-      {mapped && showMatchedAsReadonly && (
-        <span className="text-xs text-muted-foreground">{matchLabel(match.match_type)}</span>
-      )}
-
-      {/* Sugerencia auto-detectada: ocupa la col del select (col 3) para
-          alinear visualmente con el placeholder "Mapear a producto...". */}
-      {suggestion && (
-        <p className="col-start-3 col-span-2 text-[10px] text-muted-foreground">
-          Sugerido:{' '}
+      <div className="flex justify-end">
+        {!mapped && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleCreate}
+            disabled={creating}
+          >
+            {creating ? <Loader2Icon className="size-3 animate-spin" /> : <PlusIcon className="size-3" />}
+            Crear
+          </Button>
+        )}
+        {mapped && !showMatchedAsReadonly && (
           <button
             type="button"
-            className="underline hover:text-foreground"
-            onClick={() => onMap(suggestion.value)}
+            onClick={() => onMap(null)}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-muted hover:text-muted-foreground"
+            title="Quitar mapeo"
           >
-            {suggestion.label}
-          </button>{' '}
-          ({Math.round(suggestion.score * 100)}% similitud)
-        </p>
-      )}
+            <XIcon className="size-3.5" />
+          </button>
+        )}
+        {mapped && showMatchedAsReadonly && (
+          <span className="text-xs text-muted-foreground">{matchLabel(match.match_type)}</span>
+        )}
+      </div>
     </div>
   )
 }
