@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertTriangleIcon, CheckIcon, Loader2Icon, PlusIcon, XIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { formatCurrency } from '@/lib/format'
+import { topSuggestion } from '../lib/similarity'
 import type { CierreCajaExtract, MatchType } from '../schemas'
 import type { ProductoBasico } from '../queries'
 
@@ -94,13 +95,20 @@ function ProductoRow({
   const [creating, setCreating] = useState(false)
   const mapped = !!match?.producto_id
 
+  // Sugerencia por similitud (solo cuando no esta mapeado). Se recalcula
+  // solo si cambia el nombre o el catalogo de opciones — no en cada render.
+  const suggestion = useMemo(() => {
+    if (mapped) return null
+    return topSuggestion(line.nombre, options)
+  }, [line.nombre, options, mapped])
+
   function handleCreate() {
     setCreating(true)
     onCreate()
   }
 
   return (
-    <div className="grid grid-cols-[1fr_auto_240px_auto] items-center gap-3 px-3 py-2">
+    <div className="grid grid-cols-[1fr_auto_240px_auto] items-start gap-x-3 gap-y-1 px-3 py-2">
       <div className="flex items-center gap-2 min-w-0">
         {mapped ? (
           <CheckIcon className="size-3.5 shrink-0 text-emerald-600" />
@@ -152,6 +160,22 @@ function ProductoRow({
       )}
       {mapped && showMatchedAsReadonly && (
         <span className="text-xs text-muted-foreground">{matchLabel(match.match_type)}</span>
+      )}
+
+      {/* Sugerencia auto-detectada: ocupa la col del select (col 3) para
+          alinear visualmente con el placeholder "Mapear a producto...". */}
+      {suggestion && (
+        <p className="col-start-3 col-span-2 text-[10px] text-muted-foreground">
+          Sugerido:{' '}
+          <button
+            type="button"
+            className="underline hover:text-foreground"
+            onClick={() => onMap(suggestion.value)}
+          >
+            {suggestion.label}
+          </button>{' '}
+          ({Math.round(suggestion.score * 100)}% similitud)
+        </p>
       )}
     </div>
   )

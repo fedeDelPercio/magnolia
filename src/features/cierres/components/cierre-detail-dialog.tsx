@@ -30,6 +30,10 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
   const [deleting, setDeleting] = useState(false)
   const [savingMap, setSavingMap] = useState<Set<string>>(new Set())
   const [digitalExpanded, setDigitalExpanded] = useState(false)
+  // Optimistic overrides. Al seleccionar/quitar un mapeo se refleja en la UI
+  // instantaneamente sin esperar el round-trip al server ni el router.refresh.
+  // Si el server falla se revierte.
+  const [localOverrides, setLocalOverrides] = useState<Record<string, string | null>>({})
 
   const lines: ProductoLine[] = cierre.cierre_caja_productos.map((p) => ({
     key: p.id,
@@ -41,9 +45,12 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
 
   const mappings: Record<string, MappingEntry> = {}
   for (const p of cierre.cierre_caja_productos) {
+    // Override local gana sobre la prop hasta que router.refresh reemplaze
+    // el cierre entero (momento en que el override coincide con la prop).
+    const producto_id = p.id in localOverrides ? localOverrides[p.id]! : p.producto_id
     mappings[p.id] = {
-      producto_id: p.producto_id,
-      match_type: p.producto_id ? 'alias' : null,
+      producto_id,
+      match_type: producto_id ? 'alias' : null,
       is_manual: false,
     }
   }
@@ -56,6 +63,9 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
   const netoDigital = mediosDigitales - impuestos
 
   async function handleMap(cpId: string, producto_id: string | null) {
+    // Optimistic: reflejar la seleccion al toque para que el user vea el
+    // cambio sin esperar el server. Si falla se revierte.
+    setLocalOverrides((prev) => ({ ...prev, [cpId]: producto_id }))
     setSavingMap((prev) => new Set(prev).add(cpId))
     const result = await updateCierreProductoMapping(cpId, producto_id, true)
     setSavingMap((prev) => {
@@ -64,6 +74,11 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
       return next
     })
     if (result.error) {
+      setLocalOverrides((prev) => {
+        const next = { ...prev }
+        delete next[cpId]
+        return next
+      })
       toast.error(result.error)
       return
     }
@@ -86,6 +101,8 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
       return
     }
     setProductos((prev) => [...prev, { id: result.id!, name: result.name! }])
+    // Optimistic: mostrar el mapeo al toque.
+    setLocalOverrides((prev) => ({ ...prev, [cpId]: result.id! }))
     const mapResult = await updateCierreProductoMapping(cpId, result.id, false)
     setSavingMap((prev) => {
       const next = new Set(prev)
@@ -93,6 +110,11 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
       return next
     })
     if (mapResult.error) {
+      setLocalOverrides((prev) => {
+        const next = { ...prev }
+        delete next[cpId]
+        return next
+      })
       toast.error(mapResult.error)
       return
     }
