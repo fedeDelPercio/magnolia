@@ -230,11 +230,14 @@ async function upsertTransaction(
 
   // Movimientos derivados codificados por Carolina desde el POS (a partir del
   // 01/07/2026, cuando se sinceraron los saldos base). Los cajeros marcan:
-  //   RETIRO comments="RETIRO POR CIERRE - ..." → traspaso a la caja fuerte,
-  //   se refleja como ingreso en caja_mayor_movimientos (origen='caja_efectivo').
-  // El RCA (retiro de ganancia de duenos, comments="OTROS - RCA") NO crea
-  // movimiento adicional: ya sale del efectivo del cierre y no vuelve al sistema.
-  // Idempotencia via UNIQUE en bistro_tx_id.
+  //   - RETIRO comments="RETIRO POR CIERRE - ..." → traspaso a la caja fuerte,
+  //     se refleja como ingreso en caja_mayor_movimientos (origen='caja_efectivo').
+  //   - RETIRO comments="OTROS - RCA" → ganancia de duenos, se refleja como
+  //     egreso en caja_movimientos con categoria='Ganancia duenos'.
+  // Idempotencia:
+  //   - caja_mayor_movimientos: UNIQUE en bistro_tx_id.
+  //   - caja_movimientos: UNIQUE parcial en (tenant_id, ref_kind, ref_id)
+  //     donde ref_kind='bistro_tx' (migration 0038).
   await maybeCreateDerivedMovement(client, tenantId, upserted.id, payload)
 
   return { inserted: wasInserted, updated: !wasInserted, unmappedItems: unmapped }
@@ -256,31 +259,53 @@ async function maybeCreateDerivedMovement(
   if (payload.fecha_local < DERIVED_MOVEMENTS_FROM_DATE) return
   if (payload.transaction_type !== 'RETIRO') return
   const comments = (payload.comments ?? '').trim()
+  if (!comments) return
   const commentsUpper = comments.toUpperCase()
-  if (!commentsUpper.includes('RETIRO POR CIERRE')) return
-
   const monto = Math.abs(Number(payload.amount_total) || 0)
   if (monto <= 0) return
 
-  // ON CONFLICT (bistro_tx_id) DO NOTHING via upsert con ignoreDuplicates.
-  const { error } = await client
-    .from('caja_mayor_movimientos')
-    .upsert(
-      {
-        tenant_id: tenantId,
-        fecha: payload.fecha_local,
-        tipo: 'ingreso',
-        monto,
-        descripcion: comments,
-        source: 'bistro',
-        bistro_tx_id: bistroTxId,
-        origen: 'caja_efectivo',
-      },
-      { onConflict: 'bistro_tx_id', ignoreDuplicates: true },
-    )
-  if (error) {
-    // No fallar el sync por un error acá; logueamos y seguimos.
-    console.error(`caja_mayor derived tx ${bistroTxId}: ${error.message}`)
+  // A) RETIRO POR CIERRE → ingreso en caja mayor (traspaso a caja fuerte).
+  if (commentsUpper.includes('RETIRO POR CIERRE')) {
+    const { error } = await client
+      .from('caja_mayor_movimientos')
+      .upsert(
+        {
+          tenant_id: tenantId,
+          fecha: payload.fecha_local,
+          tipo: 'ingreso',
+          monto,
+          descripcion: comments,
+          source: 'bistro',
+          bistro_tx_id: bistroTxId,
+          origen: 'caja_efectivo',
+        },
+        { onConflict: 'bistro_tx_id', ignoreDuplicates: true },
+      )
+    if (error) console.error(`caja_mayor derived tx ${bistroTxId}: ${error.message}`)
+    return
+  }
+
+  // B) OTROS - RCA → egreso en caja categoria "Ganancia duenos".
+  // Match tolerante: variantes tipicas del cajero. Requiere ambas keywords
+  // para evitar falsos positivos con "OTROS - ..." genericos.
+  if (commentsUpper.includes('OTROS') && commentsUpper.includes('RCA')) {
+    const { error } = await client
+      .from('caja_movimientos')
+      .upsert(
+        {
+          tenant_id: tenantId,
+          fecha: payload.fecha_local,
+          tipo: 'egreso',
+          categoria: 'Ganancia dueños',
+          monto,
+          descripcion: comments,
+          ref_kind: 'bistro_tx',
+          ref_id: bistroTxId,
+        },
+        { onConflict: 'tenant_id,ref_kind,ref_id', ignoreDuplicates: true },
+      )
+    if (error) console.error(`caja_movimiento derived tx ${bistroTxId}: ${error.message}`)
+    return
   }
 }
 
