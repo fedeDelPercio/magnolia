@@ -134,6 +134,9 @@ export type ApplyItem = {
   // Si true Y el insumo no tenia track_stock activo, lo activa ahora y
   // setea stock_inicial = qty (de ESTA compra). Si ya tenia tracking, ignora.
   start_tracking?: boolean
+  // Override de IVA por linea. Si undefined/null, se usa el iva_rate global
+  // de la compra. Valores validos: 0, 10.5, 21.
+  iva_rate?: 0 | 10.5 | 21 | null
 }
 
 // Crea la compra + items con los valores aprobados por el user. La conversión
@@ -146,6 +149,8 @@ export async function applyComprobante(
   dueDate: string | null,
   notes: string | null,
   items: ApplyItem[],
+  ivaRate: number = 0,
+  descuentoPct: number = 0,
 ): Promise<{ compraId?: string; error?: string }> {
   if (items.length === 0) return { error: 'No hay items para registrar' }
 
@@ -167,6 +172,8 @@ export async function applyComprobante(
       fecha,
       due_date: dueDate || null,
       notes: notes || null,
+      iva_rate: ivaRate,
+      descuento_pct: descuentoPct,
       comprobante_url: upload?.storage_path ?? null,
       comprobante_meta: upload ? ({ source: 'ocr', model: upload.ai_model, upload_id: uploadId } as Json) : null,
     })
@@ -240,6 +247,7 @@ export async function applyComprobante(
       qty: item.qty,
       unit: item.unit,
       unit_price: item.unit_price,
+      iva_rate: item.iva_rate ?? null,
     })),
   )
 
@@ -250,7 +258,12 @@ export async function applyComprobante(
     return { error: itemsErr.message }
   }
 
-  // Actualizar current_price de los insumos (replicar el flow de createCompra)
+  // Actualizar current_price de los insumos con el BRUTO (unit_price neto +
+  // descuento + IVA aplicados). Replicar la formula usada en createCompra.
+  const applyGrossPrice = (unit_price_neto: number, iva_rate_linea: number | null) => {
+    const iva = iva_rate_linea ?? ivaRate
+    return unit_price_neto * (1 - descuentoPct / 100) * (1 + iva / 100)
+  }
   for (const item of expanded) {
     const { data: existing } = await supabase
       .from('insumos')
@@ -258,19 +271,21 @@ export async function applyComprobante(
       .eq('id', item.insumo_id)
       .single()
 
+    const brutoUnitPrice = applyGrossPrice(item.unit_price, item.iva_rate ?? null)
+
     const update: { current_price: number; proveedor_id?: string } = {
-      current_price: item.unit_price,
+      current_price: brutoUnitPrice,
     }
     if (!existing?.proveedor_id) update.proveedor_id = proveedorId
 
     await supabase.from('insumos').update(update).eq('id', item.insumo_id)
 
-    const priceChanged = existing && Number(existing.current_price) !== Number(item.unit_price)
+    const priceChanged = existing && Number(existing.current_price) !== Number(brutoUnitPrice)
     if (priceChanged) {
       await supabase.from('insumo_price_history').insert({
         insumo_id: item.insumo_id,
         tenant_id: tenantId,
-        price: item.unit_price,
+        price: brutoUnitPrice,
         source: 'compra',
         source_id: compra.id,
         proveedor_id: proveedorId,

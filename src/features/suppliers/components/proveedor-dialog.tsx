@@ -9,10 +9,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { proveedorSchema, type ProveedorFormValues, type PaymentRule, DOW_LABELS, NTH_LABELS } from '../schemas'
+import {
+  proveedorSchema,
+  type ProveedorFormValues,
+  type PaymentRule,
+  type IvaRate,
+  DOW_LABELS,
+  NTH_LABELS,
+  IVA_RATES,
+  IVA_RATE_LABELS,
+} from '../schemas'
 import { createProveedor, updateProveedor } from '../actions'
 import type { Tables } from '@/types/database'
 
@@ -28,7 +36,8 @@ const DEFAULT: ProveedorFormValues = {
   contact_phone: '',
   contact_email: '',
   notes: '',
-  discrimina_iva: false,
+  iva_rate: 0,
+  descuento_pct: 0,
   payment_rule: null,
 }
 
@@ -56,14 +65,15 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
 
   useEffect(() => {
     if (!open) return
-    const initial = proveedor
+    const initial: ProveedorFormValues = proveedor
       ? {
           name: proveedor.name,
           contact_name: proveedor.contact_name ?? '',
           contact_phone: proveedor.contact_phone ?? '',
           contact_email: proveedor.contact_email ?? '',
           notes: proveedor.notes ?? '',
-          discrimina_iva: proveedor.discrimina_iva ?? false,
+          iva_rate: (Number(proveedor.iva_rate) as IvaRate) ?? 0,
+          descuento_pct: Number(proveedor.descuento_pct) || 0,
           payment_rule: (proveedor.payment_rule as PaymentRule | null) ?? null,
         }
       : DEFAULT
@@ -161,30 +171,59 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="discrimina_iva"
-              render={({ field }) => (
-                <FormItem>
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      id="discrimina-iva-check"
-                    />
-                    <div className="space-y-0.5">
-                      <FormLabel htmlFor="discrimina-iva-check" className="cursor-pointer">
-                        Discrimina IVA
-                      </FormLabel>
-                      <p className="text-xs text-muted-foreground">
-                        Las compras a este proveedor cuentan como IVA crédito en la balanza.
-                      </p>
-                    </div>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="iva_rate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>IVA por defecto</FormLabel>
+                    <Select
+                      value={String(field.value)}
+                      onValueChange={(v) => field.onChange(Number(v) as IvaRate)}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue>{IVA_RATE_LABELS[field.value] ?? IVA_RATE_LABELS[0]}</SelectValue>
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {IVA_RATES.map((rate) => (
+                          <SelectItem key={rate} value={String(rate)} label={IVA_RATE_LABELS[rate]!}>
+                            {IVA_RATE_LABELS[rate]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Al cargar compras se puede switchear.</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="descuento_pct"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descuento habitual (%)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.01"
+                        placeholder="0"
+                        value={field.value ?? 0}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">Pre-carga en cada compra nueva.</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <div className="rounded-xl border bg-card p-4 space-y-3">
               <div>

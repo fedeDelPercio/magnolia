@@ -17,6 +17,9 @@ import type { InsumoWithProveedor } from '@/features/catalog/insumos/queries'
 import { parseUploadedComprobante, applyComprobante, discardComprobante, refreshInsumoForComprobante, getComprobanteUploadPath, type ApplyItem } from '../comprobantes/actions'
 import { createInsumo, getInsumoFullForEdit, getDespiecesByParents } from '@/features/catalog/insumos/actions'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
+import { IVA_RATES, IVA_RATE_LABELS, type IvaRate } from '../schemas'
+import { computePricing } from '../pricing'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ItemConMatch } from '../comprobantes/schemas'
 import type { Tables } from '@/types/database'
 
@@ -30,15 +33,15 @@ type Props = {
   onOpenChange: (open: boolean) => void
   proveedorId: string
   proveedorName: string
-  // Si el proveedor discrimina IVA (Factura A), los montos del comprobante
-  // vienen sin IVA y hay que multiplicar todo por 1.21 para reflejar el costo
-  // real. Default false (Factura B / sin discriminacion).
-  proveedorDiscriminaIva?: boolean
+  // IVA por defecto del proveedor (Factura A discrimina => 21, Factura B con
+  // IVA reducido => 10.5, sin IVA => 0). Al abrir el modal se pre-carga con
+  // este valor pero se puede switchear global y por linea.
+  proveedorIvaRate?: IvaRate
+  // Descuento habitual del proveedor (%) — pre-carga del campo descuento.
+  proveedorDescuentoPct?: number
   insumos: InsumoOpt[]
   proveedoresList: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
 }
-
-const IVA_FACTOR = 1.21
 
 type Stage = 'pick' | 'parsing' | 'review'
 
@@ -50,7 +53,7 @@ type LineDraft = {
   candidates: ItemConMatch['candidates']
   assignedInsumoId: string | null
   qtyInput: string         // cantidad EN unidad de compra del insumo (cajón, kg, etc)
-  totalInput: string       // precio total facturado
+  totalInput: string       // precio total NETO facturado (sin IVA, sin descuento)
   discarded: boolean
   // 'alias' = la asignacion inicial vino de la memoria de matches previos
   // para este proveedor (insumo_aliases). Sirve para mostrar un badge.
@@ -58,6 +61,8 @@ type LineDraft = {
   // Si true, al aplicar la compra activamos track_stock=true en el insumo
   // (si no lo tenia) y seteamos stock_inicial = qty de esta compra.
   startTracking: boolean
+  // Override de IVA para esta linea. null = usa el global del comprobante.
+  ivaRate: IvaRate | null
 }
 
 function todayStr() {
@@ -69,15 +74,17 @@ export function ComprobanteUploadDialog({
   onOpenChange,
   proveedorId,
   proveedorName,
-  proveedorDiscriminaIva = false,
+  proveedorIvaRate = 0,
+  proveedorDescuentoPct = 0,
   insumos,
   proveedoresList,
 }: Props) {
-  // Permite al user toggle el IVA si el default del proveedor no aplica a
-  // este comprobante puntual (ej. el proveedor discrimina pero esta es una
-  // factura B excepcional). Inicializa con el flag del proveedor.
-  const [aplicarIva, setAplicarIva] = useState(proveedorDiscriminaIva)
-  useEffect(() => { setAplicarIva(proveedorDiscriminaIva) }, [proveedorDiscriminaIva, open])
+  const [ivaRate, setIvaRate] = useState<IvaRate>(proveedorIvaRate)
+  const [descuentoPct, setDescuentoPct] = useState<number>(proveedorDescuentoPct)
+  useEffect(() => {
+    setIvaRate(proveedorIvaRate)
+    setDescuentoPct(proveedorDescuentoPct)
+  }, [proveedorIvaRate, proveedorDescuentoPct, open])
   const [stage, setStage] = useState<Stage>('pick')
   const [uploadId, setUploadId] = useState<string | null>(null)
   const [fecha, setFecha] = useState(todayStr())
@@ -238,6 +245,7 @@ export function ComprobanteUploadDialog({
           discarded: false,
           initialSource: it.match_source,
           startTracking: false,
+          ivaRate: null, // usa el global por defecto
         }
       }),
     )
@@ -276,9 +284,23 @@ export function ComprobanteUploadDialog({
     toast.success(`Insumo "${created.name}" creado`)
   }
 
+  function cycleLineIva(idx: number) {
+    setLines((prev) =>
+      prev.map((l, i) => {
+        if (i !== idx) return l
+        const current = l.ivaRate
+        let next: IvaRate | null
+        if (current === null) next = 21
+        else if (current === 21) next = 10.5
+        else if (current === 10.5) next = 0
+        else next = null
+        return { ...l, ivaRate: next }
+      }),
+    )
+  }
+
   function buildApplyItems(): ApplyItem[] {
     const items: ApplyItem[] = []
-    const ivaMul = aplicarIva ? IVA_FACTOR : 1
     for (const line of lines) {
       if (line.discarded || !line.assignedInsumoId) continue
       const qty = parseFloat(line.qtyInput)
@@ -294,15 +316,16 @@ export function ComprobanteUploadDialog({
           ? Number(insumo.purchase_unit_factor)
           : 1
       const qtyBase = qty * factor
-      // Aplicamos IVA al total — el unit_price queda multiplicado proporcional.
-      const totalConIva = totalNeto * ivaMul
+      // Guardamos unit_price NETO (sin IVA, sin descuento). El bruto se calcula
+      // en el server aplicando iva_rate (linea o global) y descuento_pct.
       items.push({
         insumo_id: insumo.id,
         qty: qtyBase,
         unit: insumo.unit,
-        unit_price: totalConIva / qtyBase,
+        unit_price: totalNeto / qtyBase,
         raw_text: line.detected.nombre,
         start_tracking: line.startTracking,
+        iva_rate: line.ivaRate,
       })
     }
     return items
@@ -316,7 +339,16 @@ export function ComprobanteUploadDialog({
       return
     }
     setSaving(true)
-    const result = await applyComprobante(uploadId, proveedorId, fecha, dueDate || null, notes || null, items)
+    const result = await applyComprobante(
+      uploadId,
+      proveedorId,
+      fecha,
+      dueDate || null,
+      notes || null,
+      items,
+      ivaRate,
+      descuentoPct,
+    )
     setSaving(false)
     if (result.error) {
       toast.error(result.error)
@@ -327,11 +359,17 @@ export function ComprobanteUploadDialog({
     onOpenChange(false)
   }
 
-  const computedTotal = lines.reduce((acc, l) => {
-    if (l.discarded) return acc
-    const t = parseFloat(l.totalInput)
-    return acc + (isNaN(t) ? 0 : t)
-  }, 0)
+  const pricing = computePricing(
+    lines
+      .filter((l) => !l.discarded)
+      .map((l) => ({
+        qty: parseFloat(l.qtyInput) || 0,
+        unit_price: (parseFloat(l.totalInput) || 0) / Math.max(parseFloat(l.qtyInput) || 1, 1e-9),
+        iva_rate: l.ivaRate,
+      })),
+    ivaRate,
+    descuentoPct,
+  )
   const aplicables = lines.filter((l) => !l.discarded && l.assignedInsumoId && parseFloat(l.qtyInput) > 0 && parseFloat(l.totalInput) > 0).length
 
   return (
@@ -399,21 +437,39 @@ export function ComprobanteUploadDialog({
               </div>
             )}
 
-            <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
-              <div className="text-xs">
-                <label className="flex items-center gap-2 font-medium cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={aplicarIva}
-                    onChange={(e) => setAplicarIva(e.target.checked)}
-                    className="size-4 cursor-pointer"
-                  />
-                  Aplicar IVA 21% al total
-                </label>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {proveedorDiscriminaIva
-                    ? 'El proveedor discrimina IVA: la factura viene sin IVA y se suma para reflejar el costo real.'
-                    : 'El proveedor NO discrimina IVA por default. Activá manualmente si esta factura lo necesita.'}
+            <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">IVA por defecto de la compra</label>
+                <Select value={String(ivaRate)} onValueChange={(v) => setIvaRate(Number(v) as IvaRate)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue>{IVA_RATE_LABELS[ivaRate]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {IVA_RATES.map((r) => (
+                      <SelectItem key={r} value={String(r)} label={IVA_RATE_LABELS[r]!}>
+                        {IVA_RATE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  Se puede cambiar por ítem tocando su chip IVA.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Descuento (%)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  className="h-8 text-xs"
+                  placeholder="0"
+                  value={descuentoPct === 0 ? '' : descuentoPct}
+                  onChange={(e) => setDescuentoPct(parseFloat(e.target.value) || 0)}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Se aplica al neto de cada línea.
                 </p>
               </div>
             </div>
@@ -539,12 +595,24 @@ export function ComprobanteUploadDialog({
                               onValueChange={(v) => updateLine(idx, { totalInput: v })}
                             />
                           </div>
-                          <div className="col-span-1 flex justify-center">
+                          <div className="col-span-1 flex flex-col items-center gap-0.5">
                             {insumo ? (
                               <CheckCircleIcon className="size-4 text-emerald-600" />
                             ) : (
                               <AlertTriangleIcon className="size-4 text-amber-500" />
                             )}
+                            <button
+                              type="button"
+                              onClick={() => cycleLineIva(idx)}
+                              title="Click para cambiar IVA de este ítem (cicla entre global / 21% / 10,5% / sin IVA)"
+                              className={`rounded border px-1 py-px text-[9px] font-medium tabular-nums leading-none transition-colors ${
+                                line.ivaRate === null
+                                  ? 'bg-muted text-muted-foreground'
+                                  : 'border-primary/40 bg-primary/10 text-primary'
+                              }`}
+                            >
+                              {line.ivaRate === null ? `${IVA_RATE_LABELS[ivaRate]}*` : IVA_RATE_LABELS[line.ivaRate]}
+                            </button>
                           </div>
                           {insumo && !insumo.track_stock && qtyBase > 0 && (
                             <label className="col-span-12 mt-1 flex items-center gap-2 text-[10px] text-muted-foreground cursor-pointer">
@@ -582,21 +650,30 @@ export function ComprobanteUploadDialog({
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-sm">
-              <span>
-                <strong>{aplicables}</strong> de {lines.length} items listos
-              </span>
-              <span className="tabular-nums font-medium">
-                {aplicarIva ? (
-                  <>
-                    Total: <span className="text-muted-foreground line-through mr-1">{formatCurrency(computedTotal)}</span>
-                    <span className="text-emerald-700">{formatCurrency(computedTotal * IVA_FACTOR)}</span>
-                    <span className="text-[10px] text-muted-foreground ml-1">(+IVA)</span>
-                  </>
-                ) : (
-                  <>Total facturado: {formatCurrency(computedTotal)}</>
-                )}
-              </span>
+            <div className="rounded-md bg-muted/30 px-3 py-2 text-sm space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span><strong>{aplicables}</strong> de {lines.length} items listos</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Neto facturado</span>
+                <span className="tabular-nums">{formatCurrency(pricing.neto)}</span>
+              </div>
+              {descuentoPct > 0 && (
+                <div className="flex justify-between text-xs text-red-600">
+                  <span>− Descuento ({descuentoPct}%)</span>
+                  <span className="tabular-nums">− {formatCurrency(pricing.descuento_monto)}</span>
+                </div>
+              )}
+              {pricing.iva_monto > 0 && (
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>+ IVA</span>
+                  <span className="tabular-nums">+ {formatCurrency(pricing.iva_monto)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-medium pt-1 border-t">
+                <span>Total a pagar</span>
+                <span className="tabular-nums text-emerald-700">{formatCurrency(pricing.total)}</span>
+              </div>
             </div>
           </div>
         )}

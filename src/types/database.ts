@@ -595,6 +595,7 @@ export type Database = {
           created_at: string
           id: string
           insumo_id: string
+          iva_rate: number | null
           qty: number
           unit: Database["public"]["Enums"]["unit_kind"]
           unit_price: number
@@ -604,6 +605,7 @@ export type Database = {
           created_at?: string
           id?: string
           insumo_id: string
+          iva_rate?: number | null
           qty: number
           unit: Database["public"]["Enums"]["unit_kind"]
           unit_price: number
@@ -613,6 +615,7 @@ export type Database = {
           created_at?: string
           id?: string
           insumo_id?: string
+          iva_rate?: number | null
           qty?: number
           unit?: Database["public"]["Enums"]["unit_kind"]
           unit_price?: number
@@ -646,9 +649,11 @@ export type Database = {
           comprobante_meta: Json | null
           comprobante_url: string | null
           created_at: string
+          descuento_pct: number
           due_date: string | null
           fecha: string
           id: string
+          iva_rate: number
           notes: string | null
           proveedor_id: string
           status: Database["public"]["Enums"]["compra_status"]
@@ -660,9 +665,11 @@ export type Database = {
           comprobante_meta?: Json | null
           comprobante_url?: string | null
           created_at?: string
+          descuento_pct?: number
           due_date?: string | null
           fecha?: string
           id?: string
+          iva_rate?: number
           notes?: string | null
           proveedor_id: string
           status?: Database["public"]["Enums"]["compra_status"]
@@ -674,9 +681,11 @@ export type Database = {
           comprobante_meta?: Json | null
           comprobante_url?: string | null
           created_at?: string
+          descuento_pct?: number
           due_date?: string | null
           fecha?: string
           id?: string
+          iva_rate?: number
           notes?: string | null
           proveedor_id?: string
           status?: Database["public"]["Enums"]["compra_status"]
@@ -1900,8 +1909,10 @@ export type Database = {
           contact_name: string | null
           contact_phone: string | null
           created_at: string
+          descuento_pct: number
           discrimina_iva: boolean
           id: string
+          iva_rate: number
           name: string
           notes: string | null
           payment_rule: Json | null
@@ -1915,8 +1926,10 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          descuento_pct?: number
           discrimina_iva?: boolean
           id?: string
+          iva_rate?: number
           name: string
           notes?: string | null
           payment_rule?: Json | null
@@ -1930,8 +1943,10 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          descuento_pct?: number
           discrimina_iva?: boolean
           id?: string
+          iva_rate?: number
           name?: string
           notes?: string | null
           payment_rule?: Json | null
@@ -2287,8 +2302,10 @@ export type Database = {
           d31_60: number | null
           d61_90: number | null
           d90plus: number | null
+          descuento_pct: number | null
           discrimina_iva: boolean | null
           id: string | null
+          iva_rate: number | null
           name: string | null
           notes: string | null
           payment_rule: Json | null

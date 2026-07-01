@@ -22,7 +22,10 @@ export async function createProveedor(
     contact_phone: values.contact_phone || null,
     contact_email: values.contact_email || null,
     notes: values.notes || null,
-    discrimina_iva: values.discrimina_iva,
+    // discrimina_iva se mantiene sincronizado con iva_rate>0 (back-compat).
+    discrimina_iva: (values.iva_rate ?? 0) > 0,
+    iva_rate: values.iva_rate ?? 0,
+    descuento_pct: values.descuento_pct ?? 0,
     payment_rule: values.payment_rule ?? null,
   })
 
@@ -50,7 +53,9 @@ export async function updateProveedor(
       contact_phone: values.contact_phone || null,
       contact_email: values.contact_email || null,
       notes: values.notes || null,
-      discrimina_iva: values.discrimina_iva,
+      discrimina_iva: (values.iva_rate ?? 0) > 0,
+      iva_rate: values.iva_rate ?? 0,
+      descuento_pct: values.descuento_pct ?? 0,
       payment_rule: values.payment_rule ?? null,
     })
     .eq('id', id)
@@ -104,12 +109,27 @@ export async function deleteProveedor(
 
 // ---- Compras -----------------------------------------------
 
+// Aplica descuento e IVA sobre el precio neto de una linea para obtener el
+// bruto (lo que la duena realmente paga). El bruto es el que persiste en
+// insumos.current_price para que las recetas usen costo real.
+function computeBrutoUnitPrice(
+  unit_price_neto: number,
+  ivaRateLinea: number | null,
+  ivaRateGlobal: number,
+  descuentoPct: number,
+): number {
+  const iva = ivaRateLinea ?? ivaRateGlobal
+  return unit_price_neto * (1 - descuentoPct / 100) * (1 + iva / 100)
+}
+
 async function updateInsumoPrices(
   supabase: Awaited<ReturnType<typeof createClient>>,
   tenantId: string,
   compraId: string,
   proveedorId: string,
   items: CompraItemFormValues[],
+  ivaRateGlobal: number,
+  descuentoPct: number,
 ) {
   for (const item of items) {
     const { data: existing } = await supabase
@@ -118,10 +138,17 @@ async function updateInsumoPrices(
       .eq('id', item.insumo_id)
       .single()
 
+    const brutoUnitPrice = computeBrutoUnitPrice(
+      item.unit_price,
+      item.iva_rate ?? null,
+      ivaRateGlobal,
+      descuentoPct,
+    )
+
     // Si el insumo no tenia proveedor preferido, lo "atamos" al de esta compra.
     // No sobrescribimos si ya tenia uno — eso es decision manual desde el dialog.
     const update: { current_price: number; proveedor_id?: string } = {
-      current_price: item.unit_price,
+      current_price: brutoUnitPrice,
     }
     if (!existing?.proveedor_id) {
       update.proveedor_id = proveedorId
@@ -132,12 +159,12 @@ async function updateInsumoPrices(
       .update(update)
       .eq('id', item.insumo_id)
 
-    const priceChanged = existing && Number(existing.current_price) !== Number(item.unit_price)
+    const priceChanged = existing && Number(existing.current_price) !== Number(brutoUnitPrice)
     if (priceChanged) {
       await supabase.from('insumo_price_history').insert({
         insumo_id: item.insumo_id,
         tenant_id: tenantId,
-        price: item.unit_price,
+        price: brutoUnitPrice,
         source: 'compra',
         source_id: compraId,
         proveedor_id: proveedorId,
@@ -152,6 +179,8 @@ export async function createCompra(
   dueDate: string | null,
   notes: string | null,
   items: CompraItemFormValues[],
+  ivaRate: number = 0,
+  descuentoPct: number = 0,
 ): Promise<{ id?: string; error?: string }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -164,6 +193,8 @@ export async function createCompra(
       fecha,
       due_date: dueDate || null,
       notes: notes || null,
+      iva_rate: ivaRate,
+      descuento_pct: descuentoPct,
     })
     .select('id')
     .single()
@@ -187,12 +218,14 @@ export async function createCompra(
       qty: item.qty,
       unit: item.unit,
       unit_price: item.unit_price,
+      // IVA por linea (null = usa el global de la compra).
+      iva_rate: item.iva_rate ?? null,
     })),
   )
 
   if (itemsErr) return { error: itemsErr.message }
 
-  await updateInsumoPrices(supabase, tenantId, compra.id, proveedorId, expanded)
+  await updateInsumoPrices(supabase, tenantId, compra.id, proveedorId, expanded, ivaRate, descuentoPct)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
@@ -233,13 +266,21 @@ export async function updateCompra(
   dueDate: string | null,
   notes: string | null,
   items: CompraItemFormValues[],
+  ivaRate: number = 0,
+  descuentoPct: number = 0,
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
   const { error: compraErr } = await supabase
     .from('compras')
-    .update({ fecha, due_date: dueDate || null, notes: notes || null })
+    .update({
+      fecha,
+      due_date: dueDate || null,
+      notes: notes || null,
+      iva_rate: ivaRate,
+      descuento_pct: descuentoPct,
+    })
     .eq('id', compraId)
 
   if (compraErr) return { error: compraErr.message }
@@ -260,12 +301,13 @@ export async function updateCompra(
       qty: item.qty,
       unit: item.unit,
       unit_price: item.unit_price,
+      iva_rate: item.iva_rate ?? null,
     })),
   )
 
   if (itemsErr) return { error: itemsErr.message }
 
-  await updateInsumoPrices(supabase, tenantId, compraId, proveedorId, expanded)
+  await updateInsumoPrices(supabase, tenantId, compraId, proveedorId, expanded, ivaRate, descuentoPct)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)

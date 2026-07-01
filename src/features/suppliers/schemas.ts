@@ -21,13 +21,32 @@ export const paymentRuleSchema = z.discriminatedUnion('kind', [
 ])
 export type PaymentRule = z.infer<typeof paymentRuleSchema>
 
+// Valores permitidos para IVA (proveedor / compra / item). Mismos que el CHECK
+// constraint en BD. 0 = sin IVA, 10.5 = alicuota reducida (algunos productos),
+// 21 = alicuota general.
+export const IVA_RATES = [0, 10.5, 21] as const
+export type IvaRate = (typeof IVA_RATES)[number]
+export const IVA_RATE_LABELS: Record<number, string> = {
+  0: 'Sin IVA',
+  10.5: '10,5%',
+  21: '21%',
+}
+
 export const proveedorSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido'),
   contact_name: z.string().optional(),
   contact_phone: z.string().optional(),
   contact_email: z.string().optional(),
   notes: z.string().optional(),
-  discrimina_iva: z.boolean().default(false),
+  // IVA que aplica a las compras de este proveedor por defecto. Cada compra
+  // puede overridearlo. Reemplaza al flag booleano discrimina_iva (que se
+  // mantiene por back-compat sincronizado con iva_rate>0).
+  iva_rate: z
+    .number()
+    .refine((v): v is IvaRate => (IVA_RATES as readonly number[]).includes(v), 'IVA inválido')
+    .default(0),
+  // % de descuento habitual del proveedor (default para nuevas compras).
+  descuento_pct: z.number().min(0).max(100).default(0),
   payment_rule: paymentRuleSchema.nullable().optional(),
 })
 export type ProveedorFormValues = z.infer<typeof proveedorSchema>
@@ -60,6 +79,13 @@ export const compraItemSchema = z.object({
   // Si true Y el insumo no tenia track_stock activo, lo activa al crear la
   // compra y setea stock_inicial = qty.
   start_tracking: z.boolean().optional(),
+  // Override de IVA por linea. Si null / undefined, se usa el iva_rate global
+  // de la compra (que a su vez viene del proveedor por default).
+  iva_rate: z
+    .number()
+    .refine((v): v is IvaRate => (IVA_RATES as readonly number[]).includes(v), 'IVA inválido')
+    .nullable()
+    .optional(),
 })
 export type CompraItemFormValues = z.infer<typeof compraItemSchema>
 

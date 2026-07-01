@@ -13,6 +13,8 @@ import { formatCurrency } from '@/lib/format'
 import { UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoKind } from '@/features/catalog/insumos/schemas'
 import { createInsumo, getDespiecesByParents } from '@/features/catalog/insumos/actions'
 import { createCompra, updateCompra } from '../actions'
+import { IVA_RATES, IVA_RATE_LABELS, type IvaRate } from '../schemas'
+import { computePricing } from '../pricing'
 import type { Tables } from '@/types/database'
 import type { CompraWithItems } from '../queries'
 import {
@@ -43,6 +45,8 @@ type LineItem = {
   // Activa tracking del insumo + setea stock_inicial = qty al guardar la compra.
   // Solo aplica si el insumo NO tiene track_stock activo todavia.
   start_tracking?: boolean
+  // IVA override por linea. null = usa el global de la compra.
+  iva_rate: IvaRate | null
 }
 
 type Props = {
@@ -50,6 +54,9 @@ type Props = {
   onOpenChange: (open: boolean) => void
   proveedorId: string
   proveedorName: string
+  // Default IVA y descuento del proveedor (pre-cargan la compra).
+  proveedorIvaRate: IvaRate
+  proveedorDescuentoPct: number
   insumos: InsumoOpt[]
   compra?: CompraWithItems
 }
@@ -65,6 +72,8 @@ export function CompraDialog({
   onOpenChange,
   proveedorId,
   proveedorName,
+  proveedorIvaRate,
+  proveedorDescuentoPct,
   insumos,
   compra,
 }: Props) {
@@ -73,6 +82,8 @@ export function CompraDialog({
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState<LineItem[]>([])
+  const [ivaRate, setIvaRate] = useState<IvaRate>(proveedorIvaRate)
+  const [descuentoPct, setDescuentoPct] = useState<number>(proveedorDescuentoPct)
   const [saving, setSaving] = useState(false)
 
   // Insumos locales: base del prop + los creados inline en este dialog
@@ -101,13 +112,20 @@ export function CompraDialog({
             qty: ci.qty,
             unit: ci.unit as Tables<'insumos'>['unit'],
             unit_price: ci.unit_price,
+            iva_rate: ci.iva_rate !== null && ci.iva_rate !== undefined
+              ? (Number(ci.iva_rate) as IvaRate)
+              : null,
           })),
         )
+        setIvaRate((Number(compra.iva_rate) as IvaRate) || proveedorIvaRate)
+        setDescuentoPct(Number(compra.descuento_pct) || 0)
       } else {
         setFecha(todayStr())
         setDueDate('')
         setNotes('')
         setItems([])
+        setIvaRate(proveedorIvaRate)
+        setDescuentoPct(proveedorDescuentoPct)
       }
       setNewInsumoId('')
       setNewQty('')
@@ -116,7 +134,7 @@ export function CompraDialog({
       setCreatingInsumo(false)
       setNewInsumoForm(EMPTY_NEW_INSUMO)
     }
-  }, [open, insumos, compra])
+  }, [open, insumos, compra, proveedorIvaRate, proveedorDescuentoPct])
 
   function handleStartCreateInsumo(search: string) {
     setNewInsumoForm({ ...EMPTY_NEW_INSUMO, name: search })
@@ -178,7 +196,25 @@ export function CompraDialog({
       qty: qtyBase,
       unit: insumo.unit,
       unit_price: total / qtyBase,
+      iva_rate: null, // por defecto usa el global
     }
+  }
+
+  // Cicla el IVA por linea entre las 3 alicuotas + "auto" (usa el global de la
+  // compra). Orden: 21 → 10.5 → 0 → auto → 21…
+  function cycleLineIva(idx: number) {
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it
+        const current = it.iva_rate
+        let next: IvaRate | null
+        if (current === null) next = 21
+        else if (current === 21) next = 10.5
+        else if (current === 10.5) next = 0
+        else next = null
+        return { ...it, iva_rate: next }
+      }),
+    )
   }
 
   function addItem() {
@@ -213,8 +249,13 @@ export function CompraDialog({
     setItems((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  const total = items.reduce((acc, i) => acc + i.qty * i.unit_price, 0)
   const pendingItem = buildPendingItem()
+  const allItemsForCalc = pendingItem ? [...items, pendingItem] : items
+  const pricing = computePricing(
+    allItemsForCalc.map((i) => ({ qty: i.qty, unit_price: i.unit_price, iva_rate: i.iva_rate })),
+    ivaRate,
+    descuentoPct,
+  )
   const canSubmit = items.length > 0 || pendingItem !== null
 
   async function handleSubmit() {
@@ -223,11 +264,18 @@ export function CompraDialog({
       toast.error('Agregá al menos un ítem')
       return
     }
-    const mapped = allItems.map((i) => ({ insumo_id: i.insumo_id, qty: i.qty, unit: i.unit, unit_price: i.unit_price, start_tracking: i.start_tracking ?? false }))
+    const mapped = allItems.map((i) => ({
+      insumo_id: i.insumo_id,
+      qty: i.qty,
+      unit: i.unit,
+      unit_price: i.unit_price,
+      start_tracking: i.start_tracking ?? false,
+      iva_rate: i.iva_rate,
+    }))
     setSaving(true)
     const result = isEdit
-      ? await updateCompra(compra!.id, proveedorId, fecha, dueDate || null, notes || null, mapped)
-      : await createCompra(proveedorId, fecha, dueDate || null, notes || null, mapped)
+      ? await updateCompra(compra!.id, proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct)
+      : await createCompra(proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct)
     setSaving(false)
     if (result.error) {
       toast.error(result.error)
@@ -275,6 +323,40 @@ export function CompraDialog({
             <Input placeholder="Ej: Factura B 0001-00012345" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
 
+          {/* IVA global + descuento */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">IVA (default de todo el comprobante)</label>
+              <Select value={String(ivaRate)} onValueChange={(v) => setIvaRate(Number(v) as IvaRate)}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue>{IVA_RATE_LABELS[ivaRate]}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {IVA_RATES.map((r) => (
+                    <SelectItem key={r} value={String(r)} label={IVA_RATE_LABELS[r]!}>
+                      {IVA_RATE_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">Se puede overridear por ítem tocando el chip IVA de cada línea.</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Descuento (%)</label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                className="h-8 text-sm"
+                placeholder="0"
+                value={descuentoPct === 0 ? '' : descuentoPct}
+                onChange={(e) => setDescuentoPct(parseFloat(e.target.value) || 0)}
+              />
+              <p className="text-[10px] text-muted-foreground">Se aplica al neto de cada línea.</p>
+            </div>
+          </div>
+
           {/* Items */}
           <div className="space-y-2">
             <p className="text-sm font-medium">Ítems</p>
@@ -295,6 +377,20 @@ export function CompraDialog({
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => cycleLineIva(idx)}
+                            title="Click para cambiar IVA de este ítem"
+                            className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors ${
+                              item.iva_rate === null
+                                ? 'bg-muted text-muted-foreground'
+                                : 'border-primary/40 bg-primary/10 text-primary'
+                            }`}
+                          >
+                            {item.iva_rate === null
+                              ? `IVA ${IVA_RATE_LABELS[ivaRate]} (auto)`
+                              : `IVA ${IVA_RATE_LABELS[item.iva_rate]}`}
+                          </button>
                           <span className="tabular-nums">{formatCurrency(item.qty * item.unit_price)}</span>
                           <Button
                             type="button"
@@ -321,8 +417,27 @@ export function CompraDialog({
                     </div>
                   )
                 })}
-                <div className="flex justify-end px-3 py-2 font-medium">
-                  Total: {formatCurrency(total)}
+                <div className="px-3 py-2 space-y-0.5 text-sm">
+                  <div className="flex justify-between text-muted-foreground text-xs">
+                    <span>Neto</span>
+                    <span className="tabular-nums">{formatCurrency(pricing.neto)}</span>
+                  </div>
+                  {descuentoPct > 0 && (
+                    <div className="flex justify-between text-red-600 text-xs">
+                      <span>− Descuento ({descuentoPct}%)</span>
+                      <span className="tabular-nums">− {formatCurrency(pricing.descuento_monto)}</span>
+                    </div>
+                  )}
+                  {pricing.iva_monto > 0 && (
+                    <div className="flex justify-between text-muted-foreground text-xs">
+                      <span>+ IVA</span>
+                      <span className="tabular-nums">+ {formatCurrency(pricing.iva_monto)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-medium pt-1 border-t">
+                    <span>Total</span>
+                    <span className="tabular-nums">{formatCurrency(pricing.total)}</span>
+                  </div>
                 </div>
               </div>
             )}

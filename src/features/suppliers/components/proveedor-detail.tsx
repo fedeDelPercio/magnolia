@@ -648,7 +648,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
         onOpenChange={setComprobanteOpen}
         proveedorId={proveedor.id}
         proveedorName={proveedor.name}
-        proveedorDiscriminaIva={proveedor.discrimina_iva ?? false}
+        proveedorIvaRate={(Number(proveedor.iva_rate) as 0 | 10.5 | 21) || 0}
+        proveedorDescuentoPct={Number(proveedor.descuento_pct) || 0}
         insumos={insumos}
         proveedoresList={proveedoresList}
       />
@@ -657,6 +658,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
         onOpenChange={(v) => { setCompraOpen(v); if (!v) setEditingCompra(null) }}
         proveedorId={proveedor.id}
         proveedorName={proveedor.name}
+        proveedorIvaRate={(Number(proveedor.iva_rate) as 0 | 10.5 | 21) || 0}
+        proveedorDescuentoPct={Number(proveedor.descuento_pct) || 0}
         insumos={insumos}
         compra={editingCompra ?? undefined}
       />

@@ -21,6 +21,8 @@ export type SaldoProveedor = {
   contact_email: string | null
   notes: string | null
   discrimina_iva: boolean
+  iva_rate: number
+  descuento_pct: number
   payment_rule: unknown
 }
 

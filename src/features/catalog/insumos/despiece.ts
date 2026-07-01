@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Tables } from '@/types/database'
+import type { IvaRate } from '@/features/suppliers/schemas'
 
 // Item de compra "tal como lo ingresa el user" — puede apuntar a un insumo padre
 // que se despieza. La expansion convierte ese item en N items de los hijos.
@@ -8,6 +9,8 @@ export type CompraItemInput = {
   qty: number
   unit: Tables<'insumos'>['unit']
   unit_price: number
+  // IVA override por linea (0/10.5/21) — se propaga a los hijos al expandir.
+  iva_rate?: IvaRate | null
 }
 
 // Para un set de insumos involucrados en una compra, trae las filas de
@@ -81,6 +84,9 @@ export async function expandDespiece(
         qty: item.qty * h.qty_por_unidad,
         unit: h.hijo_unit,
         unit_price: unitPriceHijo,
+        // Propagar override de IVA al hijo — el padre y sus hijos son la
+        // misma linea contable.
+        iva_rate: item.iva_rate ?? null,
       })
     }
   }
