@@ -228,7 +228,60 @@ async function upsertTransaction(
     if (itemsErr) throw new Error(`Insert items ticket ${tx.ticketNumber}: ${itemsErr.message}`)
   }
 
+  // Movimientos derivados codificados por Carolina desde el POS (a partir del
+  // 01/07/2026, cuando se sinceraron los saldos base). Los cajeros marcan:
+  //   RETIRO comments="RETIRO POR CIERRE - ..." → traspaso a la caja fuerte,
+  //   se refleja como ingreso en caja_mayor_movimientos (origen='caja_efectivo').
+  // El RCA (retiro de ganancia de duenos, comments="OTROS - RCA") NO crea
+  // movimiento adicional: ya sale del efectivo del cierre y no vuelve al sistema.
+  // Idempotencia via UNIQUE en bistro_tx_id.
+  await maybeCreateDerivedMovement(client, tenantId, upserted.id, payload)
+
   return { inserted: wasInserted, updated: !wasInserted, unmappedItems: unmapped }
+}
+
+const DERIVED_MOVEMENTS_FROM_DATE = '2026-07-01'
+
+async function maybeCreateDerivedMovement(
+  client: Client,
+  tenantId: string,
+  bistroTxId: string,
+  payload: {
+    fecha_local: string
+    transaction_type: string
+    amount_total: number
+    comments: string | null
+  },
+): Promise<void> {
+  if (payload.fecha_local < DERIVED_MOVEMENTS_FROM_DATE) return
+  if (payload.transaction_type !== 'RETIRO') return
+  const comments = (payload.comments ?? '').trim()
+  const commentsUpper = comments.toUpperCase()
+  if (!commentsUpper.includes('RETIRO POR CIERRE')) return
+
+  const monto = Math.abs(Number(payload.amount_total) || 0)
+  if (monto <= 0) return
+
+  // ON CONFLICT (bistro_tx_id) DO NOTHING via upsert con ignoreDuplicates.
+  const { error } = await client
+    .from('caja_mayor_movimientos')
+    .upsert(
+      {
+        tenant_id: tenantId,
+        fecha: payload.fecha_local,
+        tipo: 'ingreso',
+        monto,
+        descripcion: comments,
+        source: 'bistro',
+        bistro_tx_id: bistroTxId,
+        origen: 'caja_efectivo',
+      },
+      { onConflict: 'bistro_tx_id', ignoreDuplicates: true },
+    )
+  if (error) {
+    // No fallar el sync por un error acá; logueamos y seguimos.
+    console.error(`caja_mayor derived tx ${bistroTxId}: ${error.message}`)
+  }
 }
 
 // ============================================================================
