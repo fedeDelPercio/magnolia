@@ -58,13 +58,33 @@ function fechaArgentina(d: Date): string {
   return d.toLocaleDateString('en-CA', { timeZone: AR_TZ })
 }
 
+// Normaliza un nombre de producto para hacer matching relajado entre lo que
+// devuelve Bistrosoft y lo cargado en el catalogo. Objetivo: absorber las
+// diferencias mas comunes (plural/singular, abreviaturas, tildes, mayusculas)
+// sin bajar el rigor tanto que matcheemos productos distintos.
+//
+// Reglas:
+//   1) lowercase + sin tildes + colapso de espacios
+//   2) expandir abreviaturas tipicas: "qui." -> "quiche", "emp." -> "empanada"
+//   3) stem simple: cada palabra que termina en 's' se le saca la 's' final
+//      (asi "empanadas" == "empanada"). Aplica a palabras >2 letras para no
+//      romper "es", "los", etc.
 function normalize(s: string): string {
-  return s
+  const base = s
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
+  const expanded = base
+    .replace(/\bqui\./g, 'quiche')
+    .replace(/\bemp\./g, 'empanada')
+    .replace(/\bmed\./g, 'medialuna')
+  const stemmed = expanded
+    .split(' ')
+    .map((w) => (w.length > 2 && w.endsWith('s') ? w.slice(0, -1) : w))
+    .join(' ')
+  return stemmed
 }
 
 // ============================================================================
