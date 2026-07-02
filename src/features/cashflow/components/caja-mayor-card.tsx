@@ -330,7 +330,7 @@ function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
               <option value="externo">Externo (aporte, préstamo, etc.)</option>
             </select>
             <p className="text-[11px] text-muted-foreground">
-              {origen === 'caja_efectivo' && 'Se descuenta del saldo de caja efectivo.'}
+              {origen === 'caja_efectivo' && 'No descuenta de la caja efectivo — los retiros por cierre del POS ya se registran automáticamente vía Bistro.'}
               {origen === 'cuenta_digital' && 'Se descuenta del saldo de cuenta digital.'}
               {origen === 'externo' && 'No descuenta de otra cuenta — entra desde afuera.'}
             </p>

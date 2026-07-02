@@ -59,34 +59,25 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
 
   // bistro_transacciones puede tener miles de rows por mes (cada COMANDA es 1 row).
   // Paginar para superar el limite default de 1000 de Supabase.
-  const [rows, traspasosRes] = await Promise.all([
-    fetchAllPaged((rangeFrom, rangeTo) =>
-      supabase
-        .from('bistro_transacciones')
-        .select('id, fecha_hora, fecha_local, transaction_type, payment_method, amount_total, user_name, comments')
-        .eq('tenant_id', tenantId)
-        .gte('fecha_local', from)
-        .lt('fecha_local', nextMonth)
-        .order('fecha_hora', { ascending: true })
-        .range(rangeFrom, rangeTo),
-    ),
-    // Traspasos del mes que salieron de caja efectivo -> a caja mayor (manual)
+  const rows = await fetchAllPaged((rangeFrom, rangeTo) =>
     supabase
-      .from('caja_mayor_movimientos')
-      .select('monto')
+      .from('bistro_transacciones')
+      .select('id, fecha_hora, fecha_local, transaction_type, payment_method, amount_total, user_name, comments')
       .eq('tenant_id', tenantId)
-      .eq('tipo', 'ingreso')
-      .eq('origen', 'caja_efectivo')
-      .gte('fecha', from)
-      .lt('fecha', nextMonth),
-  ])
-
-  const traspasosACajaMayor = (traspasosRes.data ?? []).reduce(
-    (s, r) => s + (Number(r.monto) || 0),
-    0,
+      .gte('fecha_local', from)
+      .lt('fecha_local', nextMonth)
+      .order('fecha_hora', { ascending: true })
+      .range(rangeFrom, rangeTo),
   )
 
-  if (rows.length === 0 && traspasosACajaMayor === 0) {
+  // NOTA: no descontamos ingresos manuales a caja mayor con origen='caja_efectivo'
+  // del cambio neto porque los retiros por cierre ya vienen del propio Bistro
+  // (transaction_type='RETIRO' con comments='RETIRO POR CIERRE - ...') y el
+  // cron los mueve automaticamente a caja mayor. Restar el manual dobla el
+  // descuento. traspasosACajaMayor queda en 0 en este summary.
+  const traspasosACajaMayor = 0
+
+  if (rows.length === 0) {
     return {
       hasData: false,
       saldoInicial: 0,
@@ -148,7 +139,7 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
     }
   }
 
-  const cambioNeto = ventasEfectivo + depositos - retiros - traspasosACajaMayor
+  const cambioNeto = ventasEfectivo + depositos - retiros
   const variacionReal = saldoFinal !== null ? saldoFinal - saldoInicial : null
   const diferencia = variacionReal !== null ? variacionReal - cambioNeto : null
 

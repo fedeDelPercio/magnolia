@@ -11,7 +11,7 @@ type Props = { summary: BistroCajaSummary }
 
 // Card de "Caja efectivo segun Bistrosoft" para /caja. Logica nueva:
 //
-//   Cambio neto del mes = ventas + depositos - retiros - traspasos
+//   Cambio neto del mes = ventas + depositos - retiros
 //     (lo que la matematica dice que DEBERIA haber cambiado el saldo).
 //   Variacion real      = saldoFinal - saldoInicial
 //     (lo que efectivamente cambio el saldo de la caja segun el primer
@@ -48,7 +48,7 @@ export function BistroCajaCard({ summary }: Props) {
       {helpOpen && (
         <div className="mb-3 rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground space-y-1">
           <p><strong>Saldo inicial:</strong> primer APERTURA de caja del mes en Bistro.</p>
-          <p><strong>Saldo proyectado:</strong> lo que la matemática dice que debería haber al cierre (inicial + ventas + depósitos − retiros − traspasos).</p>
+          <p><strong>Saldo proyectado:</strong> lo que la matemática dice que debería haber al cierre (inicial + ventas + depósitos − retiros).</p>
           <p><strong>Saldo real:</strong> último CIERRE de caja del mes (lo que efectivamente había).</p>
           <p><strong>Diferencia:</strong> saldo real − proyectado. Si es 0, todo cuadra. Negativo = falta plata, positivo = sobra.</p>
         </div>
