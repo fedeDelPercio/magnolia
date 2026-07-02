@@ -95,13 +95,12 @@ function ProductoRow({
   const [creating, setCreating] = useState(false)
   const mapped = !!match?.producto_id
 
-  // Sugerencia por similitud (solo cuando no esta mapeado). Se recalcula
-  // solo si cambia el nombre o el catalogo de opciones — no en cada render.
-  // Threshold bajo (0.2) para que casi siempre haya sugerencia, aunque sea
-  // debil — el user decide si aceptarla.
+  // Sugerencia por similitud (solo cuando no esta mapeado). Threshold 0.4:
+  // por debajo confunde mas de lo que ayuda (matches al azar), por encima
+  // suele ser una sugerencia con sentido que el user puede aceptar.
   const suggestion = useMemo(() => {
     if (mapped) return null
-    return topSuggestion(line.nombre, options, null, 0.2)
+    return topSuggestion(line.nombre, options, null, 0.4)
   }, [line.nombre, options, mapped])
 
   function handleCreate() {
