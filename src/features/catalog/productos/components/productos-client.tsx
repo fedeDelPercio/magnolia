@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import { toast } from 'sonner'
-import { PlusIcon, MoreHorizontalIcon, SearchIcon } from 'lucide-react'
+import { PlusIcon, MoreHorizontalIcon, SearchIcon, ClipboardListIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,6 +56,7 @@ type DialogMode = 'view' | 'edit' | 'create'
 
 export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas }: Props) {
   const [search, setSearch] = useState('')
+  const [onlySinReceta, setOnlySinReceta] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProductoCost | null>(null)
   const [mode, setMode] = useState<DialogMode>('create')
@@ -73,8 +74,11 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
 
   const filtered = useMemo(
     () =>
-      productos.filter((p) => (p.name ?? '').toLowerCase().includes(search.toLowerCase())),
-    [productos, search],
+      productos.filter((p) => {
+        if (onlySinReceta && p.receta_id) return false
+        return (p.name ?? '').toLowerCase().includes(search.toLowerCase())
+      }),
+    [productos, search, onlySinReceta],
   )
 
   function openCreate() {
@@ -113,14 +117,28 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="relative md:max-w-xs md:flex-1">
-          <SearchIcon className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar producto..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex flex-col gap-2 md:flex-1 md:flex-row md:items-center">
+          <div className="relative md:max-w-xs md:flex-1">
+            <SearchIcon className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar producto..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setOnlySinReceta((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+              onlySinReceta
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <ClipboardListIcon className="size-3.5" />
+            Sin receta
+          </button>
         </div>
         <Button onClick={openCreate} className="md:shrink-0">
           <PlusIcon className="size-4" />
@@ -132,7 +150,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
       <div className="space-y-2 md:hidden">
         {filtered.length === 0 ? (
           <div className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground">
-            {search ? 'No se encontraron productos' : 'Sin productos. Creá el primero.'}
+            {search || onlySinReceta ? 'No se encontraron productos' : 'Sin productos. Creá el primero.'}
           </div>
         ) : (
           filtered.map((producto) => (
@@ -192,7 +210,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                  {search ? 'No se encontraron productos' : 'Sin productos. Creá el primero.'}
+                  {search || onlySinReceta ? 'No se encontraron productos' : 'Sin productos. Creá el primero.'}
                 </TableCell>
               </TableRow>
             ) : (

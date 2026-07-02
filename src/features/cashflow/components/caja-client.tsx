@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react'
+import {
+  ChevronLeftIcon, ChevronRightIcon, PlusIcon,
+  ArrowUpIcon, ArrowDownIcon, ArrowLeftRightIcon, PiggyBankIcon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -69,15 +72,19 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
 
+  // Los totales del mes solo consideran movimientos reales (ingresos/egresos)
+  // y ganancia dueños (que sale del sistema). Los traspasos POS -> caja fuerte
+  // se listan como informativos pero no afectan totales — cambian de bolsillo,
+  // no hay perdida ni entrada de dinero.
   const ingresosMovimientos = movimientos
-    .filter((m) => m.tipo === 'ingreso')
+    .filter((m) => m.bucket === 'ingreso')
     .reduce((s, m) => s + m.monto, 0)
 
   const ventasTotal = ventasSummary?.total ?? 0
   const totalIngresos = ingresosMovimientos + ventasTotal
 
   const totalEgresos = movimientos
-    .filter((m) => m.tipo === 'egreso')
+    .filter((m) => m.bucket === 'egreso' || m.bucket === 'ganancia_duenos')
     .reduce((s, m) => s + m.monto, 0)
 
   const saldo = totalIngresos - totalEgresos
@@ -193,50 +200,74 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
             Sin movimientos en {monthLabel(month)}.
           </div>
         ) : (
-          movimientos.map((m) => (
-            <div key={m.id} className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className={`rounded-full p-1 ${m.tipo === 'ingreso' ? 'bg-green-100' : 'bg-red-100'}`}>
-                  {m.tipo === 'ingreso'
-                    ? <ArrowUpIcon className="size-3.5 text-green-700" />
-                    : <ArrowDownIcon className="size-3.5 text-red-600" />}
+          movimientos.map((m) => {
+            // Tono e icono por bucket. Traspaso (POS -> caja fuerte) va con
+            // arrow left-right en neutro. Ganancia duenos va con PiggyBank
+            // en purpura (queda fuera del sistema). Ingreso/egreso normales
+            // se pintan como antes con up/down verde/rojo.
+            const bucketStyle: Record<typeof m.bucket, { bg: string; icon: React.ReactNode; badge: string; sign: string }> = {
+              ingreso: {
+                bg: 'bg-green-100',
+                icon: <ArrowUpIcon className="size-3.5 text-green-700" />,
+                badge: 'border-green-200 bg-green-50 text-green-700',
+                sign: '+',
+              },
+              egreso: {
+                bg: 'bg-red-100',
+                icon: <ArrowDownIcon className="size-3.5 text-red-600" />,
+                badge: 'border-red-200 bg-red-50 text-red-600',
+                sign: '−',
+              },
+              traspaso: {
+                bg: 'bg-slate-100',
+                icon: <ArrowLeftRightIcon className="size-3.5 text-slate-600" />,
+                badge: 'border-slate-200 bg-slate-50 text-slate-600',
+                sign: '↔',
+              },
+              ganancia_duenos: {
+                bg: 'bg-purple-100',
+                icon: <PiggyBankIcon className="size-3.5 text-purple-700" />,
+                badge: 'border-purple-200 bg-purple-50 text-purple-700',
+                sign: '−',
+              },
+            }
+            const style = bucketStyle[m.bucket]
+            return (
+              <div key={m.id} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className={`rounded-full p-1 ${style.bg}`}>{style.icon}</div>
+                  <div>
+                    <p className="font-medium">{m.categoria}</p>
+                    {m.descripcion && <p className="text-xs text-muted-foreground">{m.descripcion}</p>}
+                    <p className="text-xs text-muted-foreground">{formatDate(m.fecha)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium">{m.categoria}</p>
-                  {m.descripcion && <p className="text-xs text-muted-foreground">{m.descripcion}</p>}
-                  <p className="text-xs text-muted-foreground">{formatDate(m.fecha)}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {m.metodo && (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'tabular-nums',
-                      m.metodo === 'cheque' && m.cleared_at
-                        ? METODO_TONE.efectivo
-                        : METODO_TONE[m.metodo] ?? METODO_TONE.otro,
-                    )}
-                  >
-                    {METODO_LABELS[m.metodo] ?? m.metodo}
-                    {m.metodo === 'cheque' && m.cleared_at
-                      ? ` · cobrado ${formatDateShort(m.cleared_at)}`
-                      : m.metodo === 'cheque' && m.due_date
-                        ? ` · vence ${formatDateShort(m.due_date)}`
-                        : null}
+                <div className="flex items-center gap-2 shrink-0">
+                  {m.metodo && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'tabular-nums',
+                        m.metodo === 'cheque' && m.cleared_at
+                          ? METODO_TONE.efectivo
+                          : METODO_TONE[m.metodo] ?? METODO_TONE.otro,
+                      )}
+                    >
+                      {METODO_LABELS[m.metodo] ?? m.metodo}
+                      {m.metodo === 'cheque' && m.cleared_at
+                        ? ` · cobrado ${formatDateShort(m.cleared_at)}`
+                        : m.metodo === 'cheque' && m.due_date
+                          ? ` · vence ${formatDateShort(m.due_date)}`
+                          : null}
+                    </Badge>
+                  )}
+                  <Badge variant="outline" className={style.badge}>
+                    {style.sign} {formatCurrency(m.monto)}
                   </Badge>
-                )}
-                <Badge
-                  variant="outline"
-                  className={m.tipo === 'ingreso'
-                    ? 'border-green-200 bg-green-50 text-green-700'
-                    : 'border-red-200 bg-red-50 text-red-600'}
-                >
-                  {m.tipo === 'ingreso' ? '+' : '−'} {formatCurrency(m.monto)}
-                </Badge>
+                </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 
