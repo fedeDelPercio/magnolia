@@ -96,10 +96,15 @@ export function ImportCierreDialog({ open, onOpenChange, productos: productosIni
 
     const saveMappings: SaveMapping[] = lines.map((line) => {
       const m = mappings[line.key]
+      // Persistir alias cuando: (a) el user cambio manualmente el mapeo, o
+      // (b) el server auto-matcheo por fuzzy y el user confirmo sin cambiarlo.
+      // Asi el proximo cierre con el mismo texto matchea via alias exacto y
+      // no depende del threshold de similitud.
+      const confirmedFuzzy = m?.match_type === 'fuzzy_auto' && !m?.is_manual
       return {
         nombre: line.nombre,
         producto_id: m?.producto_id ?? null,
-        save_as_alias: !!m?.is_manual && !!m?.producto_id,
+        save_as_alias: (!!m?.is_manual || confirmedFuzzy) && !!m?.producto_id,
       }
     })
 

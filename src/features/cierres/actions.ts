@@ -7,6 +7,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import { cierreCajaExtractSchema, type CierreCajaExtract, type ProductoMatch, type SaveMapping } from './schemas'
+import { topSuggestion } from './lib/similarity'
 import type { Json } from '@/types/database'
 
 const SYSTEM_PROMPT = `Sos un asistente experto en interpretar reportes de "Cierre de Caja" del sistema Bistrosoft (POS gastronómico argentino). Tu única tarea es extraer los datos del PDF a un JSON estructurado.
@@ -120,11 +121,20 @@ export async function resolveMatches(nombres: string[]): Promise<ProductoMatch[]
     aliasMap.set(normalize(a.alias), a.producto_id)
   }
 
+  // Opciones para el fallback fuzzy — solo se recorre cuando alias/exact/norm
+  // fallaron, asi que el costo es marginal.
+  const productoOptions = (productosRes.data ?? []).map((p) => ({ value: p.id, label: p.name }))
+
   return nombres.map((nombre) => {
     const norm = normalize(nombre)
     if (aliasMap.has(norm)) return { nombre, producto_id: aliasMap.get(norm)!, match_type: 'alias' as const }
     if (byExact.has(nombre)) return { nombre, producto_id: byExact.get(nombre)!, match_type: 'name_exact' as const }
     if (byNorm.has(norm)) return { nombre, producto_id: byNorm.get(norm)!, match_type: 'name_normalized' as const }
+    // Fallback fuzzy: mismo threshold que la UI (0.4). Se auto-aplica pero
+    // marcado con match_type='fuzzy_auto' para que el user lo distinga
+    // visualmente y pueda revisar antes de confirmar el cierre.
+    const fuzzy = topSuggestion(nombre, productoOptions, null, 0.4)
+    if (fuzzy) return { nombre, producto_id: fuzzy.value, match_type: 'fuzzy_auto' as const }
     return { nombre, producto_id: null, match_type: null }
   })
 }

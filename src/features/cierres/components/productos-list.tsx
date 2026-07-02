@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertTriangleIcon, CheckIcon, Loader2Icon, PlusIcon, XIcon } from 'lucide-react'
+import { AlertTriangleIcon, CheckIcon, Loader2Icon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { SearchableSelect } from '@/components/ui/searchable-select'
@@ -116,7 +116,14 @@ function ProductoRow({
     <div className="grid grid-cols-[1fr_128px_240px_88px] items-start gap-3 px-3 py-2">
       <div className="flex h-7 items-center gap-2 min-w-0">
         {mapped ? (
-          <CheckIcon className="size-3.5 shrink-0 text-emerald-600" />
+          match?.match_type === 'fuzzy_auto' ? (
+            <SparklesIcon
+              className="size-3.5 shrink-0 text-blue-600"
+              aria-label="Match automatico por similitud — revisá antes de confirmar"
+            />
+          ) : (
+            <CheckIcon className="size-3.5 shrink-0 text-emerald-600" />
+          )
         ) : (
           <AlertTriangleIcon className="size-3.5 shrink-0 text-amber-600" />
         )}

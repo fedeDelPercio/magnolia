@@ -64,8 +64,11 @@ export const cierreCajaExtractSchema = z.object({
 
 export type CierreCajaExtract = z.infer<typeof cierreCajaExtractSchema>
 
-// Tipos para matching de productos Bistrosoft → Magnolia
-export type MatchType = 'alias' | 'name_exact' | 'name_normalized' | null
+// Tipos para matching de productos Bistrosoft → Magnolia.
+// - 'alias'/'name_exact'/'name_normalized': match determinista, alta confianza.
+// - 'fuzzy_auto': match por similitud de bigramas >= 40%. Se auto-aplica pero
+//   la UI lo marca distinto para que el user pueda revisar antes de confirmar.
+export type MatchType = 'alias' | 'name_exact' | 'name_normalized' | 'fuzzy_auto' | null
 
 export type ProductoMatch = {
   nombre: string // nombre Bistrosoft
