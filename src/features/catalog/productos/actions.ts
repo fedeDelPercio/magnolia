@@ -7,9 +7,38 @@ import type { ProductoFormValues } from './schemas'
 import type { ProductoPriceHistoryEntry } from './queries'
 
 function mapError(msg: string): string {
+  if (msg.includes('idx_productos_variante_unica'))
+    return 'Ya existe una variante de ese concepto con la misma combinacion (canal + formato)'
   if (msg.includes('unique')) return 'Ya existe un producto con ese nombre'
   if (msg.includes('Ciclo detectado')) return msg
   return msg
+}
+
+// Resuelve concepto_name a concepto_id: si existe uno con el mismo nombre
+// (case-insensitive), lo devuelve; si no, lo crea. Un nombre en blanco o null
+// se traduce a null (producto standalone, sin concepto).
+async function resolveConceptoId(
+  supabase: Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
+  tenantId: string,
+  conceptoName: string | null | undefined,
+): Promise<{ id: string | null; error?: string }> {
+  const name = conceptoName?.trim()
+  if (!name) return { id: null }
+  const { data: existing, error: findErr } = await supabase
+    .from('producto_conceptos')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .ilike('name', name)
+    .maybeSingle()
+  if (findErr) return { id: null, error: findErr.message }
+  if (existing) return { id: existing.id }
+  const { data: created, error: createErr } = await supabase
+    .from('producto_conceptos')
+    .insert({ tenant_id: tenantId, name })
+    .select('id')
+    .single()
+  if (createErr) return { id: null, error: createErr.message }
+  return { id: created.id }
 }
 
 function buildIngredientesRows(recetaId: string, values: ProductoFormValues) {
@@ -92,6 +121,12 @@ export async function createProducto(values: ProductoFormValues): Promise<{ erro
       }
     }
 
+    const conceptoRes = await resolveConceptoId(supabase, tenantId, values.concepto_name)
+    if (conceptoRes.error) {
+      await supabase.from('recetas').delete().eq('id', receta.id)
+      return { error: conceptoRes.error }
+    }
+
     const { data: producto, error } = await supabase.from('productos').insert({
       name: values.name,
       sale_price: values.sale_price,
@@ -99,6 +134,9 @@ export async function createProducto(values: ProductoFormValues): Promise<{ erro
       target_margin_pct: values.target_margin_pct,
       is_dynamic: values.is_dynamic,
       tenant_id: tenantId,
+      concepto_id: conceptoRes.id,
+      canal: values.canal,
+      formato: values.formato,
     }).select('id').single()
 
     if (error) {
@@ -175,6 +213,9 @@ export async function updateProducto(
       if (ingErr) return { error: mapError(ingErr.message) }
     }
 
+    const conceptoRes = await resolveConceptoId(supabase, tenantId, values.concepto_name)
+    if (conceptoRes.error) return { error: conceptoRes.error }
+
     const { error } = await supabase
       .from('productos')
       .update({
@@ -183,6 +224,9 @@ export async function updateProducto(
         receta_id: recetaId,
         target_margin_pct: values.target_margin_pct,
         is_dynamic: values.is_dynamic,
+        concepto_id: conceptoRes.id,
+        canal: values.canal,
+        formato: values.formato,
       })
       .eq('id', id)
 

@@ -54,6 +54,27 @@ function isSalon(origin: string | null | undefined): boolean {
   return norm.includes('salón') || norm.includes('salon')
 }
 
+// Canal del ticket. Salon = mesa; Delivery = mostrador/takeaway/delivery, todo lo
+// que no es salon en el origin de Bistrosoft. Cuando origin viene null (raro),
+// caemos en 'delivery' para no perder registros. Validado 1:1 contra el detalle
+// de productos del PDF: origin=Salon <-> categorias SALON XXX del PDF, y
+// origin=Mostrador <-> categorias DELIVERY/BEBIDA_DELIVERY/GENERICO del PDF.
+type Canal = Database['public']['Enums']['producto_canal']
+type Formato = Database['public']['Enums']['producto_formato']
+
+function canalFromOrigin(origin: string | null | undefined): Canal {
+  return isSalon(origin) ? 'salon' : 'delivery'
+}
+
+// Formato del item. En Bistrosoft el "Menu" no tiene campo propio — se codifica
+// en el prefijo del nombre. Detectamos "Menu X" o "Menú X" (case-insensitive).
+// Todo lo demas queda en null: no forzamos "individual" porque hay items (bebidas,
+// cafeteria, adicionales) que no tienen concepto de formato.
+function formatoFromNombre(nombre: string | null | undefined): Formato | null {
+  if (!nombre) return null
+  return /^men[uú]\s/i.test(nombre) ? 'menu' : null
+}
+
 function fechaArgentina(d: Date): string {
   return d.toLocaleDateString('en-CA', { timeZone: AR_TZ })
 }
@@ -118,16 +139,30 @@ async function getValidToken(client: Client, tenantId: string): Promise<string> 
 // SKU / nombre → producto matching
 // ============================================================================
 
+type ProductoInfo = {
+  id: string
+  concepto_id: string | null
+  canal: Canal | null
+  formato: Formato | null
+}
+
 type MatchMaps = {
   bySku: Map<string, string>
   byNameAlias: Map<string, string>
   byNameExact: Map<string, string>
   byNameNorm: Map<string, string>
+  // Metadata para redirigir a la variante correcta del concepto.
+  byId: Map<string, ProductoInfo>
+  byConcepto: Map<string, ProductoInfo[]>
 }
 
 async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMaps> {
   const [productosRes, aliasesRes] = await Promise.all([
-    client.from('productos').select('id, name').eq('tenant_id', tenantId).eq('active', true),
+    client
+      .from('productos')
+      .select('id, name, concepto_id, canal, formato')
+      .eq('tenant_id', tenantId)
+      .eq('active', true),
     client
       .from('producto_aliases')
       .select('alias, producto_id, source')
@@ -137,9 +172,23 @@ async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMap
 
   const byNameExact = new Map<string, string>()
   const byNameNorm = new Map<string, string>()
+  const byId = new Map<string, ProductoInfo>()
+  const byConcepto = new Map<string, ProductoInfo[]>()
   for (const p of productosRes.data ?? []) {
     byNameExact.set(p.name, p.id)
     byNameNorm.set(normalize(p.name), p.id)
+    const info: ProductoInfo = {
+      id: p.id,
+      concepto_id: p.concepto_id,
+      canal: p.canal,
+      formato: p.formato,
+    }
+    byId.set(p.id, info)
+    if (p.concepto_id) {
+      const list = byConcepto.get(p.concepto_id) ?? []
+      list.push(info)
+      byConcepto.set(p.concepto_id, list)
+    }
   }
 
   const bySku = new Map<string, string>()
@@ -148,7 +197,7 @@ async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMap
     if (a.source === 'bistrosoft_sku') bySku.set(a.alias.trim(), a.producto_id)
     else byNameAlias.set(normalize(a.alias), a.producto_id)
   }
-  return { bySku, byNameAlias, byNameExact, byNameNorm }
+  return { bySku, byNameAlias, byNameExact, byNameNorm, byId, byConcepto }
 }
 
 function matchItem(item: BistroLine, maps: MatchMaps): string | null {
@@ -163,6 +212,25 @@ function matchItem(item: BistroLine, maps: MatchMaps): string | null {
     if (maps.byNameNorm.has(norm)) return maps.byNameNorm.get(norm)!
   }
   return null
+}
+
+// Si el productoId matcheado es una variante de un concepto, redirigi a la
+// variante que matchee (canal, formato) del cierre. Si no hay match exacto,
+// devolvemos el mismo id (fallback) — mejor asignar a alguna variante conocida
+// que devolver null y perder la venta.
+function redirectToVariant(
+  productoId: string | null,
+  canal: Canal | null,
+  formato: Formato | null,
+  maps: MatchMaps,
+): string | null {
+  if (!productoId) return null
+  const p = maps.byId.get(productoId)
+  if (!p || !p.concepto_id) return productoId // standalone
+  const siblings = maps.byConcepto.get(p.concepto_id) ?? []
+  const exact = siblings.find((s) => s.canal === canal && s.formato === formato)
+  if (exact) return exact.id
+  return productoId
 }
 
 // ============================================================================
@@ -224,9 +292,15 @@ async function upsertTransaction(
   // Reemplazar items siempre (la transacción puede haber cambiado en Bistrosoft)
   await client.from('bistro_transaccion_items').delete().eq('transaccion_id', upserted.id)
 
+  const canal = canalFromOrigin(tx.origin)
   let unmapped = 0
   const items = (tx.items ?? []).map((it) => {
-    const productoId = matchItem(it, maps)
+    const rawMatch = matchItem(it, maps)
+    const formato = formatoFromNombre(it.item)
+    // Si matcheamos un producto que es variante de un concepto, elegimos la
+    // variante que corresponde al (canal, formato) del ticket — asi los items
+    // de delivery caen en la variante delivery, no en la salon.
+    const productoId = redirectToVariant(rawMatch, canal, formato, maps)
     if (!productoId) unmapped++
     return {
       transaccion_id: upserted.id,
@@ -429,16 +503,31 @@ async function consolidateCierreForDay(
     .single()
   if (cierreErr || !cierre) throw new Error(`Consolidar cierre ${fechaLocal}: ${cierreErr?.message}`)
 
-  // Productos: agregar por (producto_id, item_name)
-  const agg = new Map<string, { producto_id: string | null; nombre: string; cantidad: number; monto: number }>()
+  // Productos: agregar por (producto_id, item_name, canal, formato). Incluimos
+  // canal y formato en la clave para no colapsar variantes — el mismo item
+  // vendido en salon y delivery vale como dos filas distintas, cada una con
+  // su bucket, para que el mapping pueda apuntar a la variante correcta.
+  type ProdAgg = {
+    producto_id: string | null
+    nombre: string
+    cantidad: number
+    monto: number
+    canal: Canal
+    formato: Formato | null
+  }
+  const agg = new Map<string, ProdAgg>()
   for (const v of ventas) {
+    const canal = canalFromOrigin(v.origin)
     for (const it of v.items ?? []) {
-      const key = `${it.producto_id ?? 'null'}::${it.item_name}`
+      const formato = formatoFromNombre(it.item_name)
+      const key = `${it.producto_id ?? 'null'}::${it.item_name}::${canal}::${formato ?? ''}`
       const prev = agg.get(key) ?? {
         producto_id: it.producto_id,
         nombre: it.item_name,
         cantidad: 0,
         monto: 0,
+        canal,
+        formato,
       }
       prev.cantidad += Number(it.quantity) || 0
       prev.monto += Number(it.amount) || 0
@@ -454,6 +543,8 @@ async function consolidateCierreForDay(
       cantidad: p.cantidad,
       monto_total: p.monto,
       producto_id: p.producto_id,
+      canal: p.canal,
+      formato: p.formato,
     }))
     const { error: prodErr } = await client.from('cierre_caja_productos').insert(productos)
     if (prodErr) throw new Error(`Insert productos cierre ${fechaLocal}: ${prodErr.message}`)

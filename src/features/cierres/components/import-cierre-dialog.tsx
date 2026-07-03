@@ -72,20 +72,21 @@ export function ImportCierreDialog({ open, onOpenChange, productos: productosIni
     const newLines = extractToLines(result.data.productos)
     setPreview(result.data)
     setLines(newLines)
+    // Matches viene en el mismo orden que data.productos (y extractToLines
+    // preserva ese orden), asi que indexamos por posicion. Antes indexabamos
+    // por nombre — colisionaba cuando dos lineas tenian el mismo item vendido
+    // en canales distintos (ej: "Empanada de Carne" en salon y delivery),
+    // porque el ultimo match pisaba al anterior.
+    const matches = result.matches ?? []
     const initial: Record<string, MappingEntry> = {}
-    // Matches del backend vienen por nombre; los mapeamos a los keys de las líneas
-    const matchByNombre = new Map<string, { producto_id: string | null; match_type: MatchType }>()
-    for (const m of result.matches ?? []) {
-      matchByNombre.set(m.nombre, { producto_id: m.producto_id, match_type: m.match_type })
-    }
-    for (const line of newLines) {
-      const m = matchByNombre.get(line.nombre)
+    newLines.forEach((line, idx) => {
+      const m = matches[idx]
       initial[line.key] = {
         producto_id: m?.producto_id ?? null,
         match_type: m?.match_type ?? null,
         is_manual: false,
       }
-    }
+    })
     setMappings(initial)
     setPhase('previewing')
   }

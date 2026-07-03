@@ -33,6 +33,32 @@ function normalize(s: string): string {
     .trim()
 }
 
+// Canal derivado de la categoria del PDF de Bistrosoft. La categoria concentra
+// dos ejes: {canal (SALON/DELIVERY)} x {momento (ALMUERZO/CAFETERIA/BEBIDA)}.
+// Nosotros solo modelamos el canal; el momento queda descartado (agrupamiento
+// de reporte, no cambia la receta del producto).
+// - Cualquier categoria que empieza con "SALON " -> canal='salon'.
+// - "DELIVERY XXX", "BEBIDA DELIVERY" y "GENERICO" -> canal='delivery'. Estos
+//   ultimos dos aparecen bajo origin=Mostrador en la API — el mismo bucket.
+// - Categorias no reconocidas o null -> null (sin senal).
+type CanalPdf = 'salon' | 'delivery' | null
+function canalFromCategoria(cat: string | null | undefined): CanalPdf {
+  if (!cat) return null
+  const upper = cat.toUpperCase()
+  if (upper.startsWith('SALON')) return 'salon'
+  if (upper.startsWith('DELIVERY') || upper.includes('BEBIDA DELIVERY') || upper === 'GENERICO') {
+    return 'delivery'
+  }
+  return null
+}
+
+// Formato del item — mismo criterio que el sync API (prefijo "Menú"/"Menu").
+type FormatoPdf = 'individual' | 'menu' | null
+function formatoFromNombre(nombre: string | null | undefined): FormatoPdf {
+  if (!nombre) return null
+  return /^men[uú]\s/i.test(nombre) ? 'menu' : null
+}
+
 // Convierte un ISO timestamptz a YYYY-MM-DD en hora Argentina
 function fechaArgentina(iso: string): string {
   const d = new Date(iso)
@@ -81,7 +107,13 @@ export async function extractCierreCaja(formData: FormData): Promise<ExtractResu
     if (!response.parsed_output) return { error: 'No se pudo parsear la respuesta del modelo' }
 
     const data = response.parsed_output
-    const matches = await resolveMatches(data.productos.map((p) => p.nombre))
+    const matches = await resolveMatches(
+      data.productos.map((p) => ({
+        nombre: p.nombre,
+        canal: canalFromCategoria(p.categoria),
+        formato: formatoFromNombre(p.nombre),
+      })),
+    )
 
     return { data, matches }
   } catch (e) {
@@ -91,14 +123,24 @@ export async function extractCierreCaja(formData: FormData): Promise<ExtractResu
 
 // ---------- Matching ----------
 
-export async function resolveMatches(nombres: string[]): Promise<ProductoMatch[]> {
+// resolveMatches acepta name+canal+formato por linea. Los nuevos ejes se usan
+// para: (a) redirigir el resultado a la variante correcta cuando el producto
+// matcheado tiene siblings del mismo concepto; (b) ranking fuzzy: preferimos
+// candidatos con la misma variante.
+export type ResolveInput = {
+  nombre: string
+  canal: 'salon' | 'delivery' | null
+  formato: 'individual' | 'menu' | null
+}
+
+export async function resolveMatches(inputs: ResolveInput[]): Promise<ProductoMatch[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
   const [productosRes, aliasesRes] = await Promise.all([
     supabase
       .from('productos')
-      .select('id, name')
+      .select('id, name, concepto_id, canal, formato')
       .eq('tenant_id', tenantId)
       .eq('active', true),
     supabase
@@ -108,33 +150,80 @@ export async function resolveMatches(nombres: string[]): Promise<ProductoMatch[]
       .eq('source', 'bistrosoft'),
   ])
 
-  if (productosRes.error || aliasesRes.error) return nombres.map((n) => ({ nombre: n, producto_id: null, match_type: null }))
+  if (productosRes.error || aliasesRes.error) {
+    return inputs.map((i) => ({ nombre: i.nombre, producto_id: null, match_type: null }))
+  }
 
   const byExact = new Map<string, string>()
   const byNorm = new Map<string, string>()
+  type ProdInfo = {
+    id: string
+    concepto_id: string | null
+    canal: 'salon' | 'delivery' | null
+    formato: 'individual' | 'menu' | null
+  }
+  const byId = new Map<string, ProdInfo>()
+  const byConcepto = new Map<string, ProdInfo[]>()
   for (const p of productosRes.data ?? []) {
     byExact.set(p.name, p.id)
     byNorm.set(normalize(p.name), p.id)
+    const info: ProdInfo = {
+      id: p.id,
+      concepto_id: p.concepto_id,
+      canal: p.canal,
+      formato: p.formato,
+    }
+    byId.set(p.id, info)
+    if (p.concepto_id) {
+      const list = byConcepto.get(p.concepto_id) ?? []
+      list.push(info)
+      byConcepto.set(p.concepto_id, list)
+    }
   }
   const aliasMap = new Map<string, string>()
   for (const a of aliasesRes.data ?? []) {
     aliasMap.set(normalize(a.alias), a.producto_id)
   }
 
+  // Redirige a la variante correcta del concepto si aplica.
+  function redirectToVariant(
+    productoId: string,
+    canal: 'salon' | 'delivery' | null,
+    formato: 'individual' | 'menu' | null,
+  ): string {
+    const p = byId.get(productoId)
+    if (!p || !p.concepto_id) return productoId
+    const siblings = byConcepto.get(p.concepto_id) ?? []
+    const exact = siblings.find((s) => s.canal === canal && s.formato === formato)
+    return exact?.id ?? productoId
+  }
+
   // Opciones para el fallback fuzzy — solo se recorre cuando alias/exact/norm
   // fallaron, asi que el costo es marginal.
   const productoOptions = (productosRes.data ?? []).map((p) => ({ value: p.id, label: p.name }))
 
-  return nombres.map((nombre) => {
+  return inputs.map(({ nombre, canal, formato }) => {
     const norm = normalize(nombre)
-    if (aliasMap.has(norm)) return { nombre, producto_id: aliasMap.get(norm)!, match_type: 'alias' as const }
-    if (byExact.has(nombre)) return { nombre, producto_id: byExact.get(nombre)!, match_type: 'name_exact' as const }
-    if (byNorm.has(norm)) return { nombre, producto_id: byNorm.get(norm)!, match_type: 'name_normalized' as const }
+    if (aliasMap.has(norm)) {
+      const id = redirectToVariant(aliasMap.get(norm)!, canal, formato)
+      return { nombre, producto_id: id, match_type: 'alias' as const }
+    }
+    if (byExact.has(nombre)) {
+      const id = redirectToVariant(byExact.get(nombre)!, canal, formato)
+      return { nombre, producto_id: id, match_type: 'name_exact' as const }
+    }
+    if (byNorm.has(norm)) {
+      const id = redirectToVariant(byNorm.get(norm)!, canal, formato)
+      return { nombre, producto_id: id, match_type: 'name_normalized' as const }
+    }
     // Fallback fuzzy: mismo threshold que la UI (0.4). Se auto-aplica pero
     // marcado con match_type='fuzzy_auto' para que el user lo distinga
     // visualmente y pueda revisar antes de confirmar el cierre.
     const fuzzy = topSuggestion(nombre, productoOptions, null, 0.4)
-    if (fuzzy) return { nombre, producto_id: fuzzy.value, match_type: 'fuzzy_auto' as const }
+    if (fuzzy) {
+      const id = redirectToVariant(fuzzy.value, canal, formato)
+      return { nombre, producto_id: id, match_type: 'fuzzy_auto' as const }
+    }
     return { nombre, producto_id: null, match_type: null }
   })
 }
@@ -235,26 +324,30 @@ export async function saveCierreCaja(
     if (insertErr) return { error: insertErr.message }
     const cierreId = cierre.id
 
-    // 2. Construir mapa nombre → producto_id
-    const mapByNombre = new Map<string, string | null>()
-    const saveAlias = new Map<string, string>() // alias → producto_id
+    // 2. Mappings viene en arreglo paralelo a productos (mismo indice = mismo
+    // item). Antes lo indexabamos por nombre, lo que colapsaba items con el
+    // mismo nombre vendidos en distintos canales (ej: "Empanada de Carne" en
+    // salon y delivery apuntando cada uno a una variante distinta).
+    const saveAlias = new Map<string, string>() // alias -> producto_id
     for (const m of mappings) {
-      mapByNombre.set(m.nombre, m.producto_id)
       if (m.save_as_alias && m.producto_id) {
         saveAlias.set(m.nombre.trim(), m.producto_id)
       }
     }
 
-    // 3. Insertar cierre_caja_productos con producto_id donde mapeó
+    // 3. Insertar cierre_caja_productos con producto_id donde mapeó + canal y
+    // formato derivados de la categoria del PDF y del nombre.
     if (productos.length > 0) {
       const { error: prodErr } = await supabase.from('cierre_caja_productos').insert(
-        productos.map((p) => ({
+        productos.map((p, i) => ({
           cierre_caja_id: cierreId,
           categoria: p.categoria,
           nombre: p.nombre,
           cantidad: p.cantidad,
           monto_total: p.monto_total,
-          producto_id: mapByNombre.get(p.nombre) ?? null,
+          producto_id: mappings[i]?.producto_id ?? null,
+          canal: canalFromCategoria(p.categoria),
+          formato: formatoFromNombre(p.nombre),
         })),
       )
       if (prodErr) return { error: prodErr.message }
@@ -294,10 +387,12 @@ export async function saveCierreCaja(
       // Link cierre → dia
       await supabase.from('cierres_caja').update({ dia_operativo_id: diaId }).eq('id', cierreId)
 
-      // Para cada producto mapeado: upsert movimientos_diarios sumando ventas
-      const matched = productos.filter((p) => mapByNombre.get(p.nombre))
-      for (const p of matched) {
-        const productoId = mapByNombre.get(p.nombre)!
+      // Para cada producto mapeado: upsert movimientos_diarios sumando ventas.
+      // Iteramos con indice para leer mappings[i] (arreglo paralelo).
+      const matched = productos
+        .map((p, i) => ({ p, productoId: mappings[i]?.producto_id ?? null }))
+        .filter((m): m is { p: typeof productos[number]; productoId: string } => !!m.productoId)
+      for (const { p, productoId } of matched) {
         const { data: existing } = await supabase
           .from('movimientos_diarios')
           .select('id, ventas')

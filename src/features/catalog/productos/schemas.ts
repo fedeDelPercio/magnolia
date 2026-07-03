@@ -19,6 +19,13 @@ export const productoSchema = z.object({
   yield_unit: z.enum(UNITS).default('u'),
   ingredientes: z.array(ingredienteFormSchema).default([]),
   descartables: z.array(descartableItemSchema).default([]),
+  // Variantes. concepto_name se resuelve a concepto_id via get-or-create al
+  // guardar; asi Caro puede tipear el nombre del concepto sin manejar UUIDs.
+  // canal/formato son los ejes de la variante: si dos productos comparten
+  // concepto, deben diferir al menos en uno de estos ejes (unique index).
+  concepto_name: z.string().nullable().default(null),
+  canal: z.enum(['salon', 'delivery']).nullable().default(null),
+  formato: z.enum(['individual', 'menu']).nullable().default(null),
 })
 
 export type ProductoFormValues = z.infer<typeof productoSchema>

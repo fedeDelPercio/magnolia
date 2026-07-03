@@ -1,4 +1,4 @@
-import { getProductos } from '@/features/catalog/productos/queries'
+import { getConceptos, getProductos } from '@/features/catalog/productos/queries'
 import {
   getInsumosSimple,
   getRecetasParaProductos,
@@ -11,13 +11,14 @@ import { PageHeader } from '@/components/shared/page-header'
 export const metadata = { title: 'Productos — MAGNOLIA FOOD' }
 
 export default async function ProductosPage() {
-  const [productos, todosInsumos, recetasParaProductos, subRecetas, descartablesParaProductos] =
+  const [productos, todosInsumos, recetasParaProductos, subRecetas, descartablesParaProductos, conceptos] =
     await Promise.all([
       getProductos(),
       getInsumosSimple(),
       getRecetasParaProductos(),
       getRecetasSimple(),
       getDescartablesParaProductos(),
+      getConceptos(),
     ])
 
   const insumos = todosInsumos.filter((i) => i.kind === 'ingrediente')
@@ -42,6 +43,7 @@ export default async function ProductosPage() {
         recetasParaProductos={recetasParaProductos}
         descartablesParaProductos={descartablesParaProductos}
         subRecetas={subRecetas}
+        conceptos={conceptos}
       />
     </div>
   )

@@ -34,7 +34,7 @@ import { Button } from '@/components/ui/button'
 
 import { productoSchema, type ProductoFormValues } from '../schemas'
 import { createProducto, updateProducto, updateProductoPrecio, fetchProductoPriceHistory } from '../actions'
-import type { ProductoCost, ProductoPriceHistoryEntry } from '../queries'
+import type { ConceptoBasico, ProductoCost, ProductoPriceHistoryEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { IngredientesEditor } from '../../recetas/components/ingredientes-editor'
 import { DescartablesEditor } from './descartables-editor'
@@ -54,6 +54,7 @@ type Props = {
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
   insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
   subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
+  conceptos: ConceptoBasico[]
 }
 
 const DEFAULT_VALUES: ProductoFormValues = {
@@ -66,6 +67,9 @@ const DEFAULT_VALUES: ProductoFormValues = {
   yield_unit: 'u',
   ingredientes: [],
   descartables: [],
+  concepto_name: null,
+  canal: null,
+  formato: null,
 }
 
 export function ProductoDialog({
@@ -78,7 +82,10 @@ export function ProductoDialog({
   insumos,
   insumosDescartables,
   subRecetas,
+  conceptos,
 }: Props) {
+  // Mapa id -> name para poblar el input "concepto" cuando se abre en edicion.
+  const conceptoNameById = new Map(conceptos.map((c) => [c.id, c.name]))
   const form = useForm<ProductoFormValues>({
     resolver: zodResolver(productoSchema) as Resolver<ProductoFormValues>,
     defaultValues: DEFAULT_VALUES,
@@ -109,6 +116,11 @@ export function ProductoDialog({
             yield_unit: (recetaData?.yield_unit ?? 'u') as ProductoFormValues['yield_unit'],
             ingredientes: recetaData?.ingredientes ?? [],
             descartables: descartables,
+            concepto_name: producto.concepto_id
+              ? (conceptoNameById.get(producto.concepto_id) ?? null)
+              : null,
+            canal: producto.canal ?? null,
+            formato: producto.formato ?? null,
           }
         : DEFAULT_VALUES,
     )
@@ -440,6 +452,119 @@ export function ProductoDialog({
                 </FormItem>
               )}
             />
+
+            {/* Variantes: concepto + canal + formato */}
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Variantes
+              </div>
+              <FormField
+                control={form.control}
+                name="concepto_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">
+                      Concepto (opcional)
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Ej: Quiche Calabaza"
+                        disabled={readOnly}
+                        list="conceptos-list"
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value || null)}
+                      />
+                    </FormControl>
+                    <datalist id="conceptos-list">
+                      {conceptos.map((c) => (
+                        <option key={c.id} value={c.name} />
+                      ))}
+                    </datalist>
+                    <p className="text-[10px] text-muted-foreground">
+                      Agrupador para variantes. Si el concepto no existe, se crea al guardar.
+                      Dejalo vacio para un producto standalone.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="canal"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Canal</FormLabel>
+                      <Select
+                        onValueChange={(v) => field.onChange(v === '__none__' ? null : v)}
+                        value={field.value ?? '__none__'}
+                        disabled={readOnly}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue>
+                              {(v: string | null) => {
+                                if (!v || v === '__none__') return 'Sin canal'
+                                return v === 'salon' ? 'Salón' : 'Delivery'
+                              }}
+                            </SelectValue>
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__" label="Sin canal">
+                            Sin canal
+                          </SelectItem>
+                          <SelectItem value="salon" label="Salón">
+                            Salón
+                          </SelectItem>
+                          <SelectItem value="delivery" label="Delivery">
+                            Delivery
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="formato"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Formato</FormLabel>
+                      <Select
+                        onValueChange={(v) => field.onChange(v === '__none__' ? null : v)}
+                        value={field.value ?? '__none__'}
+                        disabled={readOnly}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue>
+                              {(v: string | null) => {
+                                if (!v || v === '__none__') return 'Sin formato'
+                                return v === 'menu' ? 'Menú' : 'Individual'
+                              }}
+                            </SelectValue>
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__" label="Sin formato">
+                            Sin formato
+                          </SelectItem>
+                          <SelectItem value="individual" label="Individual">
+                            Individual
+                          </SelectItem>
+                          <SelectItem value="menu" label="Menú">
+                            Menú
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
 
             {/* Ingredientes */}
             <div className="border-t pt-4">

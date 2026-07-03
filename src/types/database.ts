@@ -406,30 +406,36 @@ export type Database = {
       }
       cierre_caja_productos: {
         Row: {
+          canal: Database["public"]["Enums"]["producto_canal"] | null
           cantidad: number
           categoria: string | null
           cierre_caja_id: string
           created_at: string
+          formato: Database["public"]["Enums"]["producto_formato"] | null
           id: string
           monto_total: number
           nombre: string
           producto_id: string | null
         }
         Insert: {
+          canal?: Database["public"]["Enums"]["producto_canal"] | null
           cantidad?: number
           categoria?: string | null
           cierre_caja_id: string
           created_at?: string
+          formato?: Database["public"]["Enums"]["producto_formato"] | null
           id?: string
           monto_total?: number
           nombre: string
           producto_id?: string | null
         }
         Update: {
+          canal?: Database["public"]["Enums"]["producto_canal"] | null
           cantidad?: number
           categoria?: string | null
           cierre_caja_id?: string
           created_at?: string
+          formato?: Database["public"]["Enums"]["producto_formato"] | null
           id?: string
           monto_total?: number
           nombre?: string
@@ -1740,6 +1746,38 @@ export type Database = {
           },
         ]
       }
+      producto_conceptos: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "producto_conceptos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       producto_descartables: {
         Row: {
           created_at: string
@@ -1851,7 +1889,10 @@ export type Database = {
       productos: {
         Row: {
           active: boolean
+          canal: Database["public"]["Enums"]["producto_canal"] | null
+          concepto_id: string | null
           created_at: string
+          formato: Database["public"]["Enums"]["producto_formato"] | null
           id: string
           is_dynamic: boolean
           name: string
@@ -1863,7 +1904,10 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          canal?: Database["public"]["Enums"]["producto_canal"] | null
+          concepto_id?: string | null
           created_at?: string
+          formato?: Database["public"]["Enums"]["producto_formato"] | null
           id?: string
           is_dynamic?: boolean
           name: string
@@ -1875,7 +1919,10 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          canal?: Database["public"]["Enums"]["producto_canal"] | null
+          concepto_id?: string | null
           created_at?: string
+          formato?: Database["public"]["Enums"]["producto_formato"] | null
           id?: string
           is_dynamic?: boolean
           name?: string
@@ -1886,6 +1933,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "productos_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "producto_conceptos"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "productos_receta_id_fkey"
             columns: ["receta_id"]
@@ -2262,7 +2316,10 @@ export type Database = {
       product_costs: {
         Row: {
           active: boolean | null
+          canal: Database["public"]["Enums"]["producto_canal"] | null
+          concepto_id: string | null
           descartable_cost: number | null
+          formato: Database["public"]["Enums"]["producto_formato"] | null
           id: string | null
           ingredient_cost: number | null
           is_dynamic: boolean | null
@@ -2276,6 +2333,13 @@ export type Database = {
           total_cost: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "productos_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "producto_conceptos"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "productos_receta_id_fkey"
             columns: ["receta_id"]
@@ -2389,6 +2453,8 @@ export type Database = {
       membership_role: "owner" | "admin" | "kitchen" | "cashier"
       membership_status: "active" | "inactive" | "invited"
       pago_metodo: "efectivo" | "transferencia" | "cheque" | "otro"
+      producto_canal: "salon" | "delivery"
+      producto_formato: "individual" | "menu"
       unit_kind: "kg" | "g" | "l" | "ml" | "u" | "docena" | "porcion"
     }
     CompositeTypes: {
@@ -2524,6 +2590,8 @@ export const Constants = {
       membership_role: ["owner", "admin", "kitchen", "cashier"],
       membership_status: ["active", "inactive", "invited"],
       pago_metodo: ["efectivo", "transferencia", "cheque", "otro"],
+      producto_canal: ["salon", "delivery"],
+      producto_formato: ["individual", "menu"],
       unit_kind: ["kg", "g", "l", "ml", "u", "docena", "porcion"],
     },
   },

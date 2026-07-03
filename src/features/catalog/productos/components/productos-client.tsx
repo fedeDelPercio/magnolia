@@ -25,7 +25,7 @@ import {
 import { formatCurrency, formatPct } from '@/lib/format'
 import { toggleProductoActive } from '../actions'
 import { ProductoDialog } from './producto-dialog'
-import type { ProductoCost } from '../queries'
+import type { ConceptoBasico, ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
 import type { RecetaParaProducto, DescartableParaProducto } from '../../recetas/queries'
 
@@ -36,6 +36,7 @@ type Props = {
   recetasParaProductos: RecetaParaProducto[]
   descartablesParaProductos: DescartableParaProducto[]
   subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
+  conceptos: ConceptoBasico[]
 }
 
 function MarginBadge({ margin, target }: { margin: number; target: number }) {
@@ -54,7 +55,7 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
 
 type DialogMode = 'view' | 'edit' | 'create'
 
-export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas }: Props) {
+export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas, conceptos }: Props) {
   const [search, setSearch] = useState('')
   const [onlySinReceta, setOnlySinReceta] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -284,6 +285,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
         insumos={insumos}
         insumosDescartables={insumosDescartables}
         subRecetas={subRecetas}
+        conceptos={conceptos}
       />
     </div>
   )
