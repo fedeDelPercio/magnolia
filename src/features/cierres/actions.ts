@@ -59,6 +59,24 @@ function formatoFromNombre(nombre: string | null | undefined): FormatoPdf {
   return /^men[uú]\s/i.test(nombre) ? 'menu' : null
 }
 
+// Detecta "receta del dia" en el nombre — mismo patron que el sync API.
+function isRecetaDelDia(nombre: string | null | undefined): boolean {
+  if (!nombre) return false
+  return /\b(sugerencia|sugerenca|men[uú])\s+d[ei]l?\s+d[ií]a\b/i.test(nombre)
+}
+
+// DOW (0=domingo) desde YYYY-MM-DD en hora local Argentina.
+function dowFromFechaLocal(fechaLocal: string): number {
+  const [y, m, d] = fechaLocal.split('-').map(Number)
+  return new Date(y!, m! - 1, d!).getDay()
+}
+
+// Convierte una fecha ISO 8601 (con o sin offset) a YYYY-MM-DD en hora Argentina.
+function fechaLocalArgentina(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+}
+
 // Convierte un ISO timestamptz a YYYY-MM-DD en hora Argentina
 function fechaArgentina(iso: string): string {
   const d = new Date(iso)
@@ -107,12 +125,14 @@ export async function extractCierreCaja(formData: FormData): Promise<ExtractResu
     if (!response.parsed_output) return { error: 'No se pudo parsear la respuesta del modelo' }
 
     const data = response.parsed_output
+    const dow = dowFromFechaLocal(fechaLocalArgentina(data.fecha_cierre))
     const matches = await resolveMatches(
       data.productos.map((p) => ({
         nombre: p.nombre,
         canal: canalFromCategoria(p.categoria),
         formato: formatoFromNombre(p.nombre),
       })),
+      dow,
     )
 
     return { data, matches }
@@ -133,11 +153,14 @@ export type ResolveInput = {
   formato: 'individual' | 'menu' | null
 }
 
-export async function resolveMatches(inputs: ResolveInput[]): Promise<ProductoMatch[]> {
+export async function resolveMatches(
+  inputs: ResolveInput[],
+  dow?: number,
+): Promise<ProductoMatch[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
-  const [productosRes, aliasesRes] = await Promise.all([
+  const [productosRes, aliasesRes, recetaDiaRes] = await Promise.all([
     supabase
       .from('productos')
       .select('id, name, concepto_id, canal, formato')
@@ -148,11 +171,21 @@ export async function resolveMatches(inputs: ResolveInput[]): Promise<ProductoMa
       .select('alias, producto_id')
       .eq('tenant_id', tenantId)
       .eq('source', 'bistrosoft'),
+    dow !== undefined
+      ? supabase
+          .from('receta_del_dia')
+          .select('producto_id')
+          .eq('tenant_id', tenantId)
+          .eq('dow', dow)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null } as { data: null; error: null }),
   ])
 
   if (productosRes.error || aliasesRes.error) {
     return inputs.map((i) => ({ nombre: i.nombre, producto_id: null, match_type: null }))
   }
+
+  const recetaDelDiaProductoId = recetaDiaRes.data?.producto_id ?? null
 
   const byExact = new Map<string, string>()
   const byNorm = new Map<string, string>()
@@ -204,6 +237,14 @@ export async function resolveMatches(inputs: ResolveInput[]): Promise<ProductoMa
 
   return inputs.map(({ nombre, canal, formato }) => {
     const norm = normalize(nombre)
+    // Receta del dia primero: si el nombre matchea el patron y hay asignacion
+    // para este DOW, gana sobre alias/name porque el nombre generico
+    // ("Sugerencia del dia") es el mismo todos los dias — el alias apuntaria al
+    // producto de un dia especifico y no rotaria.
+    if (isRecetaDelDia(nombre) && recetaDelDiaProductoId) {
+      const id = redirectToVariant(recetaDelDiaProductoId, canal, formato)
+      return { nombre, producto_id: id, match_type: 'alias' as const }
+    }
     if (aliasMap.has(norm)) {
       const id = redirectToVariant(aliasMap.get(norm)!, canal, formato)
       return { nombre, producto_id: id, match_type: 'alias' as const }

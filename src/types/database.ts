@@ -2018,6 +2018,55 @@ export type Database = {
           },
         ]
       }
+      receta_del_dia: {
+        Row: {
+          created_at: string
+          dow: number
+          id: string
+          producto_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dow: number
+          id?: string
+          producto_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dow?: number
+          id?: string
+          producto_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receta_del_dia_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "product_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receta_del_dia_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receta_del_dia_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       receta_ingredientes: {
         Row: {
           created_at: string

@@ -12,6 +12,7 @@ import {
   Wallet,
   Users,
   Bell,
+  CalendarDays,
   Settings,
   LogOut,
 } from 'lucide-react'
@@ -42,6 +43,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/catalogo/insumos', label: 'Insumos', icon: Package },
       { href: '/catalogo/productos', label: 'Productos', icon: ShoppingBag },
+      { href: '/catalogo/receta-del-dia', label: 'Receta del día', icon: CalendarDays },
     ],
   },
   {

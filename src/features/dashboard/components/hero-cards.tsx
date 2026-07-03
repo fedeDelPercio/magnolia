@@ -10,7 +10,8 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
 
   return (
     <section className="grid grid-cols-1 gap-3 md:grid-cols-12">
-      {/* === Featured: Facturación (col 6) === */}
+      {/* === Fila 1: Facturación + Movimientos === */}
+      {/* Facturación (col 6) */}
       <div className="card-editorial relative flex flex-col justify-between overflow-hidden p-7 md:col-span-6">
         <div
           aria-hidden
@@ -43,8 +44,8 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
         </div>
       </div>
 
-      {/* === Movimientos (col 3) === */}
-      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-3">
+      {/* Movimientos (col 6) */}
+      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-6">
         <div>
           <p className="text-eyebrow">Movimientos</p>
           <p className="mt-4 num-editorial text-[3.25rem] leading-none text-metric">
@@ -62,8 +63,9 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
         </div>
       </div>
 
-      {/* === Ticket promedio (col 3) === */}
-      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-3">
+      {/* === Fila 2: Ticket promedio + Margen operativo === */}
+      {/* Ticket promedio (col 6) */}
+      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-6">
         <div>
           <p className="text-eyebrow">Ticket promedio</p>
           <p className="mt-4 num-editorial text-[3.25rem] leading-none">
@@ -78,42 +80,7 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
         </p>
       </div>
 
-      {/* === Resultado de caja (col 6) === */}
-      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-6">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-eyebrow">Resultado de caja</p>
-          {overview.resultadoCajaPct !== null && (
-            <span
-              className={cn(
-                'text-metric text-xs font-medium',
-                overview.resultadoCaja >= 0 ? 'text-emerald-700' : 'text-rose-700',
-              )}
-            >
-              {overview.resultadoCajaPct.toFixed(0)}% de la facturación
-            </span>
-          )}
-        </div>
-        <p
-          className={cn(
-            'mt-4 num-editorial text-[3.25rem] leading-none',
-            overview.resultadoCaja >= 0 ? 'text-foreground' : 'text-rose-700',
-          )}
-        >
-          {formatCurrencyShort(overview.resultadoCaja)}
-        </p>
-        <p className="mt-5 text-xs text-muted-foreground">
-          ingresos{' '}
-          <span className="text-metric font-medium text-foreground">
-            {formatCurrencyShort(overview.facturacion)}
-          </span>{' '}
-          − egresos{' '}
-          <span className="text-metric font-medium text-foreground">
-            {formatCurrencyShort(overview.egresosTotales)}
-          </span>
-        </p>
-      </div>
-
-      {/* === Margen operativo (col 6) === */}
+      {/* Margen operativo (col 6) */}
       <div className="card-editorial flex flex-col justify-between p-7 md:col-span-6">
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-eyebrow">Margen operativo</p>

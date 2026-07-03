@@ -48,6 +48,11 @@ function bucketForPaymentMethod(m: string | null | undefined): keyof typeof PAYM
   return null
 }
 
+function isConsumoEmpleado(m: string | null | undefined): boolean {
+  if (!m) return false
+  return m.toUpperCase().includes('CONSUMO EMPLEADO')
+}
+
 function isSalon(origin: string | null | undefined): boolean {
   if (!origin) return false
   const norm = origin.toLowerCase()
@@ -73,6 +78,23 @@ function canalFromOrigin(origin: string | null | undefined): Canal {
 function formatoFromNombre(nombre: string | null | undefined): Formato | null {
   if (!nombre) return null
   return /^men[uú]\s/i.test(nombre) ? 'menu' : null
+}
+
+// Detecta si el nombre del item es una "receta del dia" (variantes: "sugerencia
+// del dia", "sugerenca del dia", "menu del dia", "menú del dia", con o sin
+// sufijos como "(barra)", "(salon)"). Cuando matchea, el matching debe resolver
+// al producto asignado al DOW en receta_del_dia en vez del alias/name exact.
+export function isRecetaDelDia(nombre: string | null | undefined): boolean {
+  if (!nombre) return false
+  return /\b(sugerencia|sugerenca|men[uú])\s+d[ei]l?\s+d[ií]a\b/i.test(nombre)
+}
+
+// DOW en hora Argentina (0=domingo, 1=lunes, ..., 6=sabado). Toma el YYYY-MM-DD
+// de fecha_local del ticket y calcula el dia local. Sin dependencias de librerias
+// de fecha porque solo necesitamos aritmetica basica.
+function dowFromFechaLocal(fechaLocal: string): number {
+  const [y, m, d] = fechaLocal.split('-').map(Number)
+  return new Date(y!, m! - 1, d!).getDay()
 }
 
 function fechaArgentina(d: Date): string {
@@ -154,10 +176,13 @@ type MatchMaps = {
   // Metadata para redirigir a la variante correcta del concepto.
   byId: Map<string, ProductoInfo>
   byConcepto: Map<string, ProductoInfo[]>
+  // Receta del dia: DOW -> producto_id. Se consulta antes que alias/name
+  // cuando el nombre del item matchea el patron de "receta del dia".
+  recetaDelDia: Map<number, string>
 }
 
 async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMaps> {
-  const [productosRes, aliasesRes] = await Promise.all([
+  const [productosRes, aliasesRes, recetaDiaRes] = await Promise.all([
     client
       .from('productos')
       .select('id, name, concepto_id, canal, formato')
@@ -168,6 +193,10 @@ async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMap
       .select('alias, producto_id, source')
       .eq('tenant_id', tenantId)
       .in('source', ['bistrosoft', 'bistrosoft_sku']),
+    client
+      .from('receta_del_dia')
+      .select('dow, producto_id')
+      .eq('tenant_id', tenantId),
   ])
 
   const byNameExact = new Map<string, string>()
@@ -197,10 +226,24 @@ async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMap
     if (a.source === 'bistrosoft_sku') bySku.set(a.alias.trim(), a.producto_id)
     else byNameAlias.set(normalize(a.alias), a.producto_id)
   }
-  return { bySku, byNameAlias, byNameExact, byNameNorm, byId, byConcepto }
+
+  const recetaDelDia = new Map<number, string>()
+  for (const r of recetaDiaRes.data ?? []) {
+    recetaDelDia.set(r.dow, r.producto_id)
+  }
+
+  return { bySku, byNameAlias, byNameExact, byNameNorm, byId, byConcepto, recetaDelDia }
 }
 
-function matchItem(item: BistroLine, maps: MatchMaps): string | null {
+function matchItem(item: BistroLine, maps: MatchMaps, dow?: number): string | null {
+  // Receta del dia gana sobre alias/name: si el nombre matchea el patron y hay
+  // un producto asignado al DOW, lo devolvemos. Bistrosoft carga el mismo
+  // nombre generico ("Sugerencia del dia") todos los dias, pero la asignacion
+  // cambia por DOW — asi que no podemos usar alias.
+  if (item.item && dow !== undefined && isRecetaDelDia(item.item)) {
+    const rd = maps.recetaDelDia.get(dow)
+    if (rd) return rd
+  }
   if (item.sku) {
     const hit = maps.bySku.get(item.sku.trim())
     if (hit) return hit
@@ -293,9 +336,10 @@ async function upsertTransaction(
   await client.from('bistro_transaccion_items').delete().eq('transaccion_id', upserted.id)
 
   const canal = canalFromOrigin(tx.origin)
+  const dow = dowFromFechaLocal(payload.fecha_local)
   let unmapped = 0
   const items = (tx.items ?? []).map((it) => {
-    const rawMatch = matchItem(it, maps)
+    const rawMatch = matchItem(it, maps, dow)
     const formato = formatoFromNombre(it.item)
     // Si matcheamos un producto que es variante de un concepto, elegimos la
     // variante que corresponde al (canal, formato) del ticket — asi los items
@@ -434,8 +478,15 @@ async function consolidateCierreForDay(
 
   if (!txs || txs.length === 0) return
 
-  // Totales: sólo VENTAs cuentan para facturación
-  const ventas = txs.filter((t) => VENTA_TYPES.has(t.transaction_type ?? ''))
+  // Totales: sólo VENTAs cuentan para facturación. Excluimos CONSUMO EMPLEADO
+  // (payment_method 'CONSUMO EMPLEADO') porque Bistrosoft NO lo cuenta como
+  // venta real — es un consumo interno que descuenta stock pero no es ingreso.
+  // Antes lo incluiamos y por eso el dashboard mostraba ~$100k mas que /caja.
+  const ventas = txs.filter(
+    (t) =>
+      VENTA_TYPES.has(t.transaction_type ?? '') &&
+      !isConsumoEmpleado(t.payment_method),
+  )
   if (ventas.length === 0) return
 
   const buckets = { efectivo: 0, tarjetas: 0, qr: 0, online: 0, cuenta_cliente: 0 }
