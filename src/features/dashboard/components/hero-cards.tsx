@@ -63,23 +63,7 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
         </div>
       </div>
 
-      {/* === Fila 2: Ticket promedio + Margen operativo === */}
-      {/* Ticket promedio (col 6) */}
-      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-6">
-        <div>
-          <p className="text-eyebrow">Ticket promedio</p>
-          <p className="mt-4 num-editorial text-[3.25rem] leading-none">
-            {formatCurrencyShort(overview.ticketPromedio)}
-          </p>
-        </div>
-        <p className="mt-5 text-xs text-muted-foreground">
-          por venta · salón{' '}
-          <span className="text-metric font-medium text-foreground">
-            {formatCurrency(overview.ticketPromedioSalon)}
-          </span>
-        </p>
-      </div>
-
+      {/* === Fila 2: Margen operativo + Ticket promedio === */}
       {/* Margen operativo (col 6) */}
       <div className="card-editorial flex flex-col justify-between p-7 md:col-span-6">
         <div className="flex items-baseline justify-between gap-3">
@@ -114,6 +98,22 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
             </p>
           </>
         )}
+      </div>
+
+      {/* Ticket promedio (col 6) */}
+      <div className="card-editorial flex flex-col justify-between p-7 md:col-span-6">
+        <div>
+          <p className="text-eyebrow">Ticket promedio</p>
+          <p className="mt-4 num-editorial text-[3.25rem] leading-none">
+            {formatCurrencyShort(overview.ticketPromedio)}
+          </p>
+        </div>
+        <p className="mt-5 text-xs text-muted-foreground">
+          por venta · salón{' '}
+          <span className="text-metric font-medium text-foreground">
+            {formatCurrency(overview.ticketPromedioSalon)}
+          </span>
+        </p>
       </div>
     </section>
   )
