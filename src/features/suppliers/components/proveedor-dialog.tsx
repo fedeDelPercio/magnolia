@@ -16,10 +16,13 @@ import {
   type ProveedorFormValues,
   type PaymentRule,
   type IvaRate,
+  type ProveedorTipo,
   DOW_LABELS,
   NTH_LABELS,
   IVA_RATES,
   IVA_RATE_LABELS,
+  PROVEEDOR_TIPOS,
+  PROVEEDOR_TIPO_LABELS,
 } from '../schemas'
 import { createProveedor, updateProveedor } from '../actions'
 import type { Tables } from '@/types/database'
@@ -32,6 +35,7 @@ type Props = {
 
 const DEFAULT: ProveedorFormValues = {
   name: '',
+  tipo: 'insumo',
   contact_name: '',
   contact_phone: '',
   contact_email: '',
@@ -68,6 +72,7 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
     const initial: ProveedorFormValues = proveedor
       ? {
           name: proveedor.name,
+          tipo: (proveedor.tipo as ProveedorTipo | null) ?? 'insumo',
           contact_name: proveedor.contact_name ?? '',
           contact_phone: proveedor.contact_phone ?? '',
           contact_email: proveedor.contact_email ?? '',
@@ -122,6 +127,38 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
         <div className="max-h-[72vh] overflow-y-auto pr-1">
         <Form {...form}>
           <form id="proveedor-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="tipo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo de proveedor</FormLabel>
+                  <div className="flex gap-1.5">
+                    {PROVEEDOR_TIPOS.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => field.onChange(t)}
+                        className={`flex-1 rounded-md border px-3 py-2 text-sm transition-colors ${
+                          field.value === t
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'bg-background text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {PROVEEDOR_TIPO_LABELS[t]}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {field.value === 'servicio'
+                      ? 'Servicios recurrentes (internet, luz, etc.). Se cargan pagos puntuales por concepto.'
+                      : 'Proveedor de mercadería / ingredientes. Se carga como compras con items.'}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="name"

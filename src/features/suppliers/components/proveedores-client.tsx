@@ -17,8 +17,11 @@ import { deleteProveedor, toggleProveedorActive } from '../actions'
 import { ProveedorDialog } from './proveedor-dialog'
 import type { SaldoProveedor } from '../queries'
 import type { Tables } from '@/types/database'
+import { PROVEEDOR_TIPO_LABELS, type ProveedorTipo } from '../schemas'
 
 type Props = { proveedores: SaldoProveedor[] }
+
+type TipoFilter = ProveedorTipo | 'todos'
 
 const AVATAR_TONE = 'bg-foreground/5 text-foreground/70 ring-1 ring-foreground/10'
 
@@ -35,15 +38,23 @@ export function ProveedoresClient({ proveedores }: Props) {
   const [editing, setEditing] = useState<Tables<'proveedores'> | null>(null)
   const [search, setSearch] = useState('')
   const [showInactivos, setShowInactivos] = useState(true)
+  const [tipoFilter, setTipoFilter] = useState<TipoFilter>('todos')
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase()
     return proveedores.filter((p) => {
       if (!showInactivos && !p.active) return false
+      if (tipoFilter !== 'todos' && p.tipo !== tipoFilter) return false
       if (s && !p.name.toLowerCase().includes(s)) return false
       return true
     })
-  }, [proveedores, search, showInactivos])
+  }, [proveedores, search, showInactivos, tipoFilter])
+
+  const countByTipo = useMemo(() => {
+    const insumos = proveedores.filter((p) => p.tipo === 'insumo').length
+    const servicios = proveedores.filter((p) => p.tipo === 'servicio').length
+    return { insumos, servicios, todos: proveedores.length }
+  }, [proveedores])
 
   function openCreate() {
     setEditing(null)
@@ -106,6 +117,30 @@ export function ProveedoresClient({ proveedores }: Props) {
         </div>
       </div>
 
+      {/* Tabs por tipo — insumos vs servicios */}
+      <div className="inline-flex items-center gap-0.5 rounded-full bg-surface p-1">
+        {(['todos', 'insumo', 'servicio'] as const).map((t) => {
+          const active = tipoFilter === t
+          const label = t === 'todos' ? 'Todos' : PROVEEDOR_TIPO_LABELS[t]
+          const count = countByTipo[t === 'insumo' ? 'insumos' : t === 'servicio' ? 'servicios' : 'todos']
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTipoFilter(t)}
+              className={cn(
+                'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                active
+                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border/60'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {label} <span className="text-[10px] text-muted-foreground">({count})</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex flex-wrap items-center gap-x-4 text-xs text-muted-foreground">
         <span>
           {filtered.length === 0
@@ -149,7 +184,14 @@ export function ProveedoresClient({ proveedores }: Props) {
                     <div className={cn('grid size-9 shrink-0 place-items-center rounded-full text-xs font-medium', AVATAR_TONE)}>
                       {initials(p.name)}
                     </div>
-                    <p className="font-medium text-sm truncate">{p.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{p.name}</p>
+                      {p.tipo === 'servicio' && (
+                        <span className="mt-0.5 inline-flex items-center rounded-full bg-sky-50 px-1.5 py-0 text-[9px] font-medium text-sky-700 ring-1 ring-sky-200">
+                          Servicio
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-end justify-between gap-2">

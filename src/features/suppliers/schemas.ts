@@ -32,8 +32,19 @@ export const IVA_RATE_LABELS: Record<number, string> = {
   21: '21%',
 }
 
+// Tipo de proveedor. 'insumo' es el default historico (mercaderia / ingredientes)
+// y 'servicio' es el nuevo (internet, luz, gas, etc. con conceptos y pagos
+// puntuales que trackean incremento de precios).
+export const PROVEEDOR_TIPOS = ['insumo', 'servicio'] as const
+export type ProveedorTipo = (typeof PROVEEDOR_TIPOS)[number]
+export const PROVEEDOR_TIPO_LABELS: Record<ProveedorTipo, string> = {
+  insumo: 'Insumos',
+  servicio: 'Servicios',
+}
+
 export const proveedorSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido'),
+  tipo: z.enum(PROVEEDOR_TIPOS).default('insumo'),
   contact_name: z.string().optional(),
   contact_phone: z.string().optional(),
   contact_email: z.string().optional(),
@@ -50,6 +61,27 @@ export const proveedorSchema = z.object({
   payment_rule: paymentRuleSchema.nullable().optional(),
 })
 export type ProveedorFormValues = z.infer<typeof proveedorSchema>
+
+// Concepto de servicio (ej: "Internet 500MB", "Luz Bimestral"). Es un item
+// dentro del proveedor de servicios, sobre el que se registran pagos.
+export const conceptoServicioSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es requerido').max(80),
+})
+export type ConceptoServicioFormValues = z.infer<typeof conceptoServicioSchema>
+
+// Pago de servicio. Concepto opcional (permite pagos sueltos si aun no se
+// dieron de alta los conceptos). El monto es el precio en esa fecha, se usa
+// para graficar el incremento en el tiempo.
+export const pagoServicioSchema = z.object({
+  fecha: z.string().min(1, 'Fecha requerida'),
+  monto: z.number().positive('El monto tiene que ser mayor a 0'),
+  concepto_id: z.string().uuid().nullable().optional(),
+  notas: z.string().optional(),
+  // Si true, adicionalmente al pago crea un egreso en caja movimientos
+  // categoria "Pago a proveedores" para que aparezca en el flujo.
+  generar_egreso_caja: z.boolean().default(true),
+})
+export type PagoServicioFormValues = z.infer<typeof pagoServicioSchema>
 
 export const DOW_LABELS: Record<number, string> = {
   0: 'domingo',

@@ -5,8 +5,11 @@ import {
   getSaldoProveedor,
   getComprasByProveedor,
   getPagosByProveedor,
+  getConceptosServicio,
+  getPagosServicio,
 } from '@/features/suppliers/queries'
 import { ProveedorDetail } from '@/features/suppliers/components/proveedor-detail'
+import { ProveedorServicioDetail } from '@/features/suppliers/components/proveedor-servicio-detail'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,13 +34,31 @@ export default async function ProveedorPage({ params, searchParams }: Props) {
   const from = sp.from && /^\d{4}-\d{2}-\d{2}$/.test(sp.from) ? sp.from : def.from
   const to = sp.to && /^\d{4}-\d{2}-\d{2}$/.test(sp.to) ? sp.to : def.to
 
-  const [proveedor, compras, pagos] = await Promise.all([
-    getSaldoProveedor(id),
+  const proveedor = await getSaldoProveedor(id)
+  if (!proveedor) notFound()
+
+  // Servicios usan un flow completamente distinto (conceptos + pagos), asi que
+  // solo cargamos las tablas relevantes.
+  if (proveedor.tipo === 'servicio') {
+    const [conceptos, pagos] = await Promise.all([
+      getConceptosServicio(id),
+      getPagosServicio(id),
+    ])
+    return (
+      <div className="space-y-6">
+        <ProveedorServicioDetail
+          proveedor={proveedor}
+          conceptos={conceptos}
+          pagos={pagos}
+        />
+      </div>
+    )
+  }
+
+  const [compras, pagos] = await Promise.all([
     getComprasByProveedor(id),
     getPagosByProveedor(id),
   ])
-
-  if (!proveedor) notFound()
 
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()

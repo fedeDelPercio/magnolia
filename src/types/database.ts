@@ -1991,6 +1991,124 @@ export type Database = {
           },
         ]
       }
+      proveedor_conceptos: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          proveedor_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          proveedor_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          proveedor_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proveedor_conceptos_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_conceptos_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_conceptos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proveedor_servicio_pagos: {
+        Row: {
+          caja_movimiento_id: string | null
+          concepto_id: string | null
+          created_at: string
+          fecha: string
+          id: string
+          monto: number
+          notas: string | null
+          proveedor_id: string
+          tenant_id: string
+        }
+        Insert: {
+          caja_movimiento_id?: string | null
+          concepto_id?: string | null
+          created_at?: string
+          fecha: string
+          id?: string
+          monto: number
+          notas?: string | null
+          proveedor_id: string
+          tenant_id: string
+        }
+        Update: {
+          caja_movimiento_id?: string | null
+          concepto_id?: string | null
+          created_at?: string
+          fecha?: string
+          id?: string
+          monto?: number
+          notas?: string | null
+          proveedor_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proveedor_servicio_pagos_caja_movimiento_id_fkey"
+            columns: ["caja_movimiento_id"]
+            isOneToOne: false
+            referencedRelation: "caja_movimientos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_servicio_pagos_concepto_id_fkey"
+            columns: ["concepto_id"]
+            isOneToOne: false
+            referencedRelation: "proveedor_conceptos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_servicio_pagos_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_servicio_pagos_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proveedor_servicio_pagos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       proveedores: {
         Row: {
           active: boolean
@@ -2007,6 +2125,7 @@ export type Database = {
           payment_rule: Json | null
           payment_terms_days: number
           tenant_id: string
+          tipo: Database["public"]["Enums"]["proveedor_tipo"]
           updated_at: string
         }
         Insert: {
@@ -2024,6 +2143,7 @@ export type Database = {
           payment_rule?: Json | null
           payment_terms_days?: number
           tenant_id: string
+          tipo?: Database["public"]["Enums"]["proveedor_tipo"]
           updated_at?: string
         }
         Update: {
@@ -2041,6 +2161,7 @@ export type Database = {
           payment_rule?: Json | null
           payment_terms_days?: number
           tenant_id?: string
+          tipo?: Database["public"]["Enums"]["proveedor_tipo"]
           updated_at?: string
         }
         Relationships: [
@@ -2460,6 +2581,7 @@ export type Database = {
           payment_terms_days: number | null
           saldo: number | null
           tenant_id: string | null
+          tipo: Database["public"]["Enums"]["proveedor_tipo"] | null
           total_compras: number | null
           total_pagado: number | null
         }
@@ -2539,6 +2661,7 @@ export type Database = {
       pago_metodo: "efectivo" | "transferencia" | "cheque" | "otro"
       producto_canal: "salon" | "delivery"
       producto_formato: "individual" | "menu"
+      proveedor_tipo: "insumo" | "servicio"
       unit_kind: "kg" | "g" | "l" | "ml" | "u" | "docena" | "porcion"
     }
     CompositeTypes: {
@@ -2676,6 +2799,7 @@ export const Constants = {
       pago_metodo: ["efectivo", "transferencia", "cheque", "otro"],
       producto_canal: ["salon", "delivery"],
       producto_formato: ["individual", "menu"],
+      proveedor_tipo: ["insumo", "servicio"],
       unit_kind: ["kg", "g", "l", "ml", "u", "docena", "porcion"],
     },
   },
