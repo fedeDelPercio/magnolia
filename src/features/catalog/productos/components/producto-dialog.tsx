@@ -31,6 +31,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { CurrencyInput } from '@/components/ui/currency-input'
 import {
   Select,
   SelectContent,
@@ -571,9 +572,6 @@ export function ProductoDialog({
                       )
                     })}
                   </div>
-                  <p className="mt-1 px-2 text-[10px] text-muted-foreground">
-                    Editando: <span className="font-medium text-foreground">{VARIANT_LABELS[activeVariant]}</span> · nombre / margen / rendimiento se comparten.
-                  </p>
                 </div>
               )}
 
@@ -586,17 +584,20 @@ export function ProductoDialog({
                     <FormItem>
                       <FormLabel>
                         <PackageIcon className="inline-block mr-1 size-3 text-muted-foreground" />
-                        Precio {VARIANT_LABELS[activeVariant]} (ARS)
+                        Precio {VARIANT_LABELS[activeVariant]}
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          disabled={readOnly}
-                          value={field.value}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                        />
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                            $
+                          </span>
+                          <CurrencyInput
+                            className="pl-7 tabular-nums"
+                            disabled={readOnly}
+                            value={field.value ? String(field.value) : ''}
+                            onValueChange={(raw) => field.onChange(parseFloat(raw) || 0)}
+                          />
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
