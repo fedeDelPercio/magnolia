@@ -24,10 +24,11 @@ import {
 
 import { formatCurrency, formatPct } from '@/lib/format'
 import { toggleProductoActive } from '../actions'
-import { ProductoDialog } from './producto-dialog'
-import type { ConceptoBasico, ProductoCost } from '../queries'
+import { ProductoDialog, type ProductoDialogInput } from './producto-dialog'
+import type { ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
 import type { RecetaParaProducto, DescartableParaProducto } from '../../recetas/queries'
+import type { VariantData } from '../schemas'
 
 type Props = {
   productos: ProductoCost[]
@@ -36,7 +37,6 @@ type Props = {
   recetasParaProductos: RecetaParaProducto[]
   descartablesParaProductos: DescartableParaProducto[]
   subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
-  conceptos: ConceptoBasico[]
 }
 
 function MarginBadge({ margin, target }: { margin: number; target: number }) {
@@ -55,7 +55,7 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
 
 type DialogMode = 'view' | 'edit' | 'create'
 
-export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas, conceptos }: Props) {
+export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas }: Props) {
   const [search, setSearch] = useState('')
   const [onlySinReceta, setOnlySinReceta] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -73,14 +73,89 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
     [descartablesParaProductos],
   )
 
+  // Los productos con concepto_id agrupan variantes (base + delivery + menu).
+  // Solo mostramos la fila "base" (canal=null|salon + formato=null|individual)
+  // por cada concepto; al abrirla se ven las variantes en tabs. Los productos
+  // standalone (sin concepto) se muestran tal cual. Considera solo activos
+  // para elegir la base (soft-deleteados no cuentan).
+  const collapsed = useMemo(() => {
+    const seen = new Set<string>()
+    const out: ProductoCost[] = []
+    for (const p of productos) {
+      if (!p.concepto_id) {
+        out.push(p)
+        continue
+      }
+      if (seen.has(p.concepto_id)) continue
+      const siblings = productos.filter((s) => s.concepto_id === p.concepto_id && s.active)
+      if (siblings.length === 0) continue
+      const base =
+        siblings.find(
+          (s) =>
+            (s.canal === null || s.canal === 'salon') &&
+            (s.formato === null || s.formato === 'individual'),
+        ) ??
+        siblings.find((s) => s.canal === null && s.formato === null) ??
+        siblings[0]!
+      seen.add(p.concepto_id)
+      out.push(base)
+    }
+    return out
+  }, [productos])
+
   const filtered = useMemo(
     () =>
-      productos.filter((p) => {
+      collapsed.filter((p) => {
         if (onlySinReceta && p.receta_id) return false
         return (p.name ?? '').toLowerCase().includes(search.toLowerCase())
       }),
-    [productos, search, onlySinReceta],
+    [collapsed, search, onlySinReceta],
   )
+
+  function buildDialogInput(target: ProductoCost | null): ProductoDialogInput | null {
+    if (!target) return null
+    // Reunir siblings por concepto_id. Si el producto es standalone, solo el.
+    // Solo consideramos siblings activos: los inactivos son soft-deleteados y
+    // no queremos que aparezcan como variantes tildadas.
+    const siblings = target.concepto_id
+      ? productos.filter((p) => p.concepto_id === target.concepto_id && p.active)
+      : [target]
+    const base =
+      siblings.find(
+        (s) =>
+          (s.canal === null || s.canal === 'salon') &&
+          (s.formato === null || s.formato === 'individual'),
+      ) ??
+      siblings.find((s) => s.canal === null && s.formato === null) ??
+      target
+    const delivery = siblings.find((s) => s.canal === 'delivery' && s.formato !== 'menu') ?? null
+    const menu = siblings.find((s) => s.formato === 'menu' && s.canal !== 'delivery') ?? null
+
+    const dataFor = (p: ProductoCost | null): VariantData | null => {
+      if (!p || !p.id) return null
+      const receta = p.receta_id ? recetaMap.get(p.receta_id) : null
+      return {
+        producto_id: p.id,
+        receta_id: p.receta_id ?? null,
+        sale_price: p.sale_price ?? 0,
+        ingredientes: receta?.ingredientes ?? [],
+        descartables: descartablesMap.get(p.id) ?? [],
+      }
+    }
+
+    const baseReceta = base.receta_id ? recetaMap.get(base.receta_id) : null
+    return {
+      productoBaseId: base.id ?? null,
+      name: base.name ?? '',
+      target_margin_pct: base.target_margin_pct ?? 30,
+      is_dynamic: base.is_dynamic ?? false,
+      yield_qty: baseReceta?.yield_qty ?? 1,
+      yield_unit: (baseReceta?.yield_unit ?? 'u') as ProductoDialogInput['yield_unit'],
+      base: dataFor(base) ?? { producto_id: null, receta_id: null, sale_price: 0, ingredientes: [], descartables: [] },
+      delivery: dataFor(delivery),
+      menu: dataFor(menu),
+    }
+  }
 
   function openCreate() {
     setEditing(null)
@@ -112,8 +187,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
     })
   }
 
-  const currentRecetaData = editing?.receta_id ? (recetaMap.get(editing.receta_id) ?? null) : null
-  const currentDescartables = editing?.id ? (descartablesMap.get(editing.id) ?? []) : []
+  const dialogInput = buildDialogInput(editing)
 
   return (
     <div className="space-y-4">
@@ -278,14 +352,11 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
       <ProductoDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        producto={editing}
-        recetaData={currentRecetaData}
-        descartables={currentDescartables}
+        input={dialogInput}
         mode={mode}
         insumos={insumos}
         insumosDescartables={insumosDescartables}
         subRecetas={subRecetas}
-        conceptos={conceptos}
       />
     </div>
   )

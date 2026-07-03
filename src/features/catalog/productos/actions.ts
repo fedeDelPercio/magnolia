@@ -3,7 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
-import type { ProductoFormValues } from './schemas'
+import type {
+  ProductoFormValues,
+  ProductoConVariantesFormValues,
+  VariantData,
+  VariantKey,
+} from './schemas'
+import { variantProductoName } from './schemas'
 import type { ProductoPriceHistoryEntry } from './queries'
 
 function mapError(msg: string): string {
@@ -299,6 +305,257 @@ export async function toggleProductoActive(
     const supabase = await createClient()
     const { error } = await supabase.from('productos').update({ active }).eq('id', id)
     if (error) return { error: error.message }
+    revalidatePath('/catalogo/productos')
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Error desconocido' }
+  }
+}
+
+// canal/formato por variante. La base es la "sin variantes" del concepto.
+const VARIANT_TO_CANAL: Record<VariantKey, 'salon' | 'delivery' | null> = {
+  base: null,
+  delivery: 'delivery',
+  menu: null,
+}
+const VARIANT_TO_FORMATO: Record<VariantKey, 'individual' | 'menu' | null> = {
+  base: null,
+  delivery: null,
+  menu: 'menu',
+}
+
+async function upsertVariantProducto(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  key: VariantKey,
+  baseName: string,
+  common: Pick<ProductoConVariantesFormValues, 'target_margin_pct' | 'is_dynamic' | 'yield_qty' | 'yield_unit'>,
+  variant: VariantData,
+  conceptoId: string | null,
+  currentUserId: string | null,
+): Promise<{ id: string; oldPrice: number | null; error?: string }> {
+  const canal = VARIANT_TO_CANAL[key]
+  const formato = VARIANT_TO_FORMATO[key]
+  const productoName = variantProductoName(baseName, key)
+
+  // Resolver receta_id: crear una nueva si no viene, o actualizar la existente.
+  let recetaId = variant.receta_id
+  if (recetaId) {
+    const { error: recetaErr } = await supabase
+      .from('recetas')
+      .update({
+        name: productoName,
+        yield_qty: common.yield_qty,
+        yield_unit: common.yield_unit,
+      })
+      .eq('id', recetaId)
+    if (recetaErr) return { id: '', oldPrice: null, error: recetaErr.message }
+    const { error: delErr } = await supabase
+      .from('receta_ingredientes')
+      .delete()
+      .eq('receta_id', recetaId)
+    if (delErr) return { id: '', oldPrice: null, error: delErr.message }
+  } else {
+    const { data: nueva, error: recetaErr } = await supabase
+      .from('recetas')
+      .insert({
+        name: productoName,
+        yield_qty: common.yield_qty,
+        yield_unit: common.yield_unit,
+        tenant_id: tenantId,
+      })
+      .select('id')
+      .single()
+    if (recetaErr) return { id: '', oldPrice: null, error: recetaErr.message }
+    recetaId = nueva.id
+  }
+
+  if (variant.ingredientes.length > 0) {
+    const { error: ingErr } = await supabase.from('receta_ingredientes').insert(
+      variant.ingredientes.map((i) => ({
+        receta_id: recetaId,
+        kind: i.kind,
+        insumo_id: i.kind === 'insumo' ? (i.insumo_id ?? null) : null,
+        sub_receta_id: i.kind === 'receta' ? (i.sub_receta_id ?? null) : null,
+        qty: i.qty,
+        unit: i.unit,
+      })),
+    )
+    if (ingErr) return { id: '', oldPrice: null, error: mapError(ingErr.message) }
+  }
+
+  // Upsert del producto: si producto_id viene, update + re-activate. Si no,
+  // buscar si hay un sibling inactivo con mismo (concepto, canal, formato) para
+  // resucitar (preserva historial); si no, insertar uno nuevo.
+  let productoId = variant.producto_id
+  let oldPrice: number | null = null
+
+  if (!productoId && conceptoId) {
+    const base = supabase
+      .from('productos')
+      .select('id, active, sale_price')
+      .eq('tenant_id', tenantId)
+      .eq('concepto_id', conceptoId)
+    const withCanal = canal === null ? base.is('canal', null) : base.eq('canal', canal)
+    const withFormato = formato === null ? withCanal.is('formato', null) : withCanal.eq('formato', formato)
+    const { data: match } = await withFormato.maybeSingle()
+    if (match) productoId = match.id
+  }
+
+  if (productoId) {
+    const { data: cur } = await supabase
+      .from('productos')
+      .select('sale_price')
+      .eq('id', productoId)
+      .maybeSingle()
+    oldPrice = cur?.sale_price ?? null
+    const { error } = await supabase
+      .from('productos')
+      .update({
+        name: productoName,
+        sale_price: variant.sale_price,
+        receta_id: recetaId,
+        target_margin_pct: common.target_margin_pct,
+        is_dynamic: common.is_dynamic,
+        concepto_id: conceptoId,
+        canal,
+        formato,
+        active: true,
+      })
+      .eq('id', productoId)
+    if (error) return { id: '', oldPrice: null, error: mapError(error.message) }
+  } else {
+    const { data: nuevo, error } = await supabase
+      .from('productos')
+      .insert({
+        name: productoName,
+        sale_price: variant.sale_price,
+        receta_id: recetaId,
+        target_margin_pct: common.target_margin_pct,
+        is_dynamic: common.is_dynamic,
+        tenant_id: tenantId,
+        concepto_id: conceptoId,
+        canal,
+        formato,
+      })
+      .select('id')
+      .single()
+    if (error) return { id: '', oldPrice: null, error: mapError(error.message) }
+    productoId = nuevo.id
+  }
+
+  // Sync descartables (borrar + reinsertar).
+  await supabase.from('producto_descartables').delete().eq('producto_id', productoId)
+  if (variant.descartables.length > 0) {
+    const { error } = await supabase.from('producto_descartables').insert(
+      variant.descartables.map((d) => ({
+        producto_id: productoId,
+        insumo_id: d.insumo_id,
+        qty: d.qty,
+      })),
+    )
+    if (error) return { id: productoId, oldPrice, error: error.message }
+  }
+
+  return { id: productoId, oldPrice }
+}
+
+// Guarda un producto y sus 0-2 variantes (delivery/menu) en una sola operación.
+// - `productoBaseId` es el id del producto "base" (canal=null,formato=null) si
+//   ya existe. En create, va null y se crea desde cero.
+// - Si el concepto no existe todavia (producto standalone que estrena variante),
+//   se auto-crea con el nombre del producto.
+// - Las variantes desactivadas (null en el payload) se soft-deletean (active=false)
+//   si tenian una fila previa en la BD.
+// - Si delivery o menu vuelven a activarse mas tarde, upsertVariantProducto
+//   detecta la fila inactiva anterior y la resucita con su producto_id original
+//   (preserva historial de ventas y mediciones).
+export async function saveProductoConVariantes(
+  productoBaseId: string | null,
+  values: ProductoConVariantesFormValues,
+): Promise<{ error?: string }> {
+  try {
+    const supabase = await createClient()
+    const tenantId = await getActiveTenantId()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const hasVariants = values.delivery !== null || values.menu !== null
+
+    // Si hay variantes activas y no hay concepto todavia, lo creamos con el
+    // nombre del producto. Si estamos en edit y el producto base ya tenia un
+    // concepto_id, reutilizamos ese id.
+    let conceptoId: string | null = null
+    if (productoBaseId) {
+      const { data: baseRow } = await supabase
+        .from('productos')
+        .select('concepto_id')
+        .eq('id', productoBaseId)
+        .maybeSingle()
+      conceptoId = baseRow?.concepto_id ?? null
+    }
+    if (hasVariants && !conceptoId) {
+      const { data: nuevoConcepto, error } = await supabase
+        .from('producto_conceptos')
+        .insert({ tenant_id: tenantId, name: values.name })
+        .select('id')
+        .single()
+      if (error) return { error: mapError(error.message) }
+      conceptoId = nuevoConcepto.id
+    }
+
+    // Base
+    const baseInput: VariantData = {
+      ...values.base,
+      producto_id: productoBaseId ?? values.base.producto_id ?? null,
+    }
+    const baseRes = await upsertVariantProducto(
+      supabase,
+      tenantId,
+      'base',
+      values.name,
+      values,
+      baseInput,
+      conceptoId,
+      user?.id ?? null,
+    )
+    if (baseRes.error) return { error: baseRes.error }
+    if (baseRes.oldPrice !== values.base.sale_price) {
+      await snapshotPriceHistory(supabase, baseRes.id, tenantId, user?.id ?? null)
+    }
+
+    // Delivery / Menu
+    for (const key of ['delivery', 'menu'] as const) {
+      const variant = values[key]
+      if (variant) {
+        const res = await upsertVariantProducto(
+          supabase,
+          tenantId,
+          key,
+          values.name,
+          values,
+          variant,
+          conceptoId,
+          user?.id ?? null,
+        )
+        if (res.error) return { error: res.error }
+        if (res.oldPrice !== variant.sale_price) {
+          await snapshotPriceHistory(supabase, res.id, tenantId, user?.id ?? null)
+        }
+      } else if (conceptoId) {
+        // Soft-delete el sibling si existia.
+        const canal = VARIANT_TO_CANAL[key]
+        const formato = VARIANT_TO_FORMATO[key]
+        const query = supabase
+          .from('productos')
+          .update({ active: false })
+          .eq('tenant_id', tenantId)
+          .eq('concepto_id', conceptoId)
+        const q1 = canal === null ? query.is('canal', null) : query.eq('canal', canal)
+        const q2 = formato === null ? q1.is('formato', null) : q1.eq('formato', formato)
+        await q2
+      }
+    }
+
     revalidatePath('/catalogo/productos')
     return {}
   } catch (e) {
