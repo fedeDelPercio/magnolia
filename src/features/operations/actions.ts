@@ -35,6 +35,7 @@ export async function abrirDia(fecha: string): Promise<{ id?: string; error?: st
 export async function saveMovimiento(
   id: string,
   fields: {
+    stock_anterior?: number
     produccion?: number
     ventas?: number
     desperdicio?: number
