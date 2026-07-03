@@ -402,6 +402,31 @@ async function upsertVariantProducto(
     if (match) productoId = match.id
   }
 
+  // Fallback por nombre: si sigue null, puede que el usuario ya tenga un
+  // producto con ese nombre (ej. "Rolls de Verdura Delivery") pero sin
+  // concepto_id (huerfano). En ese caso lo adoptamos como esta variante.
+  // Si ya esta vinculado a otro concepto distinto, error explicito para
+  // que el usuario lo renombre y no borre data ajena.
+  if (!productoId) {
+    const { data: byName } = await supabase
+      .from('productos')
+      .select('id, concepto_id')
+      .eq('tenant_id', tenantId)
+      .eq('name', productoName)
+      .maybeSingle()
+    if (byName) {
+      if (byName.concepto_id === null || byName.concepto_id === conceptoId) {
+        productoId = byName.id
+      } else {
+        return {
+          id: '',
+          oldPrice: null,
+          error: `Ya existe un producto "${productoName}" vinculado a otro concepto. Renombralo primero o unificalos manualmente.`,
+        }
+      }
+    }
+  }
+
   if (productoId) {
     const { data: cur } = await supabase
       .from('productos')
@@ -494,13 +519,11 @@ export async function saveProductoConVariantes(
       conceptoId = baseRow?.concepto_id ?? null
     }
     if (hasVariants && !conceptoId) {
-      const { data: nuevoConcepto, error } = await supabase
-        .from('producto_conceptos')
-        .insert({ tenant_id: tenantId, name: values.name })
-        .select('id')
-        .single()
-      if (error) return { error: mapError(error.message) }
-      conceptoId = nuevoConcepto.id
+      // Get-or-create: si un save previo fallo despues de crear el concepto,
+      // reutilizamos el que quedo. resolveConceptoId hace lookup ilike + insert.
+      const res = await resolveConceptoId(supabase, tenantId, values.name)
+      if (res.error) return { error: res.error }
+      conceptoId = res.id
     }
 
     // Base

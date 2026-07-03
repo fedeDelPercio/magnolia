@@ -64,10 +64,15 @@ export const VARIANT_LABELS: Record<VariantKey, string> = {
   delivery: 'Delivery',
   menu: 'Menú',
 }
-// Nombre del producto en la BD segun la variante (base usa el nombre tal cual,
-// menu antepone "Menú "). Delivery usa el mismo nombre que base con canal='delivery'.
+// Nombre del producto en la BD segun la variante. La tabla productos tiene
+// unique(tenant_id, name), asi que cada variante necesita un nombre distinto.
+// Convencion:
+//   base     -> baseName
+//   delivery -> baseName + " Delivery"  (matchea data historica tipo "Empanada Delivery")
+//   menu     -> "Menú " + baseName      (matchea data historica de menu)
 export function variantProductoName(baseName: string, key: VariantKey): string {
   if (key === 'menu') return `Menú ${baseName}`
+  if (key === 'delivery') return `${baseName} Delivery`
   return baseName
 }
 
