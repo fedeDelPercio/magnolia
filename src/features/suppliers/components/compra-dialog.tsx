@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { PlusIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon } from 'lucide-react'
+import { PlusIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon, PackageIcon } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -403,17 +403,35 @@ export function CompraDialog({
                           </Button>
                         </div>
                       </div>
-                      {canStartTracking && (
-                        <label className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={item.start_tracking ?? false}
-                            onChange={(e) => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, start_tracking: e.target.checked } : it))}
-                            className="size-3 cursor-pointer"
-                          />
-                          Empezar a contabilizar stock con esta compra ({item.qty} {UNIT_LABELS[item.unit]} como stock inicial)
-                        </label>
-                      )}
+                      <div className="mt-1.5">
+                        {canStartTracking ? (
+                          <button
+                            type="button"
+                            onClick={() => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, start_tracking: !(it.start_tracking ?? false) } : it))}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                              item.start_tracking
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'border-dashed border-muted-foreground/40 bg-background text-muted-foreground hover:border-primary/60 hover:text-primary'
+                            }`}
+                            title={item.start_tracking
+                              ? 'Se activará el control de stock en este insumo al guardar la compra'
+                              : 'Clic para activar el control de stock de este insumo con esta compra'}
+                          >
+                            <PackageIcon className="size-3" />
+                            {item.start_tracking
+                              ? `Activar control de stock (${item.qty} ${UNIT_LABELS[item.unit]} inicial)`
+                              : 'Activar control de stock'}
+                          </button>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700"
+                            title="Este insumo ya contabiliza stock. La compra se sumará al stock actual."
+                          >
+                            <PackageIcon className="size-3" />
+                            Contabiliza stock
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
