@@ -6,7 +6,7 @@ import { CalendarDaysIcon, InfoIcon } from 'lucide-react'
 
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { setRecetaDelDia } from '../actions'
-import { DOW_LABELS, type RecetaDelDiaAsignacion } from '../queries'
+import { DOW_LABELS, type RecetaDelDiaAsignacion } from '../constants'
 
 type Props = {
   asignaciones: Array<{ dow: number; asignacion: RecetaDelDiaAsignacion | null }>
