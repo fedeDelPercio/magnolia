@@ -12,7 +12,9 @@ const baseSchema = z.object({
   descripcion: z.string().trim().max(500).optional().nullable(),
 })
 
-const egresoSchema = baseSchema
+const egresoSchema = baseSchema.extend({
+  categoria: z.string().trim().min(1).max(80).nullable().optional(),
+})
 const ingresoSchema = baseSchema.extend({
   origen: z.enum(['externo', 'caja_efectivo', 'cuenta_digital']),
 })
@@ -36,6 +38,7 @@ export async function registrarEgresoCajaMayor(input: EgresoInput): Promise<{ er
     tipo: 'egreso',
     monto: parsed.data.monto,
     descripcion: parsed.data.descripcion ?? null,
+    categoria: parsed.data.categoria ?? null,
     source: 'manual',
     origen: 'externo',
     created_by: user?.id ?? null,
@@ -44,6 +47,38 @@ export async function registrarEgresoCajaMayor(input: EgresoInput): Promise<{ er
   if (error) return { error: error.message }
   revalidatePath('/caja')
   return {}
+}
+
+// Crea una categoria nueva desde el modal de egreso — devuelve el name para
+// que la UI la agregue al select y quede seleccionada. Idempotente por nombre
+// (case-insensitive): si ya existe, devuelve el existente.
+export async function crearCajaCategoria(name: string): Promise<{ name?: string; error?: string }> {
+  const clean = name.trim()
+  if (!clean) return { error: 'El nombre no puede estar vacio' }
+  if (clean.length > 80) return { error: 'El nombre es demasiado largo' }
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+
+  // Si ya existe con el mismo nombre (case-insensitive), reutilizamos.
+  const { data: existing } = await supabase
+    .from('caja_categorias')
+    .select('name')
+    .eq('tenant_id', tenantId)
+    .ilike('name', clean)
+    .maybeSingle()
+  if (existing) {
+    revalidatePath('/caja')
+    return { name: existing.name }
+  }
+
+  const { data, error } = await supabase
+    .from('caja_categorias')
+    .insert({ tenant_id: tenantId, name: clean })
+    .select('name')
+    .single()
+  if (error) return { error: error.message }
+  revalidatePath('/caja')
+  return { name: data.name }
 }
 
 // Ingreso manual a Caja Mayor con origen explicito. Si origen='caja_efectivo'

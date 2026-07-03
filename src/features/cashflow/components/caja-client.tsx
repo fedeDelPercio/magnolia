@@ -66,9 +66,10 @@ type Props = {
   cajaMayor?: CajaMayorSummary
   ultimoCierre?: UltimoCierre
   cuentaDigital?: CuentaDigitalSummary
+  cajaCategorias?: string[]
 }
 
-export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorPct = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital }: Props) {
+export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorPct = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital, cajaCategorias = [] }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
 
@@ -146,7 +147,7 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {ultimoCierre !== undefined && <UltimoCierreTile ultimo={ultimoCierre} />}
           {cuentaDigital && <CuentaDigitalCard summary={cuentaDigital} />}
-          {cajaMayor && <CajaMayorCard summary={cajaMayor} month={month} />}
+          {cajaMayor && <CajaMayorCard summary={cajaMayor} month={month} categorias={cajaCategorias} />}
         </div>
       )}
 

@@ -297,9 +297,42 @@ export type Database = {
           },
         ]
       }
+      caja_categorias: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caja_categorias_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       caja_mayor_movimientos: {
         Row: {
           bistro_tx_id: string | null
+          categoria: string | null
           created_at: string
           created_by: string | null
           descripcion: string | null
@@ -313,6 +346,7 @@ export type Database = {
         }
         Insert: {
           bistro_tx_id?: string | null
+          categoria?: string | null
           created_at?: string
           created_by?: string | null
           descripcion?: string | null
@@ -326,6 +360,7 @@ export type Database = {
         }
         Update: {
           bistro_tx_id?: string | null
+          categoria?: string | null
           created_at?: string
           created_by?: string | null
           descripcion?: string | null

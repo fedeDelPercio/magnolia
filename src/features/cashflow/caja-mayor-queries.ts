@@ -7,6 +7,7 @@ export type CajaMayorMovimiento = {
   tipo: 'ingreso' | 'egreso'
   monto: number
   descripcion: string | null
+  categoria: string | null
   source: 'manual' | 'bistro'
   bistro_tx_id: string | null
   origen: 'externo' | 'caja_efectivo' | 'cuenta_digital'
@@ -37,7 +38,7 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
       .lt('fecha', nextMonth),
     supabase
       .from('caja_mayor_movimientos')
-      .select('id, fecha, tipo, monto, descripcion, source, bistro_tx_id, origen, created_at')
+      .select('id, fecha, tipo, monto, descripcion, categoria, source, bistro_tx_id, origen, created_at')
       .eq('tenant_id', tenantId)
       .gte('fecha', from)
       .lt('fecha', nextMonth)
@@ -67,6 +68,7 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
       tipo: m.tipo as 'ingreso' | 'egreso',
       monto,
       descripcion: m.descripcion,
+      categoria: m.categoria ?? null,
       source: m.source as 'manual' | 'bistro',
       bistro_tx_id: m.bistro_tx_id,
       origen: (m.origen ?? 'externo') as 'externo' | 'caja_efectivo' | 'cuenta_digital',
@@ -75,6 +77,20 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
   }
 
   return { saldo, ingresosMes, egresosMes, movimientosMes }
+}
+
+// Categorias disponibles para egresos de caja/caja mayor. Se usa como fuente
+// del dropdown en los modales.
+export async function getCajaCategorias(): Promise<string[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { data, error } = await supabase
+    .from('caja_categorias')
+    .select('name')
+    .eq('tenant_id', tenantId)
+    .order('name')
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((c) => c.name)
 }
 
 // Ultimo cierre de caja registrado en Bistro (independiente del mes filtrado

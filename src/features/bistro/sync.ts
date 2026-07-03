@@ -445,6 +445,33 @@ async function maybeCreateDerivedMovement(
     if (error) console.error(`caja_movimiento derived tx ${bistroTxId}: ${error.message}`)
     return
   }
+
+  // C) PAGO A PROVEEDORES - <detalle> → egreso en caja.
+  // Bistrosoft usa "PAGO A PROVEEDORES" como categoria generica y en el
+  // detalle indica el destino. Discriminamos:
+  //   - "Sueldos" (o variantes tipicas) → categoria 'Pago a empleados'
+  //   - resto                            → categoria 'Pago a proveedores'
+  if (commentsUpper.includes('PAGO A PROVEEDORES')) {
+    const isSueldos = /\b(sueldo|salario|liquidacion|liquidaci[oó]n)/i.test(comments)
+    const categoria = isSueldos ? 'Pago a empleados' : 'Pago a proveedores'
+    const { error } = await client
+      .from('caja_movimientos')
+      .upsert(
+        {
+          tenant_id: tenantId,
+          fecha: payload.fecha_local,
+          tipo: 'egreso',
+          categoria,
+          monto,
+          descripcion: comments,
+          ref_kind: 'bistro_tx',
+          ref_id: bistroTxId,
+        },
+        { onConflict: 'tenant_id,ref_kind,ref_id', ignoreDuplicates: true },
+      )
+    if (error) console.error(`caja_movimiento derived tx ${bistroTxId}: ${error.message}`)
+    return
+  }
 }
 
 // ============================================================================

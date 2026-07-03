@@ -17,10 +17,11 @@ import {
   registrarEgresoCajaMayor,
   registrarIngresoCajaMayor,
   deleteCajaMayorMovimiento,
+  crearCajaCategoria,
 } from '../caja-mayor-actions'
 import type { CajaMayorMovimiento, CajaMayorSummary } from '../caja-mayor-queries'
 
-type Props = { summary: CajaMayorSummary; month: string }
+type Props = { summary: CajaMayorSummary; month: string; categorias: string[] }
 
 const ORIGEN_LABEL: Record<CajaMayorMovimiento['origen'], string> = {
   externo: 'externo',
@@ -28,7 +29,7 @@ const ORIGEN_LABEL: Record<CajaMayorMovimiento['origen'], string> = {
   cuenta_digital: 'cuenta digital',
 }
 
-export function CajaMayorCard({ summary }: Props) {
+export function CajaMayorCard({ summary, categorias }: Props) {
   const [ingresoOpen, setIngresoOpen] = useState(false)
   const [egresoOpen, setEgresoOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -72,7 +73,7 @@ export function CajaMayorCard({ summary }: Props) {
       </div>
 
       <IngresoDialog open={ingresoOpen} onOpenChange={setIngresoOpen} />
-      <EgresoDialog open={egresoOpen} onOpenChange={setEgresoOpen} />
+      <EgresoDialog open={egresoOpen} onOpenChange={setEgresoOpen} categorias={categorias} />
       <DetalleDialog open={detailOpen} onOpenChange={setDetailOpen} summary={summary} />
     </div>
   )
@@ -120,6 +121,11 @@ function MovimientoRow({ m }: { m: CajaMayorMovimiento }) {
             <p className="font-medium truncate">{m.descripcion ?? '(sin descripción)'}</p>
             <p className="text-[10px] text-muted-foreground">
               {formatDate(m.fecha)}
+              {m.categoria && (
+                <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[9px] font-medium text-foreground">
+                  {m.categoria}
+                </span>
+              )}
               {m.tipo === 'ingreso' && m.origen !== 'externo' && (
                 <span className="ml-1 text-sky-700">· desde {ORIGEN_LABEL[m.origen]}</span>
               )}
@@ -220,17 +226,53 @@ function DeleteMovimientoDialog({
   )
 }
 
-function EgresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+function EgresoDialog({
+  open,
+  onOpenChange,
+  categorias,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  categorias: string[]
+}) {
   const router = useRouter()
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [categoria, setCategoria] = useState('')
+  const [addingCategoria, setAddingCategoria] = useState(false)
+  const [newCategoria, setNewCategoria] = useState('')
+  const [savingCategoria, setSavingCategoria] = useState(false)
+  // Categorias locales: parte del listado que viene desde el server + las que
+  // Caro cree in-place en esta sesion. Se re-syncea al recargar la pagina.
+  const [localCategorias, setLocalCategorias] = useState(categorias)
   const [saving, setSaving] = useState(false)
 
   function reset() {
     setFecha(new Date().toISOString().slice(0, 10))
     setMonto('')
     setDescripcion('')
+    setCategoria('')
+    setAddingCategoria(false)
+    setNewCategoria('')
+  }
+
+  async function handleAddCategoria() {
+    const clean = newCategoria.trim()
+    if (!clean) return
+    setSavingCategoria(true)
+    const res = await crearCajaCategoria(clean)
+    setSavingCategoria(false)
+    if (res.error || !res.name) {
+      toast.error(res.error ?? 'No se pudo crear')
+      return
+    }
+    if (!localCategorias.some((c) => c.toLowerCase() === res.name!.toLowerCase())) {
+      setLocalCategorias([...localCategorias, res.name].sort((a, b) => a.localeCompare(b)))
+    }
+    setCategoria(res.name)
+    setAddingCategoria(false)
+    setNewCategoria('')
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -238,7 +280,12 @@ function EgresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
     setSaving(true)
-    const res = await registrarEgresoCajaMayor({ fecha, monto: m, descripcion: descripcion.trim() || null })
+    const res = await registrarEgresoCajaMayor({
+      fecha,
+      monto: m,
+      descripcion: descripcion.trim() || null,
+      categoria: categoria.trim() || null,
+    })
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
     toast.success('Egreso registrado')
@@ -261,6 +308,62 @@ function EgresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
           <div className="space-y-1">
             <Label htmlFor="cm-eg-monto">Monto</Label>
             <Input id="cm-eg-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-baseline justify-between">
+              <Label htmlFor="cm-eg-cat">Categoría (opcional)</Label>
+              {!addingCategoria && (
+                <button
+                  type="button"
+                  onClick={() => setAddingCategoria(true)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + Nueva
+                </button>
+              )}
+            </div>
+            {addingCategoria ? (
+              <div className="flex gap-1">
+                <Input
+                  autoFocus
+                  placeholder="Nombre de la categoría"
+                  value={newCategoria}
+                  onChange={(e) => setNewCategoria(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); handleAddCategoria() }
+                    if (e.key === 'Escape') { setAddingCategoria(false); setNewCategoria('') }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAddCategoria}
+                  disabled={savingCategoria || !newCategoria.trim()}
+                >
+                  {savingCategoria ? '...' : 'Guardar'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setAddingCategoria(false); setNewCategoria('') }}
+                >
+                  ✕
+                </Button>
+              </div>
+            ) : (
+              <select
+                id="cm-eg-cat"
+                value={categoria}
+                onChange={(e) => setCategoria(e.target.value)}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">— Sin categoría —</option>
+                {localCategorias.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="cm-eg-desc">Descripción (opcional)</Label>
