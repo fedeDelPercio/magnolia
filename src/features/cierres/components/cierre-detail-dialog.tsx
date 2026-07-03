@@ -41,6 +41,8 @@ export function CierreDetailDialog({ open, onOpenChange, cierre, productos: prod
     categoria: p.categoria,
     cantidad: Number(p.cantidad),
     monto_total: Number(p.monto_total),
+    canal: p.canal ?? null,
+    formato: p.formato ?? null,
   }))
 
   const mappings: Record<string, MappingEntry> = {}

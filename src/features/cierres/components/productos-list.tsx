@@ -17,6 +17,11 @@ export type ProductoLine = {
   categoria: string | null
   cantidad: number
   monto_total: number
+  // Canal (salon/delivery) y formato (individual/menu) inferidos desde la
+  // categoria del PDF y el nombre. Se muestran como badges y se usan en el
+  // auto-match para elegir la variante correcta.
+  canal: 'salon' | 'delivery' | null
+  formato: 'individual' | 'menu' | null
 }
 
 export type MappingEntry = {
@@ -129,6 +134,26 @@ function ProductoRow({
         )}
         <span className="text-muted-foreground tabular-nums shrink-0">{line.cantidad}×</span>
         <span className="truncate">{line.nombre}</span>
+        {line.canal && (
+          <span
+            className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide ${
+              line.canal === 'salon'
+                ? 'bg-sky-100 text-sky-700'
+                : 'bg-orange-100 text-orange-700'
+            }`}
+            title={`Canal: ${line.canal === 'salon' ? 'Salón' : 'Delivery'}`}
+          >
+            {line.canal === 'salon' ? 'Salón' : 'Deliv'}
+          </span>
+        )}
+        {line.formato === 'menu' && (
+          <span
+            className="shrink-0 rounded bg-violet-100 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-violet-700"
+            title="Formato: Menú"
+          >
+            Menú
+          </span>
+        )}
       </div>
 
       <span className="flex h-7 items-center justify-end tabular-nums text-muted-foreground">
@@ -215,5 +240,22 @@ export function extractToLines(productos: CierreCajaExtract['productos']): Produ
     categoria: p.categoria,
     cantidad: p.cantidad,
     monto_total: p.monto_total,
+    canal: canalFromCategoria(p.categoria),
+    formato: formatoFromNombre(p.nombre),
   }))
+}
+
+// Mismas heuristicas que actions.ts (mantenidas duplicadas porque son puras y
+// no queremos importar de un 'use server').
+function canalFromCategoria(cat: string | null | undefined): ProductoLine['canal'] {
+  if (!cat) return null
+  const upper = cat.toUpperCase()
+  if (upper.startsWith('SALON')) return 'salon'
+  if (upper.startsWith('DELIVERY') || upper.includes('BEBIDA DELIVERY') || upper === 'GENERICO') return 'delivery'
+  return null
+}
+
+function formatoFromNombre(nombre: string | null | undefined): ProductoLine['formato'] {
+  if (!nombre) return null
+  return /^men[uú]\s/i.test(nombre) ? 'menu' : null
 }
