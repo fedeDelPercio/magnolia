@@ -64,39 +64,47 @@ export function DescartablesEditor({ insumos, readOnly = false }: Props) {
 
       {fields.length > 0 && (
         <div className="divide-y rounded-lg border text-sm">
+          <div className="flex items-center gap-4 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            <span className="flex-1">Descartable</span>
+            <span className="w-20 text-right">Cantidad</span>
+            <span className="w-24 text-right">Costo</span>
+            {!readOnly && <span className="w-6" />}
+          </div>
           {fields.map((field, idx) => {
             const cost = getLineCost(field.insumo_id, field.qty)
             return (
-              <div key={field.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                <span className="font-medium truncate">{getName(field.insumo_id)}</span>
-                <div className="flex items-center gap-2 text-muted-foreground shrink-0">
-                  <span className="tabular-nums">{field.qty} u</span>
-                  {cost !== null && (
-                    <span className="tabular-nums text-xs text-foreground/70 min-w-[70px] text-right">
-                      {formatCurrency(cost)}
-                    </span>
-                  )}
-                  {!readOnly && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-6 text-destructive hover:text-destructive"
-                      onClick={() => remove(idx)}
-                    >
-                      <TrashIcon className="size-3.5" />
-                    </Button>
-                  )}
-                </div>
+              <div key={field.id} className="flex items-center gap-4 px-3 py-2">
+                <span className="flex-1 font-medium truncate">{getName(field.insumo_id)}</span>
+                <span className="w-20 tabular-nums text-right text-muted-foreground">
+                  {field.qty} u
+                </span>
+                <span className="w-24 tabular-nums text-right text-foreground/80">
+                  {cost !== null ? formatCurrency(cost) : '—'}
+                </span>
+                {!readOnly && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 shrink-0 text-destructive hover:text-destructive"
+                    onClick={() => remove(idx)}
+                  >
+                    <TrashIcon className="size-3.5" />
+                  </Button>
+                )}
               </div>
             )
           })}
           {totalCost > 0 && (
-            <div className="flex items-center justify-between gap-3 px-3 py-2 bg-muted/30">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="flex items-center gap-4 px-3 py-2 bg-muted/30">
+              <span className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Costo descartables
               </span>
-              <span className="tabular-nums font-medium">{formatCurrency(totalCost)}</span>
+              <span className="w-20" />
+              <span className="w-24 tabular-nums text-right font-medium">
+                {formatCurrency(totalCost)}
+              </span>
+              {!readOnly && <span className="w-6" />}
             </div>
           )}
         </div>
