@@ -1,14 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ChevronLeftIcon, ChevronRightIcon, PlusIcon,
   ArrowUpIcon, ArrowDownIcon, ArrowLeftRightIcon, PiggyBankIcon,
+  XIcon,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -69,9 +78,61 @@ type Props = {
   cajaCategorias?: string[]
 }
 
+const BUCKET_FILTERS: { key: CajaMovimiento['bucket']; label: string; chip: string }[] = [
+  { key: 'ingreso', label: 'Ingresos', chip: 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' },
+  { key: 'egreso', label: 'Egresos', chip: 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100' },
+  { key: 'traspaso', label: 'Traspasos', chip: 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100' },
+  { key: 'ganancia_duenos', label: 'Ganancia dueños', chip: 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100' },
+]
+const ALL_CAT = '__all__'
+
 export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorPct = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital, cajaCategorias = [] }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
+
+  // Filtros locales sobre la lista. No tocan los KPIs del mes (Ingresos/Egresos/
+  // Resultado) para que esos sigan siendo la foto mensual estable — los filtros
+  // son para navegar dentro del mes, no para redefinirlo.
+  const [bucketFilter, setBucketFilter] = useState<Set<CajaMovimiento['bucket']>>(new Set())
+  const [categoriaFilter, setCategoriaFilter] = useState<string>(ALL_CAT)
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo] = useState<string>('')
+
+  // Categorias disponibles en la lista de este mes (para el select).
+  const categoriasDisponibles = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of movimientos) if (m.categoria) set.add(m.categoria)
+    return Array.from(set).sort()
+  }, [movimientos])
+
+  const movimientosFiltrados = useMemo(() => {
+    return movimientos.filter((m) => {
+      if (bucketFilter.size > 0 && !bucketFilter.has(m.bucket)) return false
+      if (categoriaFilter !== ALL_CAT && m.categoria !== categoriaFilter) return false
+      if (dateFrom && m.fecha < dateFrom) return false
+      if (dateTo && m.fecha > dateTo) return false
+      return true
+    })
+  }, [movimientos, bucketFilter, categoriaFilter, dateFrom, dateTo])
+
+  const hasFilters =
+    bucketFilter.size > 0 || categoriaFilter !== ALL_CAT || dateFrom !== '' || dateTo !== ''
+
+  function toggleBucket(key: CajaMovimiento['bucket']) {
+    setBucketFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function clearFilters() {
+    setBucketFilter(new Set())
+    setCategoriaFilter(ALL_CAT)
+    setDateFrom('')
+    setDateTo('')
+  }
 
   // Los totales del mes solo consideran movimientos reales (ingresos/egresos)
   // y ganancia dueños (que sale del sistema). Los traspasos POS -> caja fuerte
@@ -194,14 +255,90 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
         </div>
       )}
 
+      {/* Filtros */}
+      <div className="rounded-xl border bg-card p-3 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {BUCKET_FILTERS.map((b) => {
+            const active = bucketFilter.has(b.key)
+            return (
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => toggleBucket(b.key)}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors',
+                  active
+                    ? b.chip.replace('hover:', '') + ' ring-2 ring-offset-1 ring-current/20'
+                    : 'border-gray-200 bg-white text-muted-foreground hover:bg-gray-50',
+                )}
+                aria-pressed={active}
+              >
+                {b.label}
+              </button>
+            )
+          })}
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="ml-auto inline-flex h-7 items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 text-xs text-muted-foreground hover:bg-gray-50"
+            >
+              <XIcon className="size-3" />
+              Limpiar
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <label className="text-xs text-muted-foreground shrink-0">Categoría</label>
+            <Select value={categoriaFilter} onValueChange={(v) => setCategoriaFilter(v ?? ALL_CAT)}>
+              <SelectTrigger className="h-8 flex-1 min-w-0">
+                <SelectValue>
+                  {(v: string | null) => (v === ALL_CAT || !v ? 'Todas' : v)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_CAT} label="Todas">Todas</SelectItem>
+                {categoriasDisponibles.map((c) => (
+                  <SelectItem key={c} value={c} label={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground shrink-0">Desde</label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-8 w-[9.5rem]"
+            />
+            <label className="text-xs text-muted-foreground shrink-0">Hasta</label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-8 w-[9.5rem]"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* List */}
       <div className="rounded-xl border bg-card divide-y text-sm overflow-hidden">
         {movimientos.length === 0 ? (
           <div className="py-10 text-center text-muted-foreground">
             Sin movimientos en {monthLabel(month)}.
           </div>
+        ) : movimientosFiltrados.length === 0 ? (
+          <div className="py-10 text-center text-muted-foreground">
+            No hay movimientos que coincidan con los filtros.
+          </div>
         ) : (
-          movimientos.map((m) => {
+          movimientosFiltrados.map((m) => {
             // Tono e icono por bucket. Traspaso (POS -> caja fuerte) va con
             // arrow left-right en neutro. Ganancia duenos va con PiggyBank
             // en purpura (queda fuera del sistema). Ingreso/egreso normales
