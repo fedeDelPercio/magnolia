@@ -30,7 +30,6 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
   const [conceptoId, setConceptoId] = useState<string>(NONE_CONCEPT)
   const [montoStr, setMontoStr] = useState('')
   const [notas, setNotas] = useState('')
-  const [generarEgreso, setGenerarEgreso] = useState(true)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -41,7 +40,6 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
       setConceptoId(conceptos.length === 1 ? conceptos[0]!.id : NONE_CONCEPT)
       setMontoStr('')
       setNotas('')
-      setGenerarEgreso(true)
     }
   }, [open, conceptos])
 
@@ -57,7 +55,9 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
       monto,
       concepto_id: conceptoId === NONE_CONCEPT ? null : conceptoId,
       notas: notas || undefined,
-      generar_egreso_caja: generarEgreso,
+      // Los pagos de servicio siempre generan un egreso en caja mayor —
+      // no hay caso practico donde interese cargar el pago sin egreso.
+      generar_egreso_caja: true,
     })
     setSaving(false)
     if (result.error) {
@@ -125,16 +125,6 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
               onChange={(e) => setNotas(e.target.value)}
             />
           </div>
-
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={generarEgreso}
-              onChange={(e) => setGenerarEgreso(e.target.checked)}
-              className="size-3.5 cursor-pointer"
-            />
-            Registrar como egreso en caja mayor
-          </label>
         </div>
         <DialogFooter>
           <Button variant="outline" type="button" onClick={() => onOpenChange(false)} disabled={saving}>
