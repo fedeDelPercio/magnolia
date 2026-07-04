@@ -339,7 +339,18 @@ async function upsertVariantProducto(
   const productoName = variantProductoName(baseName, key)
 
   // Resolver receta_id: crear una nueva si no viene, o actualizar la existente.
+  // Fallback por nombre si un save previo dejo una receta huerfana con ese name
+  // (unique(tenant_id, name)) para no chocar en el retry.
   let recetaId = variant.receta_id
+  if (!recetaId) {
+    const { data: existingReceta } = await supabase
+      .from('recetas')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('name', productoName)
+      .maybeSingle()
+    if (existingReceta) recetaId = existingReceta.id
+  }
   if (recetaId) {
     const { error: recetaErr } = await supabase
       .from('recetas')
