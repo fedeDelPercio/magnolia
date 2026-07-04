@@ -29,6 +29,7 @@ const NAV: NavItem[] = [
     label: 'Catálogo',
     sub: [
       { href: '/catalogo/insumos', label: 'Insumos' },
+      { href: '/catalogo/recetas', label: 'Sub-recetas' },
       { href: '/catalogo/productos', label: 'Productos' },
       { href: '/catalogo/receta-del-dia', label: 'Receta del día' },
     ],
