@@ -18,10 +18,15 @@ export type RecetaWithIngredientes = Tables<'recetas'> & {
 
 export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('recetas')
-    .select(
-      `
+  // Traemos todas las recetas + los ids que estan siendo usados como (a) receta
+  // 1:1 de un producto y (b) sub-receta dentro de otra. Con eso filtramos las
+  // que solo existen como backing de un producto — para el usuario esas son
+  // productos, no sub-recetas, y ya aparecen en /catalogo/productos.
+  const [allRes, prodRes, subRes] = await Promise.all([
+    supabase
+      .from('recetas')
+      .select(
+        `
       *,
       receta_ingredientes!receta_ingredientes_receta_id_fkey(
         *,
@@ -29,11 +34,31 @@ export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
         recetas!receta_ingredientes_sub_receta_id_fkey(id, name, yield_unit)
       )
     `,
-    )
-    .order('name')
+      )
+      .order('name'),
+    supabase.from('productos').select('receta_id').not('receta_id', 'is', null),
+    supabase.from('receta_ingredientes').select('sub_receta_id').not('sub_receta_id', 'is', null),
+  ])
 
-  if (error) throw error
-  return data as unknown as RecetaWithIngredientes[]
+  if (allRes.error) throw allRes.error
+
+  const usadaComoProducto = new Set(
+    (prodRes.data ?? []).map((r) => r.receta_id).filter((v): v is string => !!v),
+  )
+  const usadaComoSub = new Set(
+    (subRes.data ?? []).map((r) => r.sub_receta_id).filter((v): v is string => !!v),
+  )
+
+  // Mostrar solo si: (a) se usa como sub-receta (aunque tambien sea producto), o
+  // (b) no se usa como producto (incluye huerfanas). Excluye las que solo son
+  // backing 1:1 de un producto.
+  const filtered = (allRes.data as unknown as RecetaWithIngredientes[]).filter((r) => {
+    if (usadaComoSub.has(r.id)) return true
+    if (!usadaComoProducto.has(r.id)) return true
+    return false
+  })
+
+  return filtered
 }
 
 export async function getRecetasSimple(): Promise<Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]> {
