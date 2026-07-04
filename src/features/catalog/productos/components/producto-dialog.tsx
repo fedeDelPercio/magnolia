@@ -307,6 +307,14 @@ export function ProductoDialog({
   const showTabs = enabled.delivery || enabled.menu
   const currentVariantId = inactiveVariants[activeVariant]?.producto_id ?? input?.productoBaseId ?? null
 
+  // Cuando delivery esta activo, "Base" se llama "Base - Mostrador" para que
+  // quede clara la contraposicion con delivery en todos lados donde aparezca
+  // el label (tab, precio, historial).
+  function variantLabel(key: VariantKey): string {
+    if (key === 'base' && enabled.delivery) return 'Base - Mostrador'
+    return VARIANT_LABELS[key]
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -331,7 +339,7 @@ export function ProductoDialog({
               >
                 <span className="flex items-center gap-2">
                   <HistoryIcon className="size-4 text-muted-foreground" />
-                  Historial de precios ({VARIANT_LABELS[activeVariant]})
+                  Historial de precios ({variantLabel(activeVariant)})
                   {priceHistory.length > 0 && (
                     <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-muted-foreground">
                       {priceHistory.length}
@@ -549,7 +557,9 @@ export function ProductoDialog({
                 </p>
               </div>
 
-              {/* Tab switch — solo si hay variantes activas */}
+              {/* Tab switch — solo si hay variantes activas. Cuando delivery
+                  esta tildado, el tab base se llama "Base - Mostrador" para
+                  dejar clara la contraposicion salon/mostrador vs delivery. */}
               {showTabs && (
                 <div className="sticky top-0 z-10 -mx-1 rounded-xl border bg-card/95 p-1 backdrop-blur-sm">
                   <div className="flex gap-1">
@@ -567,7 +577,7 @@ export function ProductoDialog({
                               : 'text-muted-foreground hover:bg-muted'
                           }`}
                         >
-                          {VARIANT_LABELS[key]}
+                          {variantLabel(key)}
                         </button>
                       )
                     })}
@@ -584,7 +594,7 @@ export function ProductoDialog({
                     <FormItem>
                       <FormLabel>
                         <PackageIcon className="inline-block mr-1 size-3 text-muted-foreground" />
-                        Precio {VARIANT_LABELS[activeVariant]}
+                        Precio {variantLabel(activeVariant)}
                       </FormLabel>
                       <FormControl>
                         <div className="relative">
