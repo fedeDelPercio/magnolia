@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 import { formatCurrency, formatPct } from '@/lib/format'
-import { toggleProductoActive } from '../actions'
+import { toggleProductoActive, deleteProducto } from '../actions'
 import { ProductoDialog, type ProductoDialogInput } from './producto-dialog'
 import type { ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
@@ -76,29 +76,32 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
   // Los productos con concepto_id agrupan variantes (base + delivery + menu).
   // Solo mostramos la fila "base" (canal=null|salon + formato=null|individual)
   // por cada concepto; al abrirla se ven las variantes en tabs. Los productos
-  // standalone (sin concepto) se muestran tal cual. Considera solo activos
-  // para elegir la base (soft-deleteados no cuentan).
+  // standalone (sin concepto) se muestran tal cual. Cuando hay al menos una
+  // variante activa la usamos como base; si todas estan inactivas, mostramos
+  // igual una fila gris para que el usuario pueda reactivar o eliminar.
   const collapsed = useMemo(() => {
     const seen = new Set<string>()
     const out: ProductoCost[] = []
+    const pickBase = (arr: ProductoCost[]) =>
+      arr.find(
+        (s) =>
+          (s.canal === null || s.canal === 'salon') &&
+          (s.formato === null || s.formato === 'individual'),
+      ) ??
+      arr.find((s) => s.canal === null && s.formato === null) ??
+      arr[0]!
     for (const p of productos) {
       if (!p.concepto_id) {
         out.push(p)
         continue
       }
       if (seen.has(p.concepto_id)) continue
-      const siblings = productos.filter((s) => s.concepto_id === p.concepto_id && s.active)
-      if (siblings.length === 0) continue
-      const base =
-        siblings.find(
-          (s) =>
-            (s.canal === null || s.canal === 'salon') &&
-            (s.formato === null || s.formato === 'individual'),
-        ) ??
-        siblings.find((s) => s.canal === null && s.formato === null) ??
-        siblings[0]!
+      const allSiblings = productos.filter((s) => s.concepto_id === p.concepto_id)
+      if (allSiblings.length === 0) continue
+      const activeSiblings = allSiblings.filter((s) => s.active)
+      const arr = activeSiblings.length > 0 ? activeSiblings : allSiblings
       seen.add(p.concepto_id)
-      out.push(base)
+      out.push(pickBase(arr))
     }
     return out
   }, [productos])
@@ -187,6 +190,23 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
     })
   }
 
+  function handleDelete(producto: ProductoCost) {
+    if (!producto.id) return
+    const hasVariants = !!producto.concepto_id
+    const msg = hasVariants
+      ? `¿Eliminar "${producto.name}" y todas sus variantes? Se van a borrar los precios, ingredientes y descartables. Esta accion no se puede deshacer.`
+      : `¿Eliminar "${producto.name}"? Esta accion no se puede deshacer.`
+    if (!window.confirm(msg)) return
+    startTransition(async () => {
+      const result = await deleteProducto(producto.id!)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Producto eliminado')
+      }
+    })
+  }
+
   const dialogInput = buildDialogInput(editing)
 
   return (
@@ -258,6 +278,12 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
                       <DropdownMenuItem onClick={() => openEdit(producto)}>Editar</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleToggleActive(producto)}>
                         {producto.active ? 'Desactivar' : 'Activar'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDelete(producto)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        Eliminar
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -338,6 +364,12 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleToggleActive(producto)}>
                           {producto.active ? 'Desactivar' : 'Activar'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleDelete(producto)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          Eliminar
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

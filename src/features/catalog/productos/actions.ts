@@ -303,8 +303,98 @@ export async function toggleProductoActive(
 ): Promise<{ error?: string }> {
   try {
     const supabase = await createClient()
-    const { error } = await supabase.from('productos').update({ active }).eq('id', id)
-    if (error) return { error: error.message }
+    // Si el producto tiene concepto_id, propagamos el toggle a todas las variantes
+    // del concepto. Sin esto, desactivar solo el base dejaba las variantes
+    // huerfanas activas y la lista colapsada mostraba una de ellas como base
+    // (con otro nombre) — parecia que el producto habia desaparecido.
+    const { data: prod } = await supabase
+      .from('productos')
+      .select('concepto_id, tenant_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (prod?.concepto_id) {
+      const { error } = await supabase
+        .from('productos')
+        .update({ active })
+        .eq('tenant_id', prod.tenant_id)
+        .eq('concepto_id', prod.concepto_id)
+      if (error) return { error: error.message }
+    } else {
+      const { error } = await supabase.from('productos').update({ active }).eq('id', id)
+      if (error) return { error: error.message }
+    }
+    revalidatePath('/catalogo/productos')
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Error desconocido' }
+  }
+}
+
+// Eliminar producto (y sus variantes si tiene concepto). Borra:
+// - producto_descartables de cada variante
+// - la fila productos de cada variante
+// - la receta 1:1 de cada variante (via receta_id) — sus ingredientes se van
+//   por cascade
+// - el concepto si queda sin variantes
+//
+// Puede fallar por FKs desde cierre_caja_productos o receta_del_dia; el error
+// se mapea a un mensaje amable sugiriendo desactivar en vez de eliminar.
+export async function deleteProducto(id: string): Promise<{ error?: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: target } = await supabase
+      .from('productos')
+      .select('id, concepto_id, tenant_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (!target) return { error: 'No encontramos el producto' }
+
+    // Reunir ids a borrar (todas las variantes si hay concepto).
+    const { data: rows } = target.concepto_id
+      ? await supabase
+          .from('productos')
+          .select('id, receta_id')
+          .eq('tenant_id', target.tenant_id)
+          .eq('concepto_id', target.concepto_id)
+      : await supabase
+          .from('productos')
+          .select('id, receta_id')
+          .eq('id', target.id)
+
+    const productoIds = (rows ?? []).map((r) => r.id)
+    const recetaIds = (rows ?? []).map((r) => r.receta_id).filter((v): v is string => !!v)
+
+    if (productoIds.length > 0) {
+      await supabase.from('producto_descartables').delete().in('producto_id', productoIds)
+      await supabase.from('producto_price_history').delete().in('producto_id', productoIds)
+      const { error: prodErr } = await supabase.from('productos').delete().in('id', productoIds)
+      if (prodErr) {
+        const msg = prodErr.message.toLowerCase()
+        if (msg.includes('foreign key') || msg.includes('violates')) {
+          return { error: 'No se puede eliminar: el producto ya tiene ventas cargadas o esta asignado como receta del dia. Desactivalo en vez de eliminarlo.' }
+        }
+        return { error: prodErr.message }
+      }
+    }
+
+    if (recetaIds.length > 0) {
+      // Intentamos borrar las recetas. Si alguna esta siendo usada como
+      // sub-receta, va a fallar; en ese caso se dejan y no bloqueamos.
+      await supabase.from('recetas').delete().in('id', recetaIds)
+    }
+
+    if (target.concepto_id) {
+      // Si el concepto quedo sin productos, lo borramos tambien para no dejar
+      // basura en el picker.
+      const { count } = await supabase
+        .from('productos')
+        .select('id', { count: 'exact', head: true })
+        .eq('concepto_id', target.concepto_id)
+      if ((count ?? 0) === 0) {
+        await supabase.from('producto_conceptos').delete().eq('id', target.concepto_id)
+      }
+    }
+
     revalidatePath('/catalogo/productos')
     return {}
   } catch (e) {
