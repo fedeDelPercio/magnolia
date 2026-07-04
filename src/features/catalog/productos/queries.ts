@@ -6,9 +6,15 @@ export type ProductoCost = NonNullable<Tables<'product_costs'>>
 
 export async function getProductos(): Promise<ProductoCost[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  // Defensa explicita: la vista product_costs corria historicamente sin
+  // security_invoker asi que el RLS de productos no se propagaba a traves de
+  // ella y devolvia filas de otros tenants. La migracion 0050 arregla la vista,
+  // pero mantenemos el filtro aca por las dudas y por claridad.
   const { data, error } = await supabase
     .from('product_costs')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('name')
 
   if (error) throw error
