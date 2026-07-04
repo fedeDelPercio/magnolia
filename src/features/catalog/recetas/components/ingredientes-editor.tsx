@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useFieldArray, useFormContext } from 'react-hook-form'
-import { PlusIcon, TrashIcon } from 'lucide-react'
+import { PlusIcon, TrashIcon, AlertTriangleIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,14 +19,18 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { UNITS, UNIT_LABELS, type UnitKind } from '../../insumos/schemas'
 import type { IngredienteFormValues } from '../schemas'
 import type { Tables } from '@/types/database'
-import { normalizeQty } from '../lib/unit-conversion'
+import { normalizeQty, unitsCompatible } from '../lib/unit-conversion'
 import { formatCurrency } from '@/lib/format'
 
 type FormWithIngredientes = { ingredientes: IngredienteFormValues[] }
 
+type RecetaConCosto = Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'> & {
+  total_cost?: number
+}
+
 type Props = {
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
-  recetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
+  recetas: RecetaConCosto[]
   currentRecetaId?: string
   readOnly?: boolean
 }
@@ -91,15 +95,38 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
     return recetas.find((r) => r.id === field.sub_receta_id)?.name ?? '—'
   }
 
-  // Costo variable de la linea. Solo lo calculamos para insumos (no sub-recetas
-  // porque para eso haria falta traer recipe_cost y sumar recursivo). Aplica
-  // conversion kg<->g / l<->ml igual que el calculo del backend.
+  // Costo variable de la linea, tanto para insumos como sub-recetas. Espeja
+  // la logica de recipe_cost() en Postgres:
+  //   insumo:     qty × factor(unit_conversion) × current_price
+  //   sub-receta: qty × (total_cost / yield_qty)
+  // Nota: para sub-recetas el SQL NO convierte unidades — si consumis "150 g"
+  // de una receta con yield en "porcion", multiplica igual y da ruido. Ese
+  // caso se detecta con unitsCompatible y marcamos warning.
   function getLineCost(field: IngredienteFormValues): number | null {
-    if (field.kind !== 'insumo') return null
-    const insumo = insumos.find((i) => i.id === field.insumo_id)
-    if (!insumo || insumo.current_price == null) return null
-    const qtyInInsumoUnit = normalizeQty(field.qty, field.unit, insumo.unit)
-    return qtyInInsumoUnit * Number(insumo.current_price)
+    if (field.kind === 'insumo') {
+      const insumo = insumos.find((i) => i.id === field.insumo_id)
+      if (!insumo || insumo.current_price == null) return null
+      const qtyInInsumoUnit = normalizeQty(field.qty, field.unit, insumo.unit)
+      return qtyInInsumoUnit * Number(insumo.current_price)
+    }
+    const receta = recetas.find((r) => r.id === field.sub_receta_id)
+    if (!receta || receta.total_cost == null || !receta.yield_qty) return null
+    const costPerYieldUnit = Number(receta.total_cost) / Number(receta.yield_qty)
+    return Number(field.qty) * costPerYieldUnit
+  }
+
+  // Devuelve true si la unidad consumida es compatible con la unidad del
+  // ingrediente. Cuando NO son compatibles el costo calculado es ruido
+  // (para sub-recetas, ej. yield=porcion y consumido=g).
+  function hasUnitMismatch(field: IngredienteFormValues): boolean {
+    if (field.kind === 'insumo') {
+      const insumo = insumos.find((i) => i.id === field.insumo_id)
+      if (!insumo) return false
+      return !unitsCompatible(field.unit, insumo.unit)
+    }
+    const receta = recetas.find((r) => r.id === field.sub_receta_id)
+    if (!receta || !receta.yield_unit) return false
+    return !unitsCompatible(field.unit, receta.yield_unit)
   }
 
   const totalCost = fields.reduce((acc, f) => acc + (getLineCost(f) ?? 0), 0)
@@ -120,6 +147,7 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
           </div>
           {fields.map((field, idx) => {
             const cost = getLineCost(field)
+            const mismatch = hasUnitMismatch(field)
             return (
               <div key={field.id} className="flex items-center gap-4 px-3 py-2">
                 <div className="flex flex-1 items-center gap-2 min-w-0">
@@ -129,9 +157,26 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
                   <span className="font-medium truncate">{getLabel(field)}</span>
                 </div>
                 <span className="w-20 tabular-nums text-right text-muted-foreground">
-                  {field.qty} {UNIT_LABELS[field.unit]}
+                  <span className="inline-flex items-center gap-1">
+                    {mismatch && (
+                      <AlertTriangleIcon
+                        className="size-3 text-amber-600"
+                        aria-label="Unidades no compatibles — el costo puede estar mal"
+                      />
+                    )}
+                    {field.qty} {UNIT_LABELS[field.unit]}
+                  </span>
                 </span>
-                <span className="w-24 tabular-nums text-right text-foreground/80">
+                <span
+                  className={`w-24 tabular-nums text-right ${
+                    mismatch ? 'text-amber-700' : 'text-foreground/80'
+                  }`}
+                  title={
+                    mismatch
+                      ? 'La unidad consumida no coincide con la unidad del ingrediente — el costo es aproximado. Ajustá las unidades para arreglarlo.'
+                      : undefined
+                  }
+                >
                   {cost !== null ? formatCurrency(cost) : '—'}
                 </span>
                 {!readOnly && (
@@ -151,7 +196,7 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
           {totalCost > 0 && (
             <div className="flex items-center gap-4 px-3 py-2 bg-muted/30">
               <span className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Costo variable (insumos)
+                Costo variable
               </span>
               <span className="w-20" />
               <span className="w-24 tabular-nums text-right font-medium">

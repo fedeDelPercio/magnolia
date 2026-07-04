@@ -61,16 +61,28 @@ export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
   return filtered
 }
 
-export async function getRecetasSimple(): Promise<Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]> {
+export type RecetaSimpleConCosto = Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'> & {
+  total_cost: number
+}
+
+export async function getRecetasSimple(): Promise<RecetaSimpleConCosto[]> {
   const supabase = await createClient()
+  // Traemos total_cost desde la vista receta_costs (migracion 0053) que
+  // computa recipe_cost() por receta. Asi el ingredientes-editor puede
+  // mostrar el costo real de cada sub-receta al usarla en un producto.
   const { data, error } = await supabase
-    .from('recetas')
-    .select('id, name, yield_unit, yield_qty')
+    .from('receta_costs')
+    .select('id, name, yield_unit, yield_qty, total_cost')
     .eq('active', true)
     .order('name')
-
   if (error) throw error
-  return data
+  return (data ?? []).map((r) => ({
+    id: r.id!,
+    name: r.name!,
+    yield_unit: r.yield_unit!,
+    yield_qty: r.yield_qty!,
+    total_cost: Number(r.total_cost ?? 0),
+  }))
 }
 
 export type DescartableParaProducto = {

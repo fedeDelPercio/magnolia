@@ -36,7 +36,7 @@ type Props = {
   insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
   recetasParaProductos: RecetaParaProducto[]
   descartablesParaProductos: DescartableParaProducto[]
-  subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
+  subRecetas: (Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'> & { total_cost?: number })[]
 }
 
 function MarginBadge({ margin, target }: { margin: number; target: number }) {

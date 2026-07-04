@@ -1979,6 +1979,13 @@ export type Database = {
             foreignKeyName: "productos_receta_id_fkey"
             columns: ["receta_id"]
             isOneToOne: false
+            referencedRelation: "receta_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "productos_receta_id_fkey"
+            columns: ["receta_id"]
+            isOneToOne: false
             referencedRelation: "recetas"
             referencedColumns: ["id"]
           },
@@ -2273,7 +2280,21 @@ export type Database = {
             foreignKeyName: "receta_ingredientes_receta_id_fkey"
             columns: ["receta_id"]
             isOneToOne: false
+            referencedRelation: "receta_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receta_ingredientes_receta_id_fkey"
+            columns: ["receta_id"]
+            isOneToOne: false
             referencedRelation: "recetas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receta_ingredientes_sub_receta_id_fkey"
+            columns: ["sub_receta_id"]
+            isOneToOne: false
+            referencedRelation: "receta_costs"
             referencedColumns: ["id"]
           },
           {
@@ -2549,11 +2570,56 @@ export type Database = {
             foreignKeyName: "productos_receta_id_fkey"
             columns: ["receta_id"]
             isOneToOne: false
+            referencedRelation: "receta_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "productos_receta_id_fkey"
+            columns: ["receta_id"]
+            isOneToOne: false
             referencedRelation: "recetas"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "productos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receta_costs: {
+        Row: {
+          active: boolean | null
+          id: string | null
+          name: string | null
+          tenant_id: string | null
+          total_cost: number | null
+          yield_qty: number | null
+          yield_unit: Database["public"]["Enums"]["unit_kind"] | null
+        }
+        Insert: {
+          active?: boolean | null
+          id?: string | null
+          name?: string | null
+          tenant_id?: string | null
+          total_cost?: never
+          yield_qty?: number | null
+          yield_unit?: Database["public"]["Enums"]["unit_kind"] | null
+        }
+        Update: {
+          active?: boolean | null
+          id?: string | null
+          name?: string | null
+          tenant_id?: string | null
+          total_cost?: never
+          yield_qty?: number | null
+          yield_unit?: Database["public"]["Enums"]["unit_kind"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recetas_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

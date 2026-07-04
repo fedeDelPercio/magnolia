@@ -46,7 +46,7 @@ type Props = {
   receta: RecetaWithIngredientes | null
   mode: Mode
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
-  recetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
+  recetas: (Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'> & { total_cost?: number })[]
 }
 
 const DEFAULT_VALUES: RecetaFormValues = {
