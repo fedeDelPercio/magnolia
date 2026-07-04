@@ -14,6 +14,9 @@ export type RecetaWithIngredientes = Tables<'recetas'> & {
     insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'> | null
     recetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit'> | null
   })[]
+  // total_cost sale de la vista receta_costs (recipe_cost pre-computado).
+  // Es opcional para no romper otros consumidores del tipo.
+  total_cost?: number
 }
 
 export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
@@ -22,7 +25,7 @@ export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
   // 1:1 de un producto y (b) sub-receta dentro de otra. Con eso filtramos las
   // que solo existen como backing de un producto — para el usuario esas son
   // productos, no sub-recetas, y ya aparecen en /catalogo/productos.
-  const [allRes, prodRes, subRes] = await Promise.all([
+  const [allRes, prodRes, subRes, costsRes] = await Promise.all([
     supabase
       .from('recetas')
       .select(
@@ -38,6 +41,7 @@ export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
       .order('name'),
     supabase.from('productos').select('receta_id').not('receta_id', 'is', null),
     supabase.from('receta_ingredientes').select('sub_receta_id').not('sub_receta_id', 'is', null),
+    supabase.from('receta_costs').select('id, total_cost'),
   ])
 
   if (allRes.error) throw allRes.error
@@ -48,15 +52,20 @@ export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
   const usadaComoSub = new Set(
     (subRes.data ?? []).map((r) => r.sub_receta_id).filter((v): v is string => !!v),
   )
+  const costMap = new Map(
+    (costsRes.data ?? []).map((r) => [r.id, Number(r.total_cost ?? 0)]),
+  )
 
   // Mostrar solo si: (a) se usa como sub-receta (aunque tambien sea producto), o
   // (b) no se usa como producto (incluye huerfanas). Excluye las que solo son
   // backing 1:1 de un producto.
-  const filtered = (allRes.data as unknown as RecetaWithIngredientes[]).filter((r) => {
-    if (usadaComoSub.has(r.id)) return true
-    if (!usadaComoProducto.has(r.id)) return true
-    return false
-  })
+  const filtered = (allRes.data as unknown as RecetaWithIngredientes[])
+    .filter((r) => {
+      if (usadaComoSub.has(r.id)) return true
+      if (!usadaComoProducto.has(r.id)) return true
+      return false
+    })
+    .map((r) => ({ ...r, total_cost: costMap.get(r.id) ?? 0 }))
 
   return filtered
 }

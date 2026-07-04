@@ -27,6 +27,7 @@ import { toggleRecetaActive } from '../actions'
 import { RecetaDialog } from './receta-dialog'
 import type { RecetaWithIngredientes } from '../queries'
 import type { Tables } from '@/types/database'
+import { formatCurrency } from '@/lib/format'
 
 type Props = {
   recetas: RecetaWithIngredientes[]
@@ -112,7 +113,8 @@ export function RecetasClient({ recetas, insumos }: Props) {
               <TableHead>Nombre</TableHead>
               <TableHead>Categoría</TableHead>
               <TableHead>Rendimiento</TableHead>
-              <TableHead className="text-center">Ingredientes</TableHead>
+              <TableHead className="text-right">Costo total</TableHead>
+              <TableHead className="text-right">Costo unitario</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="w-10" />
             </TableRow>
@@ -120,54 +122,70 @@ export function RecetasClient({ recetas, insumos }: Props) {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                   {search ? 'No se encontraron recetas' : 'Sin recetas. Creá la primera.'}
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((receta) => (
-                <TableRow
-                  key={receta.id}
-                  className={`cursor-pointer hover:bg-muted/50 ${!receta.active ? 'opacity-50' : ''}`}
-                  onClick={() => openView(receta)}
-                >
-                  <TableCell className="font-medium">{receta.name}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {receta.category ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    {receta.yield_qty} {UNIT_LABELS[receta.yield_unit]}
-                  </TableCell>
-                  <TableCell className="text-center text-muted-foreground">
-                    {receta.receta_ingredientes.length}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={receta.active
-                        ? 'border-green-200 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-gray-50 text-gray-500'}
-                    >
-                      {receta.active ? 'Activa' : 'Inactiva'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-7" />}>
-                        <MoreHorizontalIcon className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(receta)}>
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleToggleActive(receta)}>
-                          {receta.active ? 'Desactivar' : 'Activar'}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
+              filtered.map((receta) => {
+                const total = receta.total_cost ?? 0
+                const unit = receta.yield_qty > 0 ? total / Number(receta.yield_qty) : 0
+                return (
+                  <TableRow
+                    key={receta.id}
+                    className={`cursor-pointer hover:bg-muted/50 ${!receta.active ? 'opacity-50' : ''}`}
+                    onClick={() => openView(receta)}
+                  >
+                    <TableCell className="font-medium">{receta.name}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {receta.category ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      {receta.yield_qty} {UNIT_LABELS[receta.yield_unit]}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {total > 0 ? formatCurrency(total) : '—'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {unit > 0 ? (
+                        <>
+                          {formatCurrency(unit)}
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            / {UNIT_LABELS[receta.yield_unit]}
+                          </span>
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={receta.active
+                          ? 'border-green-200 bg-green-50 text-green-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-500'}
+                      >
+                        {receta.active ? 'Activa' : 'Inactiva'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-7" />}>
+                          <MoreHorizontalIcon className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(receta)}>
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleActive(receta)}>
+                            {receta.active ? 'Desactivar' : 'Activar'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>

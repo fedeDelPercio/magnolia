@@ -22,7 +22,14 @@ import type { Tables } from '@/types/database'
 import { normalizeQty, unitsCompatible } from '../lib/unit-conversion'
 import { formatCurrency } from '@/lib/format'
 
-type FormWithIngredientes = { ingredientes: IngredienteFormValues[] }
+// El form que contiene ingredientes puede ser el del producto o el de una
+// sub-receta. Ambos exponen yield_qty y yield_unit, que usamos para calcular
+// el costo por unidad de rendimiento.
+type FormWithIngredientes = {
+  ingredientes: IngredienteFormValues[]
+  yield_qty?: number
+  yield_unit?: string
+}
 
 type RecetaConCosto = Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'> & {
   total_cost?: number
@@ -131,6 +138,16 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
 
   const totalCost = fields.reduce((acc, f) => acc + (getLineCost(f) ?? 0), 0)
 
+  // Leemos yield_qty y yield_unit del form (reactivo). Sirven para mostrar
+  // "Por porcion / Por unidad" bajo el total. Si no existen (form no los
+  // maneja), omitimos la fila.
+  const yieldQty = form.watch('yield_qty')
+  const yieldUnit = form.watch('yield_unit')
+  const perUnitCost =
+    totalCost > 0 && yieldQty && Number(yieldQty) > 0 ? totalCost / Number(yieldQty) : null
+  const yieldUnitLabel =
+    yieldUnit && (UNIT_LABELS[yieldUnit as UnitKind] ?? yieldUnit)
+
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">Ingredientes</p>
@@ -194,16 +211,32 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
             )
           })}
           {totalCost > 0 && (
-            <div className="flex items-center gap-4 px-3 py-2 bg-muted/30">
-              <span className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Costo variable
-              </span>
-              <span className="w-20" />
-              <span className="w-24 tabular-nums text-right font-medium">
-                {formatCurrency(totalCost)}
-              </span>
-              {!readOnly && <span className="w-6" />}
-            </div>
+            <>
+              <div className="flex items-center gap-4 px-3 py-2 bg-muted/30">
+                <span className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Costo total
+                </span>
+                <span className="w-20" />
+                <span className="w-24 tabular-nums text-right font-medium">
+                  {formatCurrency(totalCost)}
+                </span>
+                {!readOnly && <span className="w-6" />}
+              </div>
+              {perUnitCost !== null && yieldUnitLabel && (
+                <div className="flex items-center gap-4 px-3 py-2 bg-muted/30">
+                  <span className="flex-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Costo por {yieldUnitLabel}
+                  </span>
+                  <span className="w-20 tabular-nums text-right text-[11px] text-muted-foreground/80">
+                    {yieldQty} {yieldUnitLabel}
+                  </span>
+                  <span className="w-24 tabular-nums text-right font-medium">
+                    {formatCurrency(perUnitCost)}
+                  </span>
+                  {!readOnly && <span className="w-6" />}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
