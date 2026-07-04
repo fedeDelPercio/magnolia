@@ -45,7 +45,7 @@ type Props = {
   onOpenChange: (open: boolean) => void
   receta: RecetaWithIngredientes | null
   mode: Mode
-  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
   recetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
 }
 

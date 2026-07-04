@@ -30,7 +30,7 @@ import type { Tables } from '@/types/database'
 
 type Props = {
   recetas: RecetaWithIngredientes[]
-  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
 }
 
 type DialogMode = 'view' | 'edit' | 'create'

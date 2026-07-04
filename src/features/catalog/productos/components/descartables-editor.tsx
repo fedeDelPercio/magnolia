@@ -10,8 +10,9 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import type { ProductoFormValues } from '../schemas'
 import type { Tables } from '@/types/database'
+import { formatCurrency } from '@/lib/format'
 
-type InsumoDescartable = Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>
+type InsumoDescartable = Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>
 
 type Props = {
   insumos: InsumoDescartable[]
@@ -43,31 +44,61 @@ export function DescartablesEditor({ insumos, readOnly = false }: Props) {
     return insumos.find((i) => i.id === insumoId)?.name ?? '—'
   }
 
+  // Descartables se cuentan en 'u' y el insumo tambien esta en 'u', asi que
+  // el costo es directo qty × current_price. Si en el futuro algun descartable
+  // tuviera otra unidad, habria que convertir aca.
+  function getLineCost(insumoId: string, qty: number): number | null {
+    const insumo = insumos.find((i) => i.id === insumoId)
+    if (!insumo || insumo.current_price == null) return null
+    return qty * Number(insumo.current_price)
+  }
+
+  const totalCost = fields.reduce(
+    (acc, f) => acc + (getLineCost(f.insumo_id, f.qty) ?? 0),
+    0,
+  )
+
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">Descartables</p>
 
       {fields.length > 0 && (
         <div className="divide-y rounded-lg border text-sm">
-          {fields.map((field, idx) => (
-            <div key={field.id} className="flex items-center justify-between gap-3 px-3 py-2">
-              <span className="font-medium">{getName(field.insumo_id)}</span>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <span>{field.qty} u</span>
-                {!readOnly && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 text-destructive hover:text-destructive"
-                    onClick={() => remove(idx)}
-                  >
-                    <TrashIcon className="size-3.5" />
-                  </Button>
-                )}
+          {fields.map((field, idx) => {
+            const cost = getLineCost(field.insumo_id, field.qty)
+            return (
+              <div key={field.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <span className="font-medium truncate">{getName(field.insumo_id)}</span>
+                <div className="flex items-center gap-2 text-muted-foreground shrink-0">
+                  <span className="tabular-nums">{field.qty} u</span>
+                  {cost !== null && (
+                    <span className="tabular-nums text-xs text-foreground/70 min-w-[70px] text-right">
+                      {formatCurrency(cost)}
+                    </span>
+                  )}
+                  {!readOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-destructive hover:text-destructive"
+                      onClick={() => remove(idx)}
+                    >
+                      <TrashIcon className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
               </div>
+            )
+          })}
+          {totalCost > 0 && (
+            <div className="flex items-center justify-between gap-3 px-3 py-2 bg-muted/30">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Costo descartables
+              </span>
+              <span className="tabular-nums font-medium">{formatCurrency(totalCost)}</span>
             </div>
-          ))}
+          )}
         </div>
       )}
 

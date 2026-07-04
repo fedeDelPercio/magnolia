@@ -19,11 +19,13 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { UNITS, UNIT_LABELS, type UnitKind } from '../../insumos/schemas'
 import type { IngredienteFormValues } from '../schemas'
 import type { Tables } from '@/types/database'
+import { normalizeQty } from '../lib/unit-conversion'
+import { formatCurrency } from '@/lib/format'
 
 type FormWithIngredientes = { ingredientes: IngredienteFormValues[] }
 
 type Props = {
-  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
   recetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
   currentRecetaId?: string
   readOnly?: boolean
@@ -89,6 +91,19 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
     return recetas.find((r) => r.id === field.sub_receta_id)?.name ?? '—'
   }
 
+  // Costo variable de la linea. Solo lo calculamos para insumos (no sub-recetas
+  // porque para eso haria falta traer recipe_cost y sumar recursivo). Aplica
+  // conversion kg<->g / l<->ml igual que el calculo del backend.
+  function getLineCost(field: IngredienteFormValues): number | null {
+    if (field.kind !== 'insumo') return null
+    const insumo = insumos.find((i) => i.id === field.insumo_id)
+    if (!insumo || insumo.current_price == null) return null
+    const qtyInInsumoUnit = normalizeQty(field.qty, field.unit, insumo.unit)
+    return qtyInInsumoUnit * Number(insumo.current_price)
+  }
+
+  const totalCost = fields.reduce((acc, f) => acc + (getLineCost(f) ?? 0), 0)
+
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">Ingredientes</p>
@@ -96,32 +111,48 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
       {/* Current ingredients list */}
       {fields.length > 0 && (
         <div className="divide-y rounded-lg border text-sm">
-          {fields.map((field, idx) => (
-            <div key={field.id} className="flex items-center justify-between gap-3 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs">
-                  {field.kind === 'insumo' ? 'Insumo' : 'Sub-receta'}
-                </Badge>
-                <span className="font-medium">{getLabel(field)}</span>
+          {fields.map((field, idx) => {
+            const cost = getLineCost(field)
+            return (
+              <div key={field.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Badge variant="outline" className="text-xs">
+                    {field.kind === 'insumo' ? 'Insumo' : 'Sub-receta'}
+                  </Badge>
+                  <span className="font-medium truncate">{getLabel(field)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground shrink-0">
+                  <span className="tabular-nums">
+                    {field.qty} {UNIT_LABELS[field.unit]}
+                  </span>
+                  {cost !== null && (
+                    <span className="tabular-nums text-xs text-foreground/70 min-w-[70px] text-right">
+                      {formatCurrency(cost)}
+                    </span>
+                  )}
+                  {!readOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-destructive hover:text-destructive"
+                      onClick={() => remove(idx)}
+                    >
+                      <TrashIcon className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <span>
-                  {field.qty} {UNIT_LABELS[field.unit]}
-                </span>
-                {!readOnly && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 text-destructive hover:text-destructive"
-                    onClick={() => remove(idx)}
-                  >
-                    <TrashIcon className="size-3.5" />
-                  </Button>
-                )}
-              </div>
+            )
+          })}
+          {totalCost > 0 && (
+            <div className="flex items-center justify-between gap-3 px-3 py-2 bg-muted/30">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Costo variable (insumos)
+              </span>
+              <span className="tabular-nums font-medium">{formatCurrency(totalCost)}</span>
             </div>
-          ))}
+          )}
         </div>
       )}
 

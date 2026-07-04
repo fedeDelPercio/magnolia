@@ -84,8 +84,8 @@ type Props = {
   onOpenChange: (open: boolean) => void
   input: ProductoDialogInput | null
   mode: Mode
-  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
-  insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
+  insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
   subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
 }
 

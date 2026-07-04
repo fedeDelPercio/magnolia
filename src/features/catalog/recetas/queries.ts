@@ -97,11 +97,11 @@ export async function getRecetasParaProductos(): Promise<RecetaParaProducto[]> {
   }))
 }
 
-export async function getInsumosSimple(): Promise<Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'kind'>[]> {
+export async function getInsumosSimple(): Promise<Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'kind' | 'current_price'>[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('insumos')
-    .select('id, name, unit, kind')
+    .select('id, name, unit, kind, current_price')
     .eq('active', true)
     .order('name')
 

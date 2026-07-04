@@ -32,8 +32,8 @@ import type { VariantData } from '../schemas'
 
 type Props = {
   productos: ProductoCost[]
-  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
-  insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit'>[]
+  insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
+  insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
   recetasParaProductos: RecetaParaProducto[]
   descartablesParaProductos: DescartableParaProducto[]
   subRecetas: Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'>[]
