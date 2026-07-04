@@ -271,7 +271,7 @@ export function ComprobanteUploadDialog({
       proveedor_id: proveedorId,
       perishable: false,
       shelf_life_days: null,
-      track_stock: false,
+      track_stock: true,
       stock_inicial: 0,
     })
     if (res.error || !res.data) {

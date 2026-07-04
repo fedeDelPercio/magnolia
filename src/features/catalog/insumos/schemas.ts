@@ -29,7 +29,7 @@ export const insumoSchema = z
     proveedor_id: z.string().uuid().nullable().optional(),
     perishable: z.boolean().default(false),
     shelf_life_days: z.number().int().positive().nullable().optional(),
-    track_stock: z.boolean().default(false),
+    track_stock: z.boolean().default(true),
     stock_inicial: z.number().min(0).default(0),
     // Presentación de compra opcional. Si se setea uno, hay que setear el otro.
     // Ej: comprás "cajón" y 1 cajón = 10 kg → label="cajón", factor=10.

@@ -67,7 +67,7 @@ const DEFAULT_VALUES: InsumoFormValues = {
   proveedor_id: null,
   perishable: false,
   shelf_life_days: null,
-  track_stock: false,
+  track_stock: true,
   stock_inicial: 0,
   purchase_unit_label: null,
   purchase_unit_factor: null,
