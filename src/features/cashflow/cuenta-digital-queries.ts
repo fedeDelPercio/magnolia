@@ -63,6 +63,8 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     pagosByMetodoRows,
     traspasosAcc,
     traspasosMes,
+    ingresosManualesAcc,
+    ingresosManualesMes,
   ] = await Promise.all([
     // Ventas acumuladas — pagina porque puede haber decenas de miles de rows
     fetchAllPaged<{ amount_total: number; payment_method: string | null; transaction_type: string | null }>((rf, rt) =>
@@ -122,6 +124,25 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       .gte('fecha', from)
       .lt('fecha', nextMonth)
       .order('fecha', { ascending: false }),
+    // Ingresos manuales a cuenta digital (transferencias recibidas, devoluciones,
+    // adelantos). Se cargan desde la card con categoria='Ingreso digital'.
+    // Acumulado hasta el fin del mes seleccionado.
+    supabase
+      .from('caja_movimientos')
+      .select('monto')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('categoria', 'Ingreso digital')
+      .lt('fecha', nextMonth),
+    supabase
+      .from('caja_movimientos')
+      .select('id, fecha, monto, descripcion, ref_kind')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('categoria', 'Ingreso digital')
+      .gte('fecha', from)
+      .lt('fecha', nextMonth)
+      .order('fecha', { ascending: false }),
   ])
 
   // Index de pagos por id -> metodo
@@ -136,7 +157,10 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     return false
   }
 
-  // 1. Ingresos acumulados (ventas digital * netoFactor)
+  // 1. Ingresos acumulados: ventas digital netas + ingresos manuales.
+  // Los manuales no se netean por costoProcesadorPct porque son plata que ya
+  // entro a la cuenta (transferencia externa recibida), no una venta que
+  // pase por el procesador.
   let ingresosAcc = 0
   for (const r of ventasAccRows) {
     const type = r.transaction_type ?? ''
@@ -145,6 +169,7 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     ingresosAcc += Number(r.amount_total) || 0
   }
   ingresosAcc = ingresosAcc * netoFactor
+  ingresosAcc += (ingresosManualesAcc.data ?? []).reduce((s, r) => s + (Number(r.monto) || 0), 0)
 
   // 2. Ingresos del mes (agregados por dia para no listar miles de comandas)
   let ingresosMes = 0
@@ -157,6 +182,11 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     ingresosMes += neto
     const key = r.fecha_local ?? ''
     ingresosByDay.set(key, (ingresosByDay.get(key) ?? 0) + neto)
+  }
+  // Ingresos manuales del mes al total (no van agrupados por dia — se listan
+  // uno por uno en el detalle para que sean eliminables).
+  for (const r of ingresosManualesMes.data ?? []) {
+    ingresosMes += Number(r.monto) || 0
   }
 
   // 3. Egresos: caja_movimientos digitales (acumulado)
@@ -198,6 +228,20 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       descripcion: t.descripcion ?? 'Traspaso a caja mayor',
       source: 'traspaso_caja_mayor',
       eliminable: false,
+    })
+  }
+
+  // Agregar ingresos manuales (transferencias recibidas externas) uno por uno.
+  // Son eliminables si no tienen ref_kind (los cargo Caro desde la card).
+  for (const r of ingresosManualesMes.data ?? []) {
+    movimientosMes.push({
+      id: r.id,
+      fecha: r.fecha,
+      tipo: 'ingreso',
+      monto: Number(r.monto) || 0,
+      descripcion: r.descripcion ?? 'Ingreso digital',
+      source: 'caja_movimiento',
+      eliminable: !r.ref_kind,
     })
   }
 

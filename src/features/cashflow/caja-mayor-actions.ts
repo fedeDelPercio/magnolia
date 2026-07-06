@@ -157,21 +157,46 @@ export async function registrarEgresoDigital(input: EgresoDigitalInput): Promise
   return {}
 }
 
-// Elimina un egreso digital MANUAL (categoria='Egreso digital' sin ref_kind).
-// Deshace el movimiento — el saldo de cuenta digital sube automaticamente al
-// recalcularse (ingresos - egresos). Bloquea egresos vinculados a un pago a
-// proveedor: esos se manejan desde /proveedores para no dejar el pago sin su
-// registro en caja.
-export async function eliminarEgresoDigital(id: string): Promise<{ error?: string }> {
+// Registra un ingreso a cuenta digital que NO viene del POS (ej. una
+// transferencia recibida externa, devolucion, adelanto). Categoria
+// 'Ingreso digital' para que la query lo sume al saldo.
+export async function registrarIngresoDigital(input: EgresoDigitalInput): Promise<{ error?: string }> {
+  const parsed = egresoDigitalSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos invalidos' }
+
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+
+  const { error } = await supabase.from('caja_movimientos').insert({
+    tenant_id: tenantId,
+    fecha: parsed.data.fecha,
+    tipo: 'ingreso',
+    monto: parsed.data.monto,
+    descripcion: parsed.data.descripcion ?? null,
+    categoria: 'Ingreso digital',
+  })
+
+  if (error) return { error: error.message }
+  revalidatePath('/caja')
+  return {}
+}
+
+// Elimina un movimiento digital MANUAL (Ingreso/Egreso digital sin ref_kind).
+// Deshace el movimiento — el saldo de cuenta digital se recalcula solo. Bloquea
+// movimientos vinculados a otras entidades (pagos, traspasos) para que se
+// gestionen desde su feature de origen.
+export async function eliminarMovimientoDigital(id: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: row, error: readErr } = await supabase
     .from('caja_movimientos')
-    .select('id, tipo, categoria, ref_kind')
+    .select('id, categoria, ref_kind')
     .eq('id', id)
     .maybeSingle()
   if (readErr) return { error: readErr.message }
   if (!row) return { error: 'Movimiento no encontrado' }
-  if (row.tipo !== 'egreso' || row.categoria !== 'Egreso digital' || row.ref_kind) {
+  const esManualDigital =
+    (row.categoria === 'Egreso digital' || row.categoria === 'Ingreso digital') && !row.ref_kind
+  if (!esManualDigital) {
     return { error: 'Este movimiento no se puede eliminar desde acá' }
   }
 

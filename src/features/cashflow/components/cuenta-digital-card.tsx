@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { PlusIcon, ArrowDownIcon, ArrowUpIcon, ListIcon, Trash2Icon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, ListIcon, Trash2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -13,13 +13,14 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { registrarEgresoDigital, eliminarEgresoDigital } from '../caja-mayor-actions'
+import { registrarEgresoDigital, registrarIngresoDigital, eliminarMovimientoDigital } from '../caja-mayor-actions'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
 
 type Props = { summary: CuentaDigitalSummary }
 
 export function CuentaDigitalCard({ summary }: Props) {
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [egresoOpen, setEgresoOpen] = useState(false)
+  const [ingresoOpen, setIngresoOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
 
   const saldoTone = summary.saldo > 0
@@ -44,8 +45,12 @@ export function CuentaDigitalCard({ summary }: Props) {
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setDetailOpen(true)}>
             <ListIcon className="size-3" />
           </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setDialogOpen(true)}>
-            <PlusIcon className="size-3 mr-0.5" />
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setIngresoOpen(true)}>
+            <ArrowUpIcon className="size-3 mr-0.5 text-emerald-700" />
+            Ingreso
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setEgresoOpen(true)}>
+            <ArrowDownIcon className="size-3 mr-0.5 text-red-600" />
             Egreso
           </Button>
         </div>
@@ -56,7 +61,8 @@ export function CuentaDigitalCard({ summary }: Props) {
         <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
       </div>
 
-      <EgresoDigitalDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <MovimientoDigitalDialog tipo="egreso" open={egresoOpen} onOpenChange={setEgresoOpen} />
+      <MovimientoDigitalDialog tipo="ingreso" open={ingresoOpen} onOpenChange={setIngresoOpen} />
       <DetalleDialog open={detailOpen} onOpenChange={setDetailOpen} summary={summary} />
     </div>
   )
@@ -73,7 +79,7 @@ function DetalleDialog({
     if (!confirm(`Eliminar "${descripcion}" por ${formatCurrency(monto)}?\n\nEl saldo va a volver a la cuenta digital.`)) return
     setDeletingId(id)
     startTransition(async () => {
-      const res = await eliminarEgresoDigital(id)
+      const res = await eliminarMovimientoDigital(id)
       setDeletingId(null)
       if (res.error) { toast.error(res.error); return }
       toast.success('Egreso eliminado — saldo restaurado')
@@ -143,12 +149,19 @@ function DetalleDialog({
   )
 }
 
-function EgresoDigitalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+function MovimientoDigitalDialog({
+  tipo, open, onOpenChange,
+}: { tipo: 'ingreso' | 'egreso'; open: boolean; onOpenChange: (v: boolean) => void }) {
   const router = useRouter()
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const label = tipo === 'ingreso' ? 'ingreso' : 'egreso'
+  const placeholder = tipo === 'ingreso'
+    ? 'Ej: transferencia recibida, devolución, adelanto'
+    : 'Ej: transferencia banco, MP, etc.'
 
   function reset() {
     setFecha(new Date().toISOString().slice(0, 10))
@@ -161,10 +174,13 @@ function EgresoDigitalDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
     setSaving(true)
-    const res = await registrarEgresoDigital({ fecha, monto: m, descripcion: descripcion.trim() || 'Egreso digital' })
+    const payload = { fecha, monto: m, descripcion: descripcion.trim() || (tipo === 'ingreso' ? 'Ingreso digital' : 'Egreso digital') }
+    const res = tipo === 'ingreso'
+      ? await registrarIngresoDigital(payload)
+      : await registrarEgresoDigital(payload)
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
-    toast.success('Egreso digital registrado')
+    toast.success(tipo === 'ingreso' ? 'Ingreso digital registrado' : 'Egreso digital registrado')
     reset()
     onOpenChange(false)
     router.refresh()
@@ -174,7 +190,7 @@ function EgresoDigitalDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Registrar egreso de cuenta digital</DialogTitle>
+          <DialogTitle>Registrar {label} de cuenta digital</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1">
@@ -187,11 +203,11 @@ function EgresoDigitalDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
           <div className="space-y-1">
             <Label htmlFor="dig-desc">Descripción (opcional)</Label>
-            <Textarea id="dig-desc" placeholder="Ej: transferencia banco, MP, etc." value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
+            <Textarea id="dig-desc" placeholder={placeholder} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Registrar egreso'}</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : `Registrar ${label}`}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
