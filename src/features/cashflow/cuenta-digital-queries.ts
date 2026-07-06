@@ -24,6 +24,9 @@ export type CuentaDigitalMovimiento = {
   monto: number                 // monto NETO (descontando impuestos en ingresos)
   descripcion: string
   source: 'bistro_venta' | 'caja_movimiento' | 'traspaso_caja_mayor'
+  // Solo egresos manuales de categoria 'Egreso digital' pueden borrarse desde
+  // acá — los pagos a proveedor y los traspasos se gestionan desde su feature.
+  eliminable: boolean
 }
 
 export type CuentaDigitalSummary = {
@@ -178,6 +181,10 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       monto,
       descripcion: r.descripcion ?? r.categoria,
       source: 'caja_movimiento',
+      // Solo los manuales (sin ref_kind) son eliminables desde esta card.
+      // Los pagos a proveedor se manejan desde /proveedores para no romper
+      // la ref circular pago<->caja_movimiento.
+      eliminable: r.categoria === 'Egreso digital' && !r.ref_kind,
     })
   }
   for (const t of traspasosMes.data ?? []) {
@@ -190,6 +197,7 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       monto,
       descripcion: t.descripcion ?? 'Traspaso a caja mayor',
       source: 'traspaso_caja_mayor',
+      eliminable: false,
     })
   }
 
@@ -202,6 +210,7 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       monto: total,
       descripcion: `Ventas digital (neto ${(100 - costoProcesadorPct).toFixed(2)}%)`,
       source: 'bistro_venta',
+      eliminable: false,
     })
   }
 

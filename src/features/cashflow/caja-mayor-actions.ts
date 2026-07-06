@@ -156,3 +156,27 @@ export async function registrarEgresoDigital(input: EgresoDigitalInput): Promise
   revalidatePath('/caja')
   return {}
 }
+
+// Elimina un egreso digital MANUAL (categoria='Egreso digital' sin ref_kind).
+// Deshace el movimiento — el saldo de cuenta digital sube automaticamente al
+// recalcularse (ingresos - egresos). Bloquea egresos vinculados a un pago a
+// proveedor: esos se manejan desde /proveedores para no dejar el pago sin su
+// registro en caja.
+export async function eliminarEgresoDigital(id: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: row, error: readErr } = await supabase
+    .from('caja_movimientos')
+    .select('id, tipo, categoria, ref_kind')
+    .eq('id', id)
+    .maybeSingle()
+  if (readErr) return { error: readErr.message }
+  if (!row) return { error: 'Movimiento no encontrado' }
+  if (row.tipo !== 'egreso' || row.categoria !== 'Egreso digital' || row.ref_kind) {
+    return { error: 'Este movimiento no se puede eliminar desde acá' }
+  }
+
+  const { error } = await supabase.from('caja_movimientos').delete().eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/caja')
+  return {}
+}

@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { PlusIcon, ArrowDownIcon, ArrowUpIcon, ListIcon } from 'lucide-react'
+import { PlusIcon, ArrowDownIcon, ArrowUpIcon, ListIcon, Trash2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { registrarEgresoDigital } from '../caja-mayor-actions'
+import { registrarEgresoDigital, eliminarEgresoDigital } from '../caja-mayor-actions'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
 
 type Props = { summary: CuentaDigitalSummary }
@@ -65,6 +65,22 @@ export function CuentaDigitalCard({ summary }: Props) {
 function DetalleDialog({
   open, onOpenChange, summary,
 }: { open: boolean; onOpenChange: (v: boolean) => void; summary: CuentaDigitalSummary }) {
+  const router = useRouter()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function handleDelete(id: string, descripcion: string, monto: number) {
+    if (!confirm(`Eliminar "${descripcion}" por ${formatCurrency(monto)}?\n\nEl saldo va a volver a la cuenta digital.`)) return
+    setDeletingId(id)
+    startTransition(async () => {
+      const res = await eliminarEgresoDigital(id)
+      setDeletingId(null)
+      if (res.error) { toast.error(res.error); return }
+      toast.success('Egreso eliminado — saldo restaurado')
+      router.refresh()
+    })
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -75,7 +91,9 @@ function DetalleDialog({
           <p className="text-sm text-muted-foreground text-center py-6">Sin movimientos en este mes.</p>
         ) : (
           <div className="rounded-md border divide-y max-h-96 overflow-y-auto">
-            {summary.movimientosMes.map((m) => (
+            {summary.movimientosMes.map((m) => {
+              const busy = deletingId === m.id && isPending
+              return (
               <div key={m.id} className="flex items-center justify-between px-3 py-2 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className={cn(
@@ -95,14 +113,29 @@ function DetalleDialog({
                     </p>
                   </div>
                 </div>
-                <span className={cn(
-                  'tabular-nums font-medium shrink-0',
-                  m.tipo === 'ingreso' ? 'text-emerald-700' : 'text-red-600',
-                )}>
-                  {m.tipo === 'ingreso' ? '+' : '−'} {formatCurrency(m.monto)}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={cn(
+                    'tabular-nums font-medium',
+                    m.tipo === 'ingreso' ? 'text-emerald-700' : 'text-red-600',
+                  )}>
+                    {m.tipo === 'ingreso' ? '+' : '−'} {formatCurrency(m.monto)}
+                  </span>
+                  {m.eliminable && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(m.id, m.descripcion, m.monto)}
+                      disabled={busy}
+                      className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                      aria-label="Eliminar egreso"
+                      title="Eliminar egreso"
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </DialogContent>
