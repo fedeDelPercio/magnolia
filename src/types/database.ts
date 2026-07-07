@@ -696,6 +696,7 @@ export type Database = {
           id: string
           iva_rate: number
           notes: string | null
+          percepciones: number
           proveedor_id: string
           status: Database["public"]["Enums"]["compra_status"]
           tenant_id: string
@@ -712,6 +713,7 @@ export type Database = {
           id?: string
           iva_rate?: number
           notes?: string | null
+          percepciones?: number
           proveedor_id: string
           status?: Database["public"]["Enums"]["compra_status"]
           tenant_id: string
@@ -728,6 +730,7 @@ export type Database = {
           id?: string
           iva_rate?: number
           notes?: string | null
+          percepciones?: number
           proveedor_id?: string
           status?: Database["public"]["Enums"]["compra_status"]
           tenant_id?: string

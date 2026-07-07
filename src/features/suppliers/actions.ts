@@ -189,6 +189,7 @@ export async function createCompra(
   items: CompraItemFormValues[],
   ivaRate: number = 0,
   descuentoPct: number = 0,
+  percepciones: number = 0,
 ): Promise<{ id?: string; error?: string }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -203,6 +204,9 @@ export async function createCompra(
       notes: notes || null,
       iva_rate: ivaRate,
       descuento_pct: descuentoPct,
+      // El trigger on_compra_item_insert lee percepciones al calcular el total
+      // — por eso lo seteamos ANTES de insertar los items.
+      percepciones,
     })
     .select('id')
     .single()
@@ -276,6 +280,7 @@ export async function updateCompra(
   items: CompraItemFormValues[],
   ivaRate: number = 0,
   descuentoPct: number = 0,
+  percepciones: number = 0,
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -288,6 +293,9 @@ export async function updateCompra(
       notes: notes || null,
       iva_rate: ivaRate,
       descuento_pct: descuentoPct,
+      // Igual que en create: percepciones se lee dentro del trigger cuando se
+      // re-insertan los items abajo, asi que hay que setearlo antes.
+      percepciones,
     })
     .eq('id', compraId)
 
