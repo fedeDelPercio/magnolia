@@ -195,13 +195,11 @@ export async function eliminarMovimientoDigital(id: string): Promise<{ error?: s
     .maybeSingle()
   if (readErr) return { error: readErr.message }
   if (!row) return { error: 'Movimiento no encontrado' }
-  // Categorias que la card de cuenta digital ofrece cargar. Se pueden borrar
-  // solo si son manuales (sin ref_kind); los pagos a proveedor, sync Bistro y
-  // liquidaciones tienen ref_kind y se gestionan desde su feature de origen.
-  const CATEGORIAS_ELIMINABLES = ['Egreso digital', 'Ingreso digital', 'Pago a empleados']
-  const esManualDigital =
-    CATEGORIAS_ELIMINABLES.includes(row.categoria) && !row.ref_kind
-  if (!esManualDigital) {
+  // Cualquier caja_movimiento SIN ref_kind es un mov manual cargado por el
+  // user desde /caja (Egreso dialog) o la card digital. Se puede borrar. Con
+  // ref_kind: viene de pagos a proveedor, sync Bistro, o liquidaciones — se
+  // gestionan desde su feature de origen.
+  if (row.ref_kind) {
     return { error: 'Este movimiento no se puede eliminar desde acá' }
   }
 

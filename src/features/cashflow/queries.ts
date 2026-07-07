@@ -19,6 +19,10 @@ export type CajaMovimiento = Tables<'caja_movimientos'> & {
   cleared_at: string | null
   empleado_name: string | null
   bucket: CajaMovimientoBucket
+  // Solo movs manuales cargados desde /caja son eliminables desde acá. Los que
+  // vienen del sync (bistro_tx) o de otros features (pago_proveedor,
+  // liquidacion_empleado) se gestionan desde su feature de origen.
+  eliminable: boolean
 }
 
 export async function getCajaMovimientos(month: string): Promise<CajaMovimiento[]> {
@@ -101,6 +105,20 @@ export async function getCajaMovimientos(month: string): Promise<CajaMovimiento[
     const bucket: CajaMovimientoBucket = isGanancia
       ? 'ganancia_duenos'
       : (m.tipo as 'ingreso' | 'egreso')
+    // Eliminable = mov manual cargado desde /caja o desde la card de cuenta
+    // digital. Se dan las mismas 3 categorias que ofrece la card, mas los
+    // egresos comunes registrados desde EgresoDialog en /caja (categorias
+    // libres del user, sin ref_kind).
+    const CATEGORIAS_ELIMINABLES = new Set([
+      'Egreso digital', 'Ingreso digital', 'Pago a empleados',
+    ])
+    const eliminable = !m.ref_kind && (
+      CATEGORIAS_ELIMINABLES.has(m.categoria) ||
+      // Egresos manuales cargados desde EgresoDialog en /caja: cualquier cat
+      // libre (Compras, Servicios, etc.) queda eliminable siempre que no tenga
+      // ref_kind (o sea que no venga vinculado a otro feature).
+      m.tipo === 'egreso'
+    )
     return {
       ...m,
       metodo: hit?.metodo ?? null,
@@ -108,6 +126,7 @@ export async function getCajaMovimientos(month: string): Promise<CajaMovimiento[
       cleared_at: hit?.cleared_at ?? null,
       empleado_name: empName,
       bucket,
+      eliminable,
     }
   })
 
@@ -131,6 +150,7 @@ export async function getCajaMovimientos(month: string): Promise<CajaMovimiento[
     cleared_at: null,
     empleado_name: null,
     bucket: 'traspaso',
+    eliminable: false,
   }))
 
   // Merge y sort por fecha desc + created_at desc

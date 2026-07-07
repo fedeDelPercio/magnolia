@@ -1,12 +1,15 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import {
   ChevronLeftIcon, ChevronRightIcon, PlusIcon,
   ArrowUpIcon, ArrowDownIcon, ArrowLeftRightIcon, PiggyBankIcon,
-  XIcon,
+  XIcon, Trash2Icon,
 } from 'lucide-react'
+
+import { eliminarMovimientoDigital } from '../caja-mayor-actions'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -89,6 +92,21 @@ const ALL_CAT = '__all__'
 export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorPct = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital, cajaCategorias = [] }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [isDeleting, startDelete] = useTransition()
+
+  function handleDelete(m: { id: string; categoria: string; descripcion: string | null; monto: number }) {
+    const desc = m.descripcion || m.categoria
+    if (!confirm(`Eliminar "${desc}" por ${formatCurrency(m.monto)}?`)) return
+    setDeletingId(m.id)
+    startDelete(async () => {
+      const res = await eliminarMovimientoDigital(m.id)
+      setDeletingId(null)
+      if (res.error) { toast.error(res.error); return }
+      toast.success('Movimiento eliminado')
+      router.refresh()
+    })
+  }
 
   // Filtros locales sobre la lista. No tocan los KPIs del mes (Ingresos/Egresos/
   // Resultado) para que esos sigan siendo la foto mensual estable — los filtros
@@ -402,6 +420,18 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
                   <Badge variant="outline" className={style.badge}>
                     {style.sign} {formatCurrency(m.monto)}
                   </Badge>
+                  {m.eliminable && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(m)}
+                      disabled={deletingId === m.id && isDeleting}
+                      className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                      aria-label="Eliminar movimiento"
+                      title="Eliminar movimiento"
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             )
