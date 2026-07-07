@@ -151,6 +151,11 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
 
   function isEgresoDigital(r: { ref_kind: string | null; ref_id: string | null; categoria: string }): boolean {
     if (r.categoria === 'Egreso digital') return true
+    // Egresos MANUALES clasificados como "Pago a empleados" (o cualquier otra
+    // categoria explicita) desde la card de cuenta digital tambien descuentan
+    // saldo digital. Los del sync Bistrosoft tienen ref_kind='bistro_tx' y NO
+    // caen aca (salieron de caja efectivo, no digital).
+    if (r.categoria === 'Pago a empleados' && !r.ref_kind) return true
     if (r.ref_kind === 'pago_proveedor' && r.ref_id) {
       return pagoMetodo.get(r.ref_id) === 'transferencia'
     }
@@ -214,7 +219,7 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       // Solo los manuales (sin ref_kind) son eliminables desde esta card.
       // Los pagos a proveedor se manejan desde /proveedores para no romper
       // la ref circular pago<->caja_movimiento.
-      eliminable: r.categoria === 'Egreso digital' && !r.ref_kind,
+      eliminable: !r.ref_kind && (r.categoria === 'Egreso digital' || r.categoria === 'Pago a empleados'),
     })
   }
   for (const t of traspasosMes.data ?? []) {

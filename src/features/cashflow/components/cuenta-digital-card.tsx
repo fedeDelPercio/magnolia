@@ -149,6 +149,15 @@ function DetalleDialog({
   )
 }
 
+// Categorias que la card ofrece para egresos digitales. La default es
+// "Egreso digital" (caso general: transferencia, MP, banco). "Pago a
+// empleados" impacta labor cost en el dashboard.
+const EGRESO_CATEGORIAS = [
+  { value: 'Egreso digital', label: 'Egreso digital (default)' },
+  { value: 'Pago a empleados', label: 'Pago a empleados' },
+  { value: 'Pago a proveedores', label: 'Pago a proveedores' },
+] as const
+
 function MovimientoDigitalDialog({
   tipo, open, onOpenChange,
 }: { tipo: 'ingreso' | 'egreso'; open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -156,6 +165,7 @@ function MovimientoDigitalDialog({
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [categoria, setCategoria] = useState<string>('Egreso digital')
   const [saving, setSaving] = useState(false)
 
   const label = tipo === 'ingreso' ? 'ingreso' : 'egreso'
@@ -167,6 +177,7 @@ function MovimientoDigitalDialog({
     setFecha(new Date().toISOString().slice(0, 10))
     setMonto('')
     setDescripcion('')
+    setCategoria('Egreso digital')
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -174,13 +185,13 @@ function MovimientoDigitalDialog({
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
     setSaving(true)
-    const payload = { fecha, monto: m, descripcion: descripcion.trim() || (tipo === 'ingreso' ? 'Ingreso digital' : 'Egreso digital') }
+    const descripcionFinal = descripcion.trim() || (tipo === 'ingreso' ? 'Ingreso digital' : categoria)
     const res = tipo === 'ingreso'
-      ? await registrarIngresoDigital(payload)
-      : await registrarEgresoDigital(payload)
+      ? await registrarIngresoDigital({ fecha, monto: m, descripcion: descripcionFinal })
+      : await registrarEgresoDigital({ fecha, monto: m, descripcion: descripcionFinal, categoria })
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
-    toast.success(tipo === 'ingreso' ? 'Ingreso digital registrado' : 'Egreso digital registrado')
+    toast.success(tipo === 'ingreso' ? 'Ingreso digital registrado' : `${categoria} registrado`)
     reset()
     onOpenChange(false)
     router.refresh()
@@ -201,6 +212,26 @@ function MovimientoDigitalDialog({
             <Label htmlFor="dig-monto">Monto</Label>
             <Input id="dig-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
           </div>
+          {tipo === 'egreso' && (
+            <div className="space-y-1">
+              <Label htmlFor="dig-cat">Categoría</Label>
+              <select
+                id="dig-cat"
+                value={categoria}
+                onChange={(e) => setCategoria(e.target.value)}
+                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                {EGRESO_CATEGORIAS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+              {categoria === 'Pago a empleados' && (
+                <p className="text-[11px] text-emerald-700">
+                  Se suma al labor cost del dashboard.
+                </p>
+              )}
+            </div>
+          )}
           <div className="space-y-1">
             <Label htmlFor="dig-desc">Descripción (opcional)</Label>
             <Textarea id="dig-desc" placeholder={placeholder} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />

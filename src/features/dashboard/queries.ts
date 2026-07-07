@@ -182,9 +182,12 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
   // Egresos totales del período (todos los movimientos de caja tipo egreso)
   const egresosTotales = (sueldosRes.data ?? []).reduce((s, m) => s + (Number(m.monto) || 0), 0)
 
-  // Labor cost: sumar egresos cuya categoría contenga "sueldo"
+  // Labor cost: todo lo clasificado como "Pago a empleados". La categoria
+  // llega por 3 caminos: sync Bistrosoft (auto-detecta "PAGO A PROVEEDORES -
+  // sueldos"), egreso digital cargado con esa cat, o egreso caja mayor
+  // cargado con esa cat.
   const laborCostMonto = (sueldosRes.data ?? [])
-    .filter((m) => (m.categoria ?? '').toLowerCase().includes('sueldo'))
+    .filter((m) => m.categoria === 'Pago a empleados')
     .reduce((s, m) => s + (Number(m.monto) || 0), 0)
   const laborCostPct = facturacion > 0 ? (laborCostMonto / facturacion) * 100 : null
   const primeCostPct =

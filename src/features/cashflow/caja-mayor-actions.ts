@@ -127,11 +127,11 @@ export async function deleteCajaMayorMovimiento(id: string): Promise<{ error?: s
 }
 
 // Registra un egreso de cuenta digital (transferencia bancaria, pago Mercado
-// Pago, etc.) que no este vinculado a un pago a proveedor. Crea un row en
-// caja_movimientos con categoria 'Egreso digital' para que se identifique
-// como digital en el calculo del saldo.
+// Pago, etc.) que no este vinculado a un pago a proveedor. Default de
+// categoria = 'Egreso digital' pero el user puede elegir otras (ej.
+// 'Pago a empleados' para que impacte en labor cost del dashboard).
 const egresoDigitalSchema = baseSchema.extend({
-  categoria: z.string().trim().max(80).optional(),
+  categoria: z.string().trim().min(1).max(80).optional(),
 })
 
 export type EgresoDigitalInput = z.infer<typeof egresoDigitalSchema>
@@ -149,11 +149,12 @@ export async function registrarEgresoDigital(input: EgresoDigitalInput): Promise
     tipo: 'egreso',
     monto: parsed.data.monto,
     descripcion: parsed.data.descripcion ?? null,
-    categoria: 'Egreso digital',
+    categoria: parsed.data.categoria ?? 'Egreso digital',
   })
 
   if (error) return { error: error.message }
   revalidatePath('/caja')
+  revalidatePath('/dashboard')
   return {}
 }
 
@@ -194,8 +195,12 @@ export async function eliminarMovimientoDigital(id: string): Promise<{ error?: s
     .maybeSingle()
   if (readErr) return { error: readErr.message }
   if (!row) return { error: 'Movimiento no encontrado' }
+  // Categorias que la card de cuenta digital ofrece cargar. Se pueden borrar
+  // solo si son manuales (sin ref_kind); los pagos a proveedor, sync Bistro y
+  // liquidaciones tienen ref_kind y se gestionan desde su feature de origen.
+  const CATEGORIAS_ELIMINABLES = ['Egreso digital', 'Ingreso digital', 'Pago a empleados']
   const esManualDigital =
-    (row.categoria === 'Egreso digital' || row.categoria === 'Ingreso digital') && !row.ref_kind
+    CATEGORIAS_ELIMINABLES.includes(row.categoria) && !row.ref_kind
   if (!esManualDigital) {
     return { error: 'Este movimiento no se puede eliminar desde acá' }
   }
