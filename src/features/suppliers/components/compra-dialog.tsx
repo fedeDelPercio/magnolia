@@ -348,7 +348,7 @@ export function CompraDialog({
           {/* IVA global + descuento */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-sm font-medium">IVA (default de todo el comprobante)</label>
+              <label className="text-sm font-medium">IVA General</label>
               <Select value={String(ivaRate)} onValueChange={(v) => setIvaRate(Number(v) as IvaRate)}>
                 <SelectTrigger className="h-8 text-sm">
                   <SelectValue>{IVA_RATE_LABELS[ivaRate]}</SelectValue>
@@ -377,56 +377,6 @@ export function CompraDialog({
               />
               <p className="text-[10px] text-muted-foreground">Se aplica al neto de cada línea.</p>
             </div>
-          </div>
-
-          {/* Percepciones: default monto directo (que es lo que va a hacer Caro
-              90% de las veces mirando la factura). Toggle a % para calcular
-              sobre el subtotal con IVA + descuento. */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Percepciones (opcional)</label>
-              <div className="inline-flex overflow-hidden rounded-md border text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setPercepMode('monto')}
-                  className={`px-2 py-0.5 transition-colors ${
-                    percepMode === 'monto' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  $ Monto
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPercepMode('pct')}
-                  className={`px-2 py-0.5 border-l transition-colors ${
-                    percepMode === 'pct' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  % Porcentaje
-                </button>
-              </div>
-            </div>
-            <div className="relative">
-              <Input
-                type="number"
-                min="0"
-                step={percepMode === 'monto' ? '0.01' : '0.001'}
-                className="h-8 text-sm pr-10"
-                placeholder="0"
-                value={percepInput}
-                onChange={(e) => setPercepInput(e.target.value)}
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                {percepMode === 'monto' ? '$' : '%'}
-              </span>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              {percepMode === 'monto'
-                ? 'Cargá el monto que figura en la factura como percepciones.'
-                : percepNum > 0
-                  ? `Se calcula sobre el subtotal con IVA y descuento (= ${formatCurrency(percepcionesMonto)}).`
-                  : 'Se calcula sobre el subtotal con IVA y descuento.'}
-            </p>
           </div>
 
           {/* Items */}
@@ -507,37 +457,6 @@ export function CompraDialog({
                     </div>
                   )
                 })}
-                <div className="px-3 py-2 space-y-0.5 text-sm">
-                  <div className="flex justify-between text-muted-foreground text-xs">
-                    <span>Neto</span>
-                    <span className="tabular-nums">{formatCurrency(pricing.neto)}</span>
-                  </div>
-                  {descuentoPct > 0 && (
-                    <div className="flex justify-between text-red-600 text-xs">
-                      <span>− Descuento ({descuentoPct}%)</span>
-                      <span className="tabular-nums">− {formatCurrency(pricing.descuento_monto)}</span>
-                    </div>
-                  )}
-                  {pricing.iva_monto > 0 && (
-                    <div className="flex justify-between text-muted-foreground text-xs">
-                      <span>+ IVA</span>
-                      <span className="tabular-nums">+ {formatCurrency(pricing.iva_monto)}</span>
-                    </div>
-                  )}
-                  {percepcionesMonto > 0 && (
-                    <div className="flex justify-between text-muted-foreground text-xs">
-                      <span>
-                        + Percepciones
-                        {percepMode === 'pct' && percepNum > 0 && ` (${percepNum}%)`}
-                      </span>
-                      <span className="tabular-nums">+ {formatCurrency(percepcionesMonto)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-medium pt-1 border-t">
-                    <span>Total</span>
-                    <span className="tabular-nums">{formatCurrency(totalFinal)}</span>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -720,6 +639,90 @@ export function CompraDialog({
               )
             })()}
           </div>
+
+          {/* Percepciones al final para que se cargue despues de tener los
+              items — el total resumido queda debajo reflejando ya la suma. */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Percepciones (opcional)</label>
+              <div className="inline-flex overflow-hidden rounded-md border text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setPercepMode('monto')}
+                  className={`px-2 py-0.5 transition-colors ${
+                    percepMode === 'monto' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  $ Monto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPercepMode('pct')}
+                  className={`px-2 py-0.5 border-l transition-colors ${
+                    percepMode === 'pct' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  % Porcentaje
+                </button>
+              </div>
+            </div>
+            <div className="relative">
+              <Input
+                type="number"
+                min="0"
+                step={percepMode === 'monto' ? '0.01' : '0.001'}
+                className="h-8 text-sm pr-10"
+                placeholder="0"
+                value={percepInput}
+                onChange={(e) => setPercepInput(e.target.value)}
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                {percepMode === 'monto' ? '$' : '%'}
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              {percepMode === 'monto'
+                ? 'Cargá el monto que figura en la factura como percepciones.'
+                : percepNum > 0
+                  ? `Se calcula sobre el subtotal con IVA y descuento (= ${formatCurrency(percepcionesMonto)}).`
+                  : 'Se calcula sobre el subtotal con IVA y descuento.'}
+            </p>
+          </div>
+
+          {/* Total final: solo cuando hay al menos un item cargado o pendiente. */}
+          {canSubmit && (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-0.5 text-sm">
+              <div className="flex justify-between text-muted-foreground text-xs">
+                <span>Neto</span>
+                <span className="tabular-nums">{formatCurrency(pricing.neto)}</span>
+              </div>
+              {descuentoPct > 0 && (
+                <div className="flex justify-between text-red-600 text-xs">
+                  <span>− Descuento ({descuentoPct}%)</span>
+                  <span className="tabular-nums">− {formatCurrency(pricing.descuento_monto)}</span>
+                </div>
+              )}
+              {pricing.iva_monto > 0 && (
+                <div className="flex justify-between text-muted-foreground text-xs">
+                  <span>+ IVA</span>
+                  <span className="tabular-nums">+ {formatCurrency(pricing.iva_monto)}</span>
+                </div>
+              )}
+              {percepcionesMonto > 0 && (
+                <div className="flex justify-between text-muted-foreground text-xs">
+                  <span>
+                    + Percepciones
+                    {percepMode === 'pct' && percepNum > 0 && ` (${percepNum}%)`}
+                  </span>
+                  <span className="tabular-nums">+ {formatCurrency(percepcionesMonto)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-medium pt-1 border-t">
+                <span>Total</span>
+                <span className="tabular-nums">{formatCurrency(totalFinal)}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
