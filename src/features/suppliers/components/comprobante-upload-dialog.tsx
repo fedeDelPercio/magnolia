@@ -81,9 +81,16 @@ export function ComprobanteUploadDialog({
 }: Props) {
   const [ivaRate, setIvaRate] = useState<IvaRate>(proveedorIvaRate)
   const [descuentoPct, setDescuentoPct] = useState<number>(proveedorDescuentoPct)
+  // Percepciones: mismo modelo que en compra-dialog. Default 'monto' porque
+  // el caso 90% es "mira la factura y copia el numero". Toggle a 'pct' calcula
+  // sobre el subtotal con IVA + descuento.
+  const [percepMode, setPercepMode] = useState<'monto' | 'pct'>('monto')
+  const [percepInput, setPercepInput] = useState<string>('')
   useEffect(() => {
     setIvaRate(proveedorIvaRate)
     setDescuentoPct(proveedorDescuentoPct)
+    setPercepMode('monto')
+    setPercepInput('')
   }, [proveedorIvaRate, proveedorDescuentoPct, open])
   const [stage, setStage] = useState<Stage>('pick')
   const [uploadId, setUploadId] = useState<string | null>(null)
@@ -348,6 +355,7 @@ export function ComprobanteUploadDialog({
       items,
       ivaRate,
       descuentoPct,
+      percepcionesMonto,
     )
     setSaving(false)
     if (result.error) {
@@ -370,6 +378,11 @@ export function ComprobanteUploadDialog({
     ivaRate,
     descuentoPct,
   )
+  const percepNum = parseFloat(percepInput) || 0
+  const percepcionesMonto = percepMode === 'monto'
+    ? percepNum
+    : pricing.total * (percepNum / 100)
+  const totalFinal = pricing.total + percepcionesMonto
   const aplicables = lines.filter((l) => !l.discarded && l.assignedInsumoId && parseFloat(l.qtyInput) > 0 && parseFloat(l.totalInput) > 0).length
 
   return (
@@ -470,6 +483,52 @@ export function ComprobanteUploadDialog({
                 />
                 <p className="text-[10px] text-muted-foreground">
                   Se aplica al neto de cada línea.
+                </p>
+              </div>
+              <div className="space-y-1 col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium">Percepciones (opcional)</label>
+                  <div className="inline-flex overflow-hidden rounded-md border text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setPercepMode('monto')}
+                      className={`px-2 py-0.5 transition-colors ${
+                        percepMode === 'monto' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                      }`}
+                    >
+                      $ Monto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPercepMode('pct')}
+                      className={`px-2 py-0.5 border-l transition-colors ${
+                        percepMode === 'pct' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                      }`}
+                    >
+                      % Porcentaje
+                    </button>
+                  </div>
+                </div>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    step={percepMode === 'monto' ? '0.01' : '0.001'}
+                    className="h-8 text-xs pr-10"
+                    placeholder="0"
+                    value={percepInput}
+                    onChange={(e) => setPercepInput(e.target.value)}
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                    {percepMode === 'monto' ? '$' : '%'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  {percepMode === 'monto'
+                    ? 'Cargá el monto que figura en la factura como percepciones.'
+                    : percepNum > 0
+                      ? `Se calcula sobre el subtotal con IVA y descuento (= ${formatCurrency(percepcionesMonto)}).`
+                      : 'Se calcula sobre el subtotal con IVA y descuento.'}
                 </p>
               </div>
             </div>
@@ -690,9 +749,18 @@ export function ComprobanteUploadDialog({
                   <span className="tabular-nums">+ {formatCurrency(pricing.iva_monto)}</span>
                 </div>
               )}
+              {percepcionesMonto > 0 && (
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>
+                    + Percepciones
+                    {percepMode === 'pct' && percepNum > 0 && ` (${percepNum}%)`}
+                  </span>
+                  <span className="tabular-nums">+ {formatCurrency(percepcionesMonto)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-medium pt-1 border-t">
                 <span>Total a pagar</span>
-                <span className="tabular-nums text-emerald-700">{formatCurrency(pricing.total)}</span>
+                <span className="tabular-nums text-emerald-700">{formatCurrency(totalFinal)}</span>
               </div>
             </div>
           </div>

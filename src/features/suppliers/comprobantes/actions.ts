@@ -151,6 +151,7 @@ export async function applyComprobante(
   items: ApplyItem[],
   ivaRate: number = 0,
   descuentoPct: number = 0,
+  percepciones: number = 0,
 ): Promise<{ compraId?: string; error?: string }> {
   if (items.length === 0) return { error: 'No hay items para registrar' }
 
@@ -174,6 +175,9 @@ export async function applyComprobante(
       notes: notes || null,
       iva_rate: ivaRate,
       descuento_pct: descuentoPct,
+      // El trigger on_compra_item_insert va a sumar percepciones al total
+      // cuando se inserten los items abajo — por eso lo seteamos ahora.
+      percepciones,
       comprobante_url: upload?.storage_path ?? null,
       comprobante_meta: upload ? ({ source: 'ocr', model: upload.ai_model, upload_id: uploadId } as Json) : null,
     })
