@@ -77,13 +77,22 @@ function DetalleDialog({
 
   function handleDelete(id: string, descripcion: string, monto: number) {
     if (!confirm(`Eliminar "${descripcion}" por ${formatCurrency(monto)}?\n\nEl saldo va a volver a la cuenta digital.`)) return
+    // Optimistic UX: marcamos como pending y disparamos en background.
+    // Si la conexion es lenta, el user puede seguir usando la app en vez
+    // de quedarse mirando un spinner por 30+ segundos.
     setDeletingId(id)
+    const toastId = toast.loading(`Eliminando "${descripcion}"...`)
     startTransition(async () => {
-      const res = await eliminarMovimientoDigital(id)
-      setDeletingId(null)
-      if (res.error) { toast.error(res.error); return }
-      toast.success('Egreso eliminado — saldo restaurado')
-      router.refresh()
+      try {
+        const res = await eliminarMovimientoDigital(id)
+        setDeletingId(null)
+        if (res.error) { toast.error(res.error, { id: toastId }); return }
+        toast.success('Eliminado — saldo restaurado', { id: toastId })
+        router.refresh()
+      } catch {
+        setDeletingId(null)
+        toast.error('Error de conexión — no se pudo eliminar. Intentá de nuevo.', { id: toastId })
+      }
     })
   }
 
@@ -166,7 +175,6 @@ function MovimientoDigitalDialog({
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [categoria, setCategoria] = useState<string>('Egreso digital')
-  const [saving, setSaving] = useState(false)
 
   const label = tipo === 'ingreso' ? 'ingreso' : 'egreso'
   const placeholder = tipo === 'ingreso'
@@ -184,17 +192,28 @@ function MovimientoDigitalDialog({
     e.preventDefault()
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
-    setSaving(true)
     const descripcionFinal = descripcion.trim() || (tipo === 'ingreso' ? 'Ingreso digital' : categoria)
-    const res = tipo === 'ingreso'
-      ? await registrarIngresoDigital({ fecha, monto: m, descripcion: descripcionFinal })
-      : await registrarEgresoDigital({ fecha, monto: m, descripcion: descripcionFinal, categoria })
-    setSaving(false)
-    if (res.error) { toast.error(res.error); return }
-    toast.success(tipo === 'ingreso' ? 'Ingreso digital registrado' : `${categoria} registrado`)
+    // Cerramos el modal AL TOQUE aunque la request tarde. Con red mala esto
+    // evita que quede pensando 30+ segundos. Un toast persistente muestra el
+    // progreso y confirma o revierte cuando termina.
+    const snapshotFecha = fecha
+    const snapshotMonto = m
+    const snapshotCat = categoria
     reset()
     onOpenChange(false)
-    router.refresh()
+    const toastId = toast.loading(
+      `Registrando ${tipo === 'ingreso' ? 'ingreso' : 'egreso'} de ${formatCurrency(snapshotMonto)}...`,
+    )
+    try {
+      const res = tipo === 'ingreso'
+        ? await registrarIngresoDigital({ fecha: snapshotFecha, monto: snapshotMonto, descripcion: descripcionFinal })
+        : await registrarEgresoDigital({ fecha: snapshotFecha, monto: snapshotMonto, descripcion: descripcionFinal, categoria: snapshotCat })
+      if (res.error) { toast.error(res.error, { id: toastId }); return }
+      toast.success(tipo === 'ingreso' ? 'Ingreso registrado' : `${snapshotCat} registrado`, { id: toastId })
+      router.refresh()
+    } catch {
+      toast.error('Error de conexión — no se pudo registrar. Intentá de nuevo.', { id: toastId })
+    }
   }
 
   return (
@@ -237,8 +256,8 @@ function MovimientoDigitalDialog({
             <Textarea id="dig-desc" placeholder={placeholder} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : `Registrar ${label}`}</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="submit">Registrar {label}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

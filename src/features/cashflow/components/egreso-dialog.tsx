@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -10,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
+import { formatCurrency } from '@/lib/format'
 import { cajaEgresoSchema, type CajaEgresoFormValues } from '@/features/suppliers/schemas'
 import { createEgreso } from '../actions'
 
@@ -31,6 +33,7 @@ const CATEGORIAS = [
 ]
 
 export function EgresoDialog({ open, onOpenChange }: Props) {
+  const router = useRouter()
   const form = useForm<CajaEgresoFormValues>({
     resolver: zodResolver(cajaEgresoSchema) as Resolver<CajaEgresoFormValues>,
     defaultValues: { fecha: todayStr(), categoria: '', monto: 0, descripcion: '' },
@@ -41,12 +44,21 @@ export function EgresoDialog({ open, onOpenChange }: Props) {
   }, [open, form])
 
   async function onSubmit(values: CajaEgresoFormValues) {
-    const result = await createEgreso(values)
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success('Egreso registrado')
-      onOpenChange(false)
+    // Cerramos el modal AL TOQUE y disparamos la request en background —
+    // asi con red lenta la user puede seguir laburando en vez de quedarse
+    // 30+ segundos con el spinner colgado.
+    onOpenChange(false)
+    const toastId = toast.loading(`Registrando ${values.categoria} de ${formatCurrency(values.monto)}...`)
+    try {
+      const result = await createEgreso(values)
+      if (result.error) {
+        toast.error(result.error, { id: toastId })
+      } else {
+        toast.success('Egreso registrado', { id: toastId })
+        router.refresh()
+      }
+    } catch {
+      toast.error('Error de conexión — no se pudo registrar. Intentá de nuevo.', { id: toastId })
     }
   }
 
@@ -121,9 +133,7 @@ export function EgresoDialog({ open, onOpenChange }: Props) {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Guardando...' : 'Registrar'}
-              </Button>
+              <Button type="submit">Registrar</Button>
             </DialogFooter>
           </form>
         </Form>

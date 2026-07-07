@@ -99,12 +99,18 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
     const desc = m.descripcion || m.categoria
     if (!confirm(`Eliminar "${desc}" por ${formatCurrency(m.monto)}?`)) return
     setDeletingId(m.id)
+    const toastId = toast.loading(`Eliminando "${desc}"...`)
     startDelete(async () => {
-      const res = await eliminarMovimientoDigital(m.id)
-      setDeletingId(null)
-      if (res.error) { toast.error(res.error); return }
-      toast.success('Movimiento eliminado')
-      router.refresh()
+      try {
+        const res = await eliminarMovimientoDigital(m.id)
+        setDeletingId(null)
+        if (res.error) { toast.error(res.error, { id: toastId }); return }
+        toast.success('Movimiento eliminado', { id: toastId })
+        router.refresh()
+      } catch {
+        setDeletingId(null)
+        toast.error('Error de conexión — no se pudo eliminar. Intentá de nuevo.', { id: toastId })
+      }
     })
   }
 
