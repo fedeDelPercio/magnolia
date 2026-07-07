@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import { formatCurrency } from '@/lib/format'
+import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoKind } from '@/features/catalog/insumos/schemas'
 import { createInsumo, getDespiecesByParents } from '@/features/catalog/insumos/actions'
 import { createCompra, updateCompra } from '../actions'
@@ -279,6 +280,31 @@ export function CompraDialog({
   const totalFinal = pricing.total + percepcionesMonto
   const canSubmit = items.length > 0 || pendingItem !== null
 
+  async function attemptSubmit(
+    mapped: Array<{ insumo_id: string; qty: number; unit: Tables<'insumos'>['unit']; unit_price: number; start_tracking: boolean; iva_rate: IvaRate | null }>,
+    toastId: string | number,
+  ): Promise<void> {
+    try {
+      const result = await runWithResilience(
+        () => isEdit
+          ? updateCompra(compra!.id, proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto)
+          : createCompra(proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto),
+        { onRetrying: () => toast.loading('Sin señal — reintentando...', { id: toastId }) },
+      )
+      if (result.error) {
+        toast.error(result.error, { id: toastId })
+      } else {
+        toast.success(isEdit ? 'Compra actualizada' : 'Compra registrada. Precios actualizados.', { id: toastId })
+      }
+    } catch (err) {
+      toast.error(classifyNetworkError(err), {
+        id: toastId,
+        duration: 15_000,
+        action: { label: 'Reintentar', onClick: () => attemptSubmit(mapped, toast.loading('Reintentando...')) },
+      })
+    }
+  }
+
   async function handleSubmit() {
     const allItems = pendingItem ? [...items, pendingItem] : items
     if (allItems.length === 0) {
@@ -293,25 +319,11 @@ export function CompraDialog({
       start_tracking: i.start_tracking ?? false,
       iva_rate: i.iva_rate,
     }))
-    // Cerramos el modal AL TOQUE y disparamos la request en background —
-    // en /proveedores con red mala las compras se colgaban 30-60 segundos.
-    // Un toast persistente muestra el progreso; si falla, avisa claro.
     onOpenChange(false)
     const toastId = toast.loading(
       isEdit ? 'Actualizando compra...' : `Registrando compra de ${formatCurrency(totalFinal)}...`,
     )
-    try {
-      const result = isEdit
-        ? await updateCompra(compra!.id, proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto)
-        : await createCompra(proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto)
-      if (result.error) {
-        toast.error(result.error, { id: toastId })
-      } else {
-        toast.success(isEdit ? 'Compra actualizada' : 'Compra registrada. Precios actualizados.', { id: toastId })
-      }
-    } catch {
-      toast.error('Error de conexión — la compra no se pudo registrar. Intentá de nuevo.', { id: toastId })
-    }
+    await attemptSubmit(mapped, toastId)
   }
 
   const selectedInsumo = localInsumos.find((i) => i.id === newInsumoId)

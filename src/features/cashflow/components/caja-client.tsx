@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 
 import { eliminarMovimientoDigital } from '../caja-mayor-actions'
+import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -95,23 +96,32 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isDeleting, startDelete] = useTransition()
 
+  async function attemptDelete(id: string, desc: string, toastId: string | number): Promise<void> {
+    try {
+      const res = await runWithResilience(
+        () => eliminarMovimientoDigital(id),
+        { onRetrying: () => toast.loading('Sin señal — reintentando...', { id: toastId }) },
+      )
+      setDeletingId(null)
+      if (res.error) { toast.error(res.error, { id: toastId }); return }
+      toast.success('Movimiento eliminado', { id: toastId })
+      router.refresh()
+    } catch (err) {
+      setDeletingId(null)
+      toast.error(classifyNetworkError(err), {
+        id: toastId,
+        duration: 15_000,
+        action: { label: 'Reintentar', onClick: () => attemptDelete(id, desc, toast.loading('Reintentando...')) },
+      })
+    }
+  }
+
   function handleDelete(m: { id: string; categoria: string; descripcion: string | null; monto: number }) {
     const desc = m.descripcion || m.categoria
     if (!confirm(`Eliminar "${desc}" por ${formatCurrency(m.monto)}?`)) return
     setDeletingId(m.id)
     const toastId = toast.loading(`Eliminando "${desc}"...`)
-    startDelete(async () => {
-      try {
-        const res = await eliminarMovimientoDigital(m.id)
-        setDeletingId(null)
-        if (res.error) { toast.error(res.error, { id: toastId }); return }
-        toast.success('Movimiento eliminado', { id: toastId })
-        router.refresh()
-      } catch {
-        setDeletingId(null)
-        toast.error('Error de conexión — no se pudo eliminar. Intentá de nuevo.', { id: toastId })
-      }
-    })
+    startDelete(() => attemptDelete(m.id, desc, toastId))
   }
 
   // Filtros locales sobre la lista. No tocan los KPIs del mes (Ingresos/Egresos/

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
 import { formatCurrency } from '@/lib/format'
+import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { cajaEgresoSchema, type CajaEgresoFormValues } from '@/features/suppliers/schemas'
 import { createEgreso } from '../actions'
 
@@ -43,23 +44,31 @@ export function EgresoDialog({ open, onOpenChange }: Props) {
     if (open) form.reset({ fecha: todayStr(), categoria: '', monto: 0, descripcion: '' })
   }, [open, form])
 
-  async function onSubmit(values: CajaEgresoFormValues) {
-    // Cerramos el modal AL TOQUE y disparamos la request en background —
-    // asi con red lenta la user puede seguir laburando en vez de quedarse
-    // 30+ segundos con el spinner colgado.
-    onOpenChange(false)
-    const toastId = toast.loading(`Registrando ${values.categoria} de ${formatCurrency(values.monto)}...`)
+  async function attemptSubmit(values: CajaEgresoFormValues, toastId: string | number): Promise<void> {
     try {
-      const result = await createEgreso(values)
+      const result = await runWithResilience(
+        () => createEgreso(values),
+        { onRetrying: () => toast.loading('Sin señal — reintentando...', { id: toastId }) },
+      )
       if (result.error) {
         toast.error(result.error, { id: toastId })
       } else {
         toast.success('Egreso registrado', { id: toastId })
         router.refresh()
       }
-    } catch {
-      toast.error('Error de conexión — no se pudo registrar. Intentá de nuevo.', { id: toastId })
+    } catch (err) {
+      toast.error(classifyNetworkError(err), {
+        id: toastId,
+        duration: 15_000,
+        action: { label: 'Reintentar', onClick: () => attemptSubmit(values, toast.loading('Reintentando...')) },
+      })
     }
+  }
+
+  async function onSubmit(values: CajaEgresoFormValues) {
+    onOpenChange(false)
+    const toastId = toast.loading(`Registrando ${values.categoria} de ${formatCurrency(values.monto)}...`)
+    await attemptSubmit(values, toastId)
   }
 
   return (

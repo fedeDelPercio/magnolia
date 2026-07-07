@@ -14,6 +14,7 @@ import { formatCurrency } from '@/lib/format'
 import { UNIT_LABELS, type UnitKind } from '@/features/catalog/insumos/schemas'
 import { InsumoDialog } from '@/features/catalog/insumos/components/insumo-dialog'
 import type { InsumoWithProveedor } from '@/features/catalog/insumos/queries'
+import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { parseUploadedComprobante, applyComprobante, discardComprobante, refreshInsumoForComprobante, getComprobanteUploadPath, type ApplyItem } from '../comprobantes/actions'
 import { createInsumo, getInsumoFullForEdit, getDespiecesByParents } from '@/features/catalog/insumos/actions'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
@@ -337,6 +338,48 @@ export function ComprobanteUploadDialog({
     return items
   }
 
+  async function attemptApply(
+    args: {
+      uploadId: string
+      items: ApplyItem[]
+      fecha: string
+      dueDate: string
+      notes: string
+      ivaRate: IvaRate
+      descuentoPct: number
+      percepciones: number
+    },
+    toastId: string | number,
+  ): Promise<void> {
+    try {
+      const result = await runWithResilience(
+        () => applyComprobante(
+          args.uploadId,
+          proveedorId,
+          args.fecha,
+          args.dueDate || null,
+          args.notes || null,
+          args.items,
+          args.ivaRate,
+          args.descuentoPct,
+          args.percepciones,
+        ),
+        { onRetrying: () => toast.loading('Sin señal — reintentando...', { id: toastId }) },
+      )
+      if (result.error) {
+        toast.error(result.error, { id: toastId })
+        return
+      }
+      toast.success(`Compra registrada (${args.items.length} ítems)`, { id: toastId })
+    } catch (err) {
+      toast.error(classifyNetworkError(err), {
+        id: toastId,
+        duration: 15_000,
+        action: { label: 'Reintentar', onClick: () => attemptApply(args, toast.loading('Reintentando...')) },
+      })
+    }
+  }
+
   async function handleApply() {
     if (!uploadId) return
     const items = buildApplyItems()
@@ -345,34 +388,23 @@ export function ComprobanteUploadDialog({
       return
     }
     // Snapshot de lo necesario porque reset() limpia el estado antes que
-    // termine la request.
-    const snapUploadId = uploadId
+    // termine la request. Ademas queremos que el "Reintentar" use estos
+    // valores, no los del state que ya se limpio.
+    const args = {
+      uploadId,
+      items,
+      fecha,
+      dueDate,
+      notes,
+      ivaRate,
+      descuentoPct,
+      percepciones: percepcionesMonto,
+    }
     const snapItemsCount = items.length
-    // Cerramos el modal AL TOQUE. El OCR ya paso (fue durante 'parsing'),
-    // este es el INSERT final que con red mala se colgaba 30+ segundos.
     reset()
     onOpenChange(false)
     const toastId = toast.loading(`Registrando compra (${snapItemsCount} ítems)...`)
-    try {
-      const result = await applyComprobante(
-        snapUploadId,
-        proveedorId,
-        fecha,
-        dueDate || null,
-        notes || null,
-        items,
-        ivaRate,
-        descuentoPct,
-        percepcionesMonto,
-      )
-      if (result.error) {
-        toast.error(result.error, { id: toastId })
-        return
-      }
-      toast.success(`Compra registrada (${snapItemsCount} ítems)`, { id: toastId })
-    } catch {
-      toast.error('Error de conexión — la compra no se pudo registrar. Intentá de nuevo.', { id: toastId })
-    }
+    await attemptApply(args, toastId)
   }
 
   const pricing = computePricing(

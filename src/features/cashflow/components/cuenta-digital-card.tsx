@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { registrarEgresoDigital, registrarIngresoDigital, eliminarMovimientoDigital } from '../caja-mayor-actions'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
 
@@ -75,25 +76,31 @@ function DetalleDialog({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  async function attemptDelete(id: string, toastId: string | number): Promise<void> {
+    try {
+      const res = await runWithResilience(
+        () => eliminarMovimientoDigital(id),
+        { onRetrying: () => toast.loading('Sin señal — reintentando...', { id: toastId }) },
+      )
+      setDeletingId(null)
+      if (res.error) { toast.error(res.error, { id: toastId }); return }
+      toast.success('Eliminado — saldo restaurado', { id: toastId })
+      router.refresh()
+    } catch (err) {
+      setDeletingId(null)
+      toast.error(classifyNetworkError(err), {
+        id: toastId,
+        duration: 15_000,
+        action: { label: 'Reintentar', onClick: () => attemptDelete(id, toast.loading('Reintentando...')) },
+      })
+    }
+  }
+
   function handleDelete(id: string, descripcion: string, monto: number) {
     if (!confirm(`Eliminar "${descripcion}" por ${formatCurrency(monto)}?\n\nEl saldo va a volver a la cuenta digital.`)) return
-    // Optimistic UX: marcamos como pending y disparamos en background.
-    // Si la conexion es lenta, el user puede seguir usando la app en vez
-    // de quedarse mirando un spinner por 30+ segundos.
     setDeletingId(id)
     const toastId = toast.loading(`Eliminando "${descripcion}"...`)
-    startTransition(async () => {
-      try {
-        const res = await eliminarMovimientoDigital(id)
-        setDeletingId(null)
-        if (res.error) { toast.error(res.error, { id: toastId }); return }
-        toast.success('Eliminado — saldo restaurado', { id: toastId })
-        router.refresh()
-      } catch {
-        setDeletingId(null)
-        toast.error('Error de conexión — no se pudo eliminar. Intentá de nuevo.', { id: toastId })
-      }
-    })
+    startTransition(() => attemptDelete(id, toastId))
   }
 
   return (
@@ -188,32 +195,45 @@ function MovimientoDigitalDialog({
     setCategoria('Egreso digital')
   }
 
+  async function submitPayload(payload: {
+    fecha: string; monto: number; descripcion: string; categoria: string
+  }, toastId: string | number): Promise<void> {
+    try {
+      const res = await runWithResilience(
+        () => tipo === 'ingreso'
+          ? registrarIngresoDigital({ fecha: payload.fecha, monto: payload.monto, descripcion: payload.descripcion })
+          : registrarEgresoDigital(payload),
+        {
+          onRetrying: () => toast.loading('Sin señal — reintentando...', { id: toastId }),
+        },
+      )
+      if (res.error) { toast.error(res.error, { id: toastId }); return }
+      toast.success(tipo === 'ingreso' ? 'Ingreso registrado' : `${payload.categoria} registrado`, { id: toastId })
+      router.refresh()
+    } catch (err) {
+      toast.error(classifyNetworkError(err), {
+        id: toastId,
+        duration: 15_000,
+        action: { label: 'Reintentar', onClick: () => submitPayload(payload, toast.loading('Reintentando...')) },
+      })
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
     const descripcionFinal = descripcion.trim() || (tipo === 'ingreso' ? 'Ingreso digital' : categoria)
-    // Cerramos el modal AL TOQUE aunque la request tarde. Con red mala esto
-    // evita que quede pensando 30+ segundos. Un toast persistente muestra el
-    // progreso y confirma o revierte cuando termina.
-    const snapshotFecha = fecha
-    const snapshotMonto = m
-    const snapshotCat = categoria
+    const payload = { fecha, monto: m, descripcion: descripcionFinal, categoria }
+    // Cerramos el modal al toque y disparamos la request en background con
+    // retry automatico en fallos de red. El toast id se comparte entre
+    // intentos para que el user vea un solo status.
     reset()
     onOpenChange(false)
     const toastId = toast.loading(
-      `Registrando ${tipo === 'ingreso' ? 'ingreso' : 'egreso'} de ${formatCurrency(snapshotMonto)}...`,
+      `Registrando ${tipo === 'ingreso' ? 'ingreso' : 'egreso'} de ${formatCurrency(m)}...`,
     )
-    try {
-      const res = tipo === 'ingreso'
-        ? await registrarIngresoDigital({ fecha: snapshotFecha, monto: snapshotMonto, descripcion: descripcionFinal })
-        : await registrarEgresoDigital({ fecha: snapshotFecha, monto: snapshotMonto, descripcion: descripcionFinal, categoria: snapshotCat })
-      if (res.error) { toast.error(res.error, { id: toastId }); return }
-      toast.success(tipo === 'ingreso' ? 'Ingreso registrado' : `${snapshotCat} registrado`, { id: toastId })
-      router.refresh()
-    } catch {
-      toast.error('Error de conexión — no se pudo registrar. Intentá de nuevo.', { id: toastId })
-    }
+    await submitPayload(payload, toastId)
   }
 
   return (
