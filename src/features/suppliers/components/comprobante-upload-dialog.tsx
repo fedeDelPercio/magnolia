@@ -99,7 +99,6 @@ export function ComprobanteUploadDialog({
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<LineDraft[]>([])
   const [observaciones, setObservaciones] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
 
   // Insumos visibles para asignar (base + creados inline durante esta sesión)
   const [localInsumos, setLocalInsumos] = useState<InsumoOpt[]>(insumos)
@@ -345,26 +344,35 @@ export function ComprobanteUploadDialog({
       toast.error('Asigná insumo, cantidad y precio total a al menos una línea')
       return
     }
-    setSaving(true)
-    const result = await applyComprobante(
-      uploadId,
-      proveedorId,
-      fecha,
-      dueDate || null,
-      notes || null,
-      items,
-      ivaRate,
-      descuentoPct,
-      percepcionesMonto,
-    )
-    setSaving(false)
-    if (result.error) {
-      toast.error(result.error)
-      return
-    }
-    toast.success(`Compra registrada (${items.length} items)`)
+    // Snapshot de lo necesario porque reset() limpia el estado antes que
+    // termine la request.
+    const snapUploadId = uploadId
+    const snapItemsCount = items.length
+    // Cerramos el modal AL TOQUE. El OCR ya paso (fue durante 'parsing'),
+    // este es el INSERT final que con red mala se colgaba 30+ segundos.
     reset()
     onOpenChange(false)
+    const toastId = toast.loading(`Registrando compra (${snapItemsCount} ítems)...`)
+    try {
+      const result = await applyComprobante(
+        snapUploadId,
+        proveedorId,
+        fecha,
+        dueDate || null,
+        notes || null,
+        items,
+        ivaRate,
+        descuentoPct,
+        percepcionesMonto,
+      )
+      if (result.error) {
+        toast.error(result.error, { id: toastId })
+        return
+      }
+      toast.success(`Compra registrada (${snapItemsCount} ítems)`, { id: toastId })
+    } catch {
+      toast.error('Error de conexión — la compra no se pudo registrar. Intentá de nuevo.', { id: toastId })
+    }
   }
 
   const pricing = computePricing(
@@ -774,11 +782,11 @@ export function ComprobanteUploadDialog({
           )}
           {stage === 'review' && (
             <>
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Descartar
               </Button>
-              <Button type="button" onClick={handleApply} disabled={saving || aplicables === 0}>
-                {saving ? 'Guardando...' : `Registrar compra (${aplicables})`}
+              <Button type="button" onClick={handleApply} disabled={aplicables === 0}>
+                Registrar compra ({aplicables})
               </Button>
             </>
           )}

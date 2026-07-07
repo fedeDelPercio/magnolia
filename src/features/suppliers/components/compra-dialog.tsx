@@ -91,7 +91,6 @@ export function CompraDialog({
   // helper de UI, no persiste.
   const [percepMode, setPercepMode] = useState<'monto' | 'pct'>('monto')
   const [percepInput, setPercepInput] = useState<string>('')
-  const [saving, setSaving] = useState(false)
 
   // Insumos locales: base del prop + los creados inline en este dialog
   const [localInsumos, setLocalInsumos] = useState<InsumoOpt[]>(insumos)
@@ -294,16 +293,24 @@ export function CompraDialog({
       start_tracking: i.start_tracking ?? false,
       iva_rate: i.iva_rate,
     }))
-    setSaving(true)
-    const result = isEdit
-      ? await updateCompra(compra!.id, proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto)
-      : await createCompra(proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto)
-    setSaving(false)
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success(isEdit ? 'Compra actualizada.' : 'Compra registrada. Precios de insumos actualizados.')
-      onOpenChange(false)
+    // Cerramos el modal AL TOQUE y disparamos la request en background —
+    // en /proveedores con red mala las compras se colgaban 30-60 segundos.
+    // Un toast persistente muestra el progreso; si falla, avisa claro.
+    onOpenChange(false)
+    const toastId = toast.loading(
+      isEdit ? 'Actualizando compra...' : `Registrando compra de ${formatCurrency(totalFinal)}...`,
+    )
+    try {
+      const result = isEdit
+        ? await updateCompra(compra!.id, proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto)
+        : await createCompra(proveedorId, fecha, dueDate || null, notes || null, mapped, ivaRate, descuentoPct, percepcionesMonto)
+      if (result.error) {
+        toast.error(result.error, { id: toastId })
+      } else {
+        toast.success(isEdit ? 'Compra actualizada' : 'Compra registrada. Precios actualizados.', { id: toastId })
+      }
+    } catch {
+      toast.error('Error de conexión — la compra no se pudo registrar. Intentá de nuevo.', { id: toastId })
     }
   }
 
@@ -727,8 +734,8 @@ export function CompraDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={saving || !canSubmit}>
-            {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Registrar compra'}
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
+            {isEdit ? 'Guardar cambios' : 'Registrar compra'}
           </Button>
         </DialogFooter>
       </DialogContent>
