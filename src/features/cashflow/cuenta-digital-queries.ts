@@ -149,13 +149,19 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
   const pagoMetodo = new Map<string, string>()
   for (const p of pagosByMetodoRows.data ?? []) pagoMetodo.set(p.id, p.metodo ?? '')
 
+  // Categorias que la card de cuenta digital ofrece cargar. Todas
+  // representan plata que sale de la cuenta digital, asi que si se cargan
+  // manualmente (sin ref_kind) descuentan saldo. Los movs del sync
+  // Bistrosoft tienen ref_kind='bistro_tx' y no caen aca (salieron de caja
+  // efectivo, no digital).
+  const CATEGORIAS_DIGITALES_MANUALES = new Set([
+    'Egreso digital',
+    'Pago a empleados',
+    'Pago a proveedores',
+  ])
+
   function isEgresoDigital(r: { ref_kind: string | null; ref_id: string | null; categoria: string }): boolean {
-    if (r.categoria === 'Egreso digital') return true
-    // Egresos MANUALES clasificados como "Pago a empleados" (o cualquier otra
-    // categoria explicita) desde la card de cuenta digital tambien descuentan
-    // saldo digital. Los del sync Bistrosoft tienen ref_kind='bistro_tx' y NO
-    // caen aca (salieron de caja efectivo, no digital).
-    if (r.categoria === 'Pago a empleados' && !r.ref_kind) return true
+    if (!r.ref_kind && CATEGORIAS_DIGITALES_MANUALES.has(r.categoria)) return true
     if (r.ref_kind === 'pago_proveedor' && r.ref_id) {
       return pagoMetodo.get(r.ref_id) === 'transferencia'
     }
@@ -217,9 +223,9 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       descripcion: r.descripcion ?? r.categoria,
       source: 'caja_movimiento',
       // Solo los manuales (sin ref_kind) son eliminables desde esta card.
-      // Los pagos a proveedor se manejan desde /proveedores para no romper
-      // la ref circular pago<->caja_movimiento.
-      eliminable: !r.ref_kind && (r.categoria === 'Egreso digital' || r.categoria === 'Pago a empleados'),
+      // Los pagos a proveedor con ref_kind se manejan desde /proveedores
+      // para no romper la ref circular pago<->caja_movimiento.
+      eliminable: !r.ref_kind && CATEGORIAS_DIGITALES_MANUALES.has(r.categoria),
     })
   }
   for (const t of traspasosMes.data ?? []) {
