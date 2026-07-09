@@ -451,8 +451,12 @@ async function maybeCreateDerivedMovement(
   // detalle indica el destino. Discriminamos:
   //   - "Sueldos" (o variantes tipicas) → categoria 'Pago a empleados'
   //   - resto                            → categoria 'Pago a proveedores'
+  //
+  // sue[l!i1]dos? tolera typos comunes que hemos visto en el POS del cliente
+  // ("Sue!dos" con signo de exclamacion en vez de "l") — el "!" venia de un
+  // problema de encoding en Bistrosoft. Ampliamos tambien a empleados/personal.
   if (commentsUpper.includes('PAGO A PROVEEDORES')) {
-    const isSueldos = /\b(sueldo|salario|liquidacion|liquidaci[oó]n)/i.test(comments)
+    const isSueldos = /\b(sue[l!i1]dos?|salarios?|liquidaci[oó]n(es)?|n[oó]mina|jornales?|empleados?|personal)\b/i.test(comments)
     const categoria = isSueldos ? 'Pago a empleados' : 'Pago a proveedores'
     const { error } = await client
       .from('caja_movimientos')
