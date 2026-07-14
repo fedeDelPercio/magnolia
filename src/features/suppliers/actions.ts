@@ -356,9 +356,44 @@ export async function updateCompraStatus(
   proveedorId: string,
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+
+  // Cuando marcamos como 'pagada' con esta accion (menu "..." -> "Marcar
+  // como pagada"), garantizamos que exista al menos un pago que cubra el
+  // total. Si falta plata para cubrirlo, creamos un pago automatico con
+  // metodo='otro' y descripcion explicita para que:
+  //   - el saldo del proveedor cierre (fórmula = compras - pagos)
+  //   - la lista de pagos refleje que hubo movimiento (aunque sin detalle)
+  //   - el trigger pago_proveedor_to_caja lo registre en caja_movimientos
+  // Idempotente: si ya hay pagos suficientes, no crea nada.
+  if (status === 'pagada') {
+    const [{ data: compra }, { data: pagos }] = await Promise.all([
+      supabase.from('compras').select('total').eq('id', compraId).single(),
+      supabase.from('pagos_proveedor').select('monto').eq('compra_id', compraId),
+    ])
+    if (compra) {
+      const totalPagado = (pagos ?? []).reduce((s, p) => s + Number(p.monto), 0)
+      const faltante = Number(compra.total) - totalPagado
+      if (faltante > 0.01) {
+        const { error: pagoErr } = await supabase.from('pagos_proveedor').insert({
+          tenant_id: tenantId,
+          proveedor_id: proveedorId,
+          fecha: new Date().toISOString().slice(0, 10),
+          monto: faltante,
+          metodo: 'otro',
+          descripcion: 'Marcada como pagada sin detalle',
+          compra_id: compraId,
+        })
+        if (pagoErr) return { error: pagoErr.message }
+      }
+    }
+  }
+
   const { error } = await supabase.from('compras').update({ status }).eq('id', compraId)
   if (error) return { error: error.message }
+  revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
+  revalidatePath('/caja')
   return {}
 }
 
