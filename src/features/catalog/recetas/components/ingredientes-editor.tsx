@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useImperativeHandle, useState, type Ref } from 'react'
 import { useFieldArray, useFormContext } from 'react-hook-form'
 import { PlusIcon, TrashIcon, AlertTriangleIcon } from 'lucide-react'
 
@@ -35,11 +35,22 @@ type RecetaConCosto = Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yi
   total_cost?: number
 }
 
+export type IngredientesEditorHandle = {
+  /**
+   * Si el user dejo un ingrediente "pendiente" en la fila de agregar (con
+   * insumo/receta y cantidad completos) pero no toco el boton +, lo suma al
+   * form. Se llama desde el submit del dialog para no perder lo que la user
+   * penso que ya habia agregado.
+   */
+  flushPending: () => void
+}
+
 type Props = {
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
   recetas: RecetaConCosto[]
   currentRecetaId?: string
   readOnly?: boolean
+  ref?: Ref<IngredientesEditorHandle>
 }
 
 type NewIngState = {
@@ -56,7 +67,7 @@ const EMPTY_ING: NewIngState = {
   unit: 'kg',
 }
 
-export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly = false }: Props) {
+export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly = false, ref }: Props) {
   const form = useFormContext<FormWithIngredientes>()
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -64,6 +75,26 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
   })
 
   const [newIng, setNewIng] = useState<NewIngState>(EMPTY_ING)
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flushPending: () => {
+        if (!newIng.refId || !newIng.qty) return
+        const qty = parseFloat(newIng.qty)
+        if (isNaN(qty) || qty <= 0) return
+        append({
+          kind: newIng.kind,
+          insumo_id: newIng.kind === 'insumo' ? newIng.refId : undefined,
+          sub_receta_id: newIng.kind === 'receta' ? newIng.refId : undefined,
+          qty,
+          unit: newIng.unit,
+        })
+        setNewIng(EMPTY_ING)
+      },
+    }),
+    [newIng, append],
+  )
 
   const availableRecetas = recetas.filter((r) => r.id !== currentRecetaId)
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -34,7 +34,7 @@ import { Button } from '@/components/ui/button'
 
 import { recetaSchema, UNITS, UNIT_LABELS, type UnitKind, type RecetaFormValues } from '../schemas'
 import { createReceta, updateReceta } from '../actions'
-import { IngredientesEditor } from './ingredientes-editor'
+import { IngredientesEditor, type IngredientesEditorHandle } from './ingredientes-editor'
 import type { RecetaWithIngredientes } from '../queries'
 import type { Tables } from '@/types/database'
 
@@ -65,6 +65,7 @@ export function RecetaDialog({ open, onOpenChange, receta, mode, insumos, receta
   })
 
   const [editing, setEditing] = useState(mode !== 'view')
+  const editorRef = useRef<IngredientesEditorHandle>(null)
 
   useEffect(() => {
     if (!open) return
@@ -116,7 +117,18 @@ export function RecetaDialog({ open, onOpenChange, receta, mode, insumos, receta
         </DialogHeader>
 
         <Form {...form}>
-          <form id="receta-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            id="receta-form"
+            onSubmit={(e) => {
+              // Antes de submittear, hacemos flush del ingrediente pendiente
+              // que el user pudo haber dejado en la fila "agregar" sin
+              // apretar el boton +. append() de RHF actualiza sincronicamente
+              // el form state, asi que handleSubmit lo ve incluido.
+              editorRef.current?.flushPending()
+              form.handleSubmit(onSubmit)(e)
+            }}
+            className="space-y-4"
+          >
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -218,6 +230,7 @@ export function RecetaDialog({ open, onOpenChange, receta, mode, insumos, receta
             </div>
 
             <IngredientesEditor
+              ref={editorRef}
               insumos={insumos}
               recetas={recetas}
               currentRecetaId={receta?.id}
