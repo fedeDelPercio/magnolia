@@ -19,7 +19,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { UNITS, UNIT_LABELS, type UnitKind } from '../../insumos/schemas'
 import type { IngredienteFormValues } from '../schemas'
 import type { Tables } from '@/types/database'
-import { normalizeQty, unitsCompatible } from '../lib/unit-conversion'
+import { normalizeQty, unitsCompatible, compatibleUnitsFor } from '../lib/unit-conversion'
 import { formatCurrency } from '@/lib/format'
 
 // El form que contiene ingredientes puede ser el del producto o el de una
@@ -97,6 +97,21 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
   )
 
   const availableRecetas = recetas.filter((r) => r.id !== currentRecetaId)
+
+  // Unidad "target" del ingrediente/sub-receta actualmente seleccionado en la
+  // fila de agregar. La usamos para restringir el Select de "Unidad" a la
+  // misma familia (peso/vol/count/porcion). Si todavia no hay nada elegido,
+  // mostramos todas las unidades — no queremos un dropdown vacio.
+  function getTargetUnit(kind: 'insumo' | 'receta', refId: string): UnitKind | null {
+    if (!refId) return null
+    if (kind === 'insumo') return insumos.find((i) => i.id === refId)?.unit ?? null
+    return (recetas.find((r) => r.id === refId)?.yield_unit as UnitKind | undefined) ?? null
+  }
+
+  const newIngTarget = getTargetUnit(newIng.kind, newIng.refId)
+  const newIngUnitOptions = (newIngTarget
+    ? (compatibleUnitsFor(newIngTarget) as UnitKind[])
+    : [...UNITS])
 
   function handleKindChange(kind: 'insumo' | 'receta') {
     setNewIng({ ...EMPTY_ING, kind, unit: kind === 'insumo' ? 'kg' : 'u' })
@@ -336,7 +351,7 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {UNITS.map((u) => (
+                {newIngUnitOptions.map((u) => (
                   <SelectItem key={u} value={u} label={UNIT_LABELS[u]}>
                     {UNIT_LABELS[u]}
                   </SelectItem>
