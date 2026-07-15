@@ -55,6 +55,9 @@ export function RecetasClient({ recetas, insumos }: Props) {
         name: r.name,
         yield_unit: r.yield_unit,
         yield_qty: r.yield_qty,
+        // Necesario para que el IngredientesEditor pueda calcular el costo
+        // por linea cuando la sub-receta se usa dentro de otra receta.
+        total_cost: r.total_cost,
       })),
     [recetas],
   )
