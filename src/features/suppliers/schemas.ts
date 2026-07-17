@@ -111,6 +111,11 @@ export const compraItemSchema = z.object({
   // Si true Y el insumo no tenia track_stock activo, lo activa al crear la
   // compra y setea stock_inicial = qty.
   start_tracking: z.boolean().optional(),
+  // Si true Y el insumo tiene track_stock activo, lo desactiva al guardar
+  // (no toca stock_inicial ni stock_actual — solo apaga el control). Sirve
+  // para que la user pueda apagar tracking desde el dialog de compra sin
+  // ir al catalogo de insumos.
+  stop_tracking: z.boolean().optional(),
   // Override de IVA por linea. Si null / undefined, se usa el iva_rate global
   // de la compra (que a su vez viene del proveedor por default).
   iva_rate: z

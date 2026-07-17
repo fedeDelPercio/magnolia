@@ -62,6 +62,9 @@ type LineDraft = {
   // Si true, al aplicar la compra activamos track_stock=true en el insumo
   // (si no lo tenia) y seteamos stock_inicial = qty de esta compra.
   startTracking: boolean
+  // Si true, al aplicar la compra apagamos track_stock=false en el insumo
+  // (si lo tenia). No toca stock_inicial ni stock_actual.
+  stopTracking: boolean
   // Override de IVA para esta linea. null = usa el global del comprobante.
   ivaRate: IvaRate | null
 }
@@ -252,6 +255,7 @@ export function ComprobanteUploadDialog({
           discarded: false,
           initialSource: it.match_source,
           startTracking: false,
+          stopTracking: false,
           ivaRate: null, // usa el global por defecto
         }
       }),
@@ -332,6 +336,7 @@ export function ComprobanteUploadDialog({
         unit_price: totalNeto / qtyBase,
         raw_text: line.detected.nombre,
         start_tracking: line.startTracking,
+        stop_tracking: line.stopTracking,
         iva_rate: line.ivaRate,
       })
     }
@@ -716,14 +721,24 @@ export function ComprobanteUploadDialog({
                           {insumo && qtyBase > 0 && (
                             <div className="col-span-12 mt-1.5">
                               {insumo.track_stock ? (
-                                <span
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700"
-                                  title="Este insumo ya contabiliza stock. La compra se sumará al stock actual."
+                                // Insumo CON tracking → toggle para apagarlo
+                                <button
+                                  type="button"
+                                  onClick={() => updateLine(idx, { stopTracking: !line.stopTracking })}
+                                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                    line.stopTracking
+                                      ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                      : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                  }`}
+                                  title={line.stopTracking
+                                    ? 'Se apagará el control de stock de este insumo al guardar'
+                                    : 'Este insumo contabiliza stock. Clic para apagarlo al guardar.'}
                                 >
                                   <PackageIcon className="size-3" />
-                                  Contabiliza stock
-                                </span>
+                                  {line.stopTracking ? 'Apagar control de stock' : 'Contabiliza stock'}
+                                </button>
                               ) : (
+                                // Insumo SIN tracking → toggle para activarlo con esta compra
                                 <button
                                   type="button"
                                   onClick={() => updateLine(idx, { startTracking: !line.startTracking })}

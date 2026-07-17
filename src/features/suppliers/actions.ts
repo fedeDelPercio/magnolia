@@ -217,6 +217,8 @@ export async function createCompra(
   // Sobre items ORIGINALES (no expanded). Si el insumo ya tenia track_stock=true
   // lo ignoramos para no pisar stock real.
   await activateTrackingForItems(supabase, items, compra.id)
+  // Y a la inversa: los que vinieron con stop_tracking, los apagamos.
+  await deactivateTrackingForItems(supabase, items)
 
   // Expandir padres con despiece a items por hijo, asi el stock view (que lee
   // de compra_items) suma directo a los hijos sin necesidad de triggers ni
@@ -268,6 +270,21 @@ async function activateTrackingForItems(
       .update({ track_stock: true, stock_inicial: it.qty, stock_inicial_compra_id: compraId })
       .eq('id', it.insumo_id)
   }
+}
+
+// Apaga track_stock=false en los insumos cuyos items vienen con stop_tracking.
+// No toca stock_inicial ni stock_actual; simplemente saca el control. Si mas
+// adelante la user quiere reactivar, lo hace desde el catalogo de insumos.
+async function deactivateTrackingForItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  items: CompraItemFormValues[],
+): Promise<void> {
+  const aApagar = items.filter((it) => it.stop_tracking && it.insumo_id).map((it) => it.insumo_id)
+  if (aApagar.length === 0) return
+  await supabase
+    .from('insumos')
+    .update({ track_stock: false })
+    .in('id', aApagar)
 }
 
 
@@ -324,6 +341,11 @@ export async function updateCompra(
   if (itemsErr) return { error: itemsErr.message }
 
   await updateInsumoPrices(supabase, tenantId, compraId, proveedorId, expanded, ivaRate, descuentoPct)
+
+  // En edit tambien procesamos activate/stop tracking, para que la user pueda
+  // corregir el flag sin tener que borrar y recrear la compra.
+  await activateTrackingForItems(supabase, items, compraId)
+  await deactivateTrackingForItems(supabase, items)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)

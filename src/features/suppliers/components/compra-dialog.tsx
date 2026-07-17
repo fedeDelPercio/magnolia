@@ -46,6 +46,9 @@ type LineItem = {
   // Activa tracking del insumo + setea stock_inicial = qty al guardar la compra.
   // Solo aplica si el insumo NO tiene track_stock activo todavia.
   start_tracking?: boolean
+  // Apaga tracking del insumo al guardar la compra. Solo aplica si el insumo
+  // TIENE track_stock activo. No toca stock_inicial ni stock_actual.
+  stop_tracking?: boolean
   // IVA override por linea. null = usa el global de la compra.
   iva_rate: IvaRate | null
 }
@@ -281,7 +284,7 @@ export function CompraDialog({
   const canSubmit = items.length > 0 || pendingItem !== null
 
   async function attemptSubmit(
-    mapped: Array<{ insumo_id: string; qty: number; unit: Tables<'insumos'>['unit']; unit_price: number; start_tracking: boolean; iva_rate: IvaRate | null }>,
+    mapped: Array<{ insumo_id: string; qty: number; unit: Tables<'insumos'>['unit']; unit_price: number; start_tracking: boolean; stop_tracking: boolean; iva_rate: IvaRate | null }>,
     toastId: string | number,
   ): Promise<void> {
     try {
@@ -317,6 +320,7 @@ export function CompraDialog({
       unit: i.unit,
       unit_price: i.unit_price,
       start_tracking: i.start_tracking ?? false,
+      stop_tracking: i.stop_tracking ?? false,
       iva_rate: i.iva_rate,
     }))
     onOpenChange(false)
@@ -406,7 +410,7 @@ export function CompraDialog({
               <div className="rounded-lg border divide-y text-sm">
                 {items.map((item, idx) => {
                   const insumoData = localInsumos.find((i) => i.id === item.insumo_id)
-                  const canStartTracking = insumoData && !insumoData.track_stock
+                  const hasTracking = insumoData?.track_stock ?? false
                   return (
                     <div key={idx} className="px-3 py-2">
                       <div className="flex items-center justify-between">
@@ -445,7 +449,8 @@ export function CompraDialog({
                         </div>
                       </div>
                       <div className="mt-1.5">
-                        {canStartTracking ? (
+                        {!hasTracking ? (
+                          // Insumo SIN tracking hoy → toggle para ACTIVAR con esta compra
                           <button
                             type="button"
                             onClick={() => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, start_tracking: !(it.start_tracking ?? false) } : it))}
@@ -464,13 +469,22 @@ export function CompraDialog({
                               : 'Activar control de stock'}
                           </button>
                         ) : (
-                          <span
-                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700"
-                            title="Este insumo ya contabiliza stock. La compra se sumará al stock actual."
+                          // Insumo CON tracking hoy → toggle para APAGARLO
+                          <button
+                            type="button"
+                            onClick={() => setItems((prev) => prev.map((it, i) => i === idx ? { ...it, stop_tracking: !(it.stop_tracking ?? false) } : it))}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                              item.stop_tracking
+                                ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            }`}
+                            title={item.stop_tracking
+                              ? 'Se apagará el control de stock de este insumo al guardar la compra'
+                              : 'Este insumo contabiliza stock. Clic para apagarlo al guardar.'}
                           >
                             <PackageIcon className="size-3" />
-                            Contabiliza stock
-                          </span>
+                            {item.stop_tracking ? 'Apagar control de stock' : 'Contabiliza stock'}
+                          </button>
                         )}
                       </div>
                     </div>

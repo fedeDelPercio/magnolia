@@ -134,6 +134,10 @@ export type ApplyItem = {
   // Si true Y el insumo no tenia track_stock activo, lo activa ahora y
   // setea stock_inicial = qty (de ESTA compra). Si ya tenia tracking, ignora.
   start_tracking?: boolean
+  // Si true Y el insumo tiene track_stock activo, lo apaga al guardar
+  // (no toca stock_inicial ni stock_actual, solo el flag). Simetria del
+  // start_tracking para que la user pueda apagar tracking desde la carga.
+  stop_tracking?: boolean
   // Override de IVA por linea. Si undefined/null, se usa el iva_rate global
   // de la compra. Valores validos: 0, 10.5, 21.
   iva_rate?: 0 | 10.5 | 21 | null
@@ -238,6 +242,17 @@ export async function applyComprobante(
         .update({ track_stock: true, stock_inicial: it.qty, stock_inicial_compra_id: compra.id })
         .eq('id', it.insumo_id)
     }
+  }
+
+  // Simetria: los items marcados con stop_tracking apagan el flag en el insumo.
+  const idsAApagar = items
+    .filter((it) => it.stop_tracking && it.insumo_id)
+    .map((it) => it.insumo_id)
+  if (idsAApagar.length > 0) {
+    await supabase
+      .from('insumos')
+      .update({ track_stock: false })
+      .in('id', idsAApagar)
   }
 
   // Si alguno de los items apunta a un insumo padre con despiece, lo expandimos
