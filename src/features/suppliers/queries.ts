@@ -27,6 +27,9 @@ export type SaldoProveedor = {
   iva_rate: number
   descuento_pct: number
   payment_rule: unknown
+  // 'efectivo' | 'transferencia' | 'cheque' | 'otro' | null. Precarga el
+  // PagoDialog para ahorrar clicks; se puede overridear por pago.
+  metodo_pago_default: string | null
 }
 
 export type ConceptoServicio = Tables<'proveedor_conceptos'>

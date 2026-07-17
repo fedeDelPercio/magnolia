@@ -42,6 +42,10 @@ export const PROVEEDOR_TIPO_LABELS: Record<ProveedorTipo, string> = {
   servicio: 'Servicios',
 }
 
+// Metodos de pago validos (mismos que pagos_proveedor.metodo).
+export const PAGO_METODOS = ['efectivo', 'transferencia', 'cheque', 'otro'] as const
+export type PagoMetodo = (typeof PAGO_METODOS)[number]
+
 export const proveedorSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido'),
   tipo: z.enum(PROVEEDOR_TIPOS).default('insumo'),
@@ -59,6 +63,10 @@ export const proveedorSchema = z.object({
   // % de descuento habitual del proveedor (default para nuevas compras).
   descuento_pct: z.number().min(0).max(100).default(0),
   payment_rule: paymentRuleSchema.nullable().optional(),
+  // Metodo de pago por defecto de este proveedor. Precarga el PagoDialog para
+  // ahorrarle a la user tener que elegir cada vez el mismo. null = sin
+  // default, el dialog cae al hardcoded 'transferencia'.
+  metodo_pago_default: z.enum(PAGO_METODOS).nullable().optional(),
 })
 export type ProveedorFormValues = z.infer<typeof proveedorSchema>
 

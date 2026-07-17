@@ -17,12 +17,15 @@ import {
   type PaymentRule,
   type IvaRate,
   type ProveedorTipo,
+  type PagoMetodo,
   DOW_LABELS,
   NTH_LABELS,
   IVA_RATES,
   IVA_RATE_LABELS,
   PROVEEDOR_TIPOS,
   PROVEEDOR_TIPO_LABELS,
+  PAGO_METODOS,
+  METODO_LABELS,
 } from '../schemas'
 import { createProveedor, updateProveedor } from '../actions'
 import type { Tables } from '@/types/database'
@@ -43,7 +46,12 @@ const DEFAULT: ProveedorFormValues = {
   iva_rate: 0,
   descuento_pct: 0,
   payment_rule: null,
+  metodo_pago_default: null,
 }
+
+// Sentinel para "sin default" en el Select (no admite value=""). El schema
+// guarda null; adentro del componente lo mapeamos a este string y viceversa.
+const NO_METODO = '__ninguno__'
 
 type RuleKind = 'none' | 'boletas' | 'monto' | 'fecha_dia_mes' | 'fecha_nth_dow'
 
@@ -80,6 +88,7 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
           iva_rate: (Number(proveedor.iva_rate) as IvaRate) ?? 0,
           descuento_pct: Number(proveedor.descuento_pct) || 0,
           payment_rule: (proveedor.payment_rule as PaymentRule | null) ?? null,
+          metodo_pago_default: (proveedor.metodo_pago_default as PagoMetodo | null) ?? null,
         }
       : DEFAULT
     form.reset(initial)
@@ -261,6 +270,43 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="metodo_pago_default"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Método de pago habitual</FormLabel>
+                  <Select
+                    value={field.value ?? NO_METODO}
+                    onValueChange={(v) => field.onChange(v === NO_METODO ? null : (v as PagoMetodo))}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue>
+                          {(v: string | null) => {
+                            if (!v || v === NO_METODO) return 'Sin default'
+                            return METODO_LABELS[v] ?? v
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value={NO_METODO} label="Sin default">Sin default</SelectItem>
+                      {PAGO_METODOS.map((m) => (
+                        <SelectItem key={m} value={m} label={METODO_LABELS[m]!}>
+                          {METODO_LABELS[m]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Pre-carga en cada pago nuevo. Se puede cambiar por pago individual.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="rounded-xl border bg-card p-4 space-y-3">
               <div>

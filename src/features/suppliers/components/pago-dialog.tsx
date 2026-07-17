@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
-import { pagoSchema, METODO_LABELS, type PagoFormValues } from '../schemas'
+import { pagoSchema, METODO_LABELS, type PagoFormValues, type PagoMetodo } from '../schemas'
 import { createPago } from '../actions'
 
 type Props = {
@@ -21,6 +21,9 @@ type Props = {
   proveedorId: string
   proveedorName: string
   defaultMonto?: number
+  // Metodo de pago habitual del proveedor. Pre-carga el Select — la user
+  // igual puede cambiarlo por pago individual. null/undefined → 'transferencia'.
+  defaultMetodo?: PagoMetodo | null
   compraId?: string
 }
 
@@ -42,19 +45,20 @@ function addMonths(isoDate: string, months: number): string {
 
 type Plazo = '30' | '60' | 'otro'
 
-export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, compraId }: Props) {
+export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, defaultMetodo, compraId }: Props) {
+  const initialMetodo: PagoMetodo = defaultMetodo ?? 'transferencia'
   const form = useForm<PagoFormValues>({
     resolver: zodResolver(pagoSchema) as Resolver<PagoFormValues>,
-    defaultValues: { fecha: todayStr(), monto: 0, metodo: 'transferencia', descripcion: '' },
+    defaultValues: { fecha: todayStr(), monto: 0, metodo: initialMetodo, descripcion: '' },
   })
   const [plazo, setPlazo] = useState<Plazo>('30')
 
   useEffect(() => {
     if (open) {
-      form.reset({ fecha: todayStr(), monto: defaultMonto ?? 0, metodo: 'transferencia', descripcion: '' })
+      form.reset({ fecha: todayStr(), monto: defaultMonto ?? 0, metodo: defaultMetodo ?? 'transferencia', descripcion: '' })
       setPlazo('30')
     }
-  }, [open, defaultMonto, form])
+  }, [open, defaultMonto, defaultMetodo, form])
 
   // Auto-recalcular due_date cuando cambia fecha o plazo (sólo si metodo=cheque)
   const metodo = form.watch('metodo')

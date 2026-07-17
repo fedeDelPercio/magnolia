@@ -2130,6 +2130,7 @@ export type Database = {
           discrimina_iva: boolean
           id: string
           iva_rate: number
+          metodo_pago_default: string | null
           name: string
           notes: string | null
           payment_rule: Json | null
@@ -2148,6 +2149,7 @@ export type Database = {
           discrimina_iva?: boolean
           id?: string
           iva_rate?: number
+          metodo_pago_default?: string | null
           name: string
           notes?: string | null
           payment_rule?: Json | null
@@ -2166,6 +2168,7 @@ export type Database = {
           discrimina_iva?: boolean
           id?: string
           iva_rate?: number
+          metodo_pago_default?: string | null
           name?: string
           notes?: string | null
           payment_rule?: Json | null
@@ -2644,6 +2647,7 @@ export type Database = {
           discrimina_iva: boolean | null
           id: string | null
           iva_rate: number | null
+          metodo_pago_default: string | null
           name: string | null
           notes: string | null
           payment_rule: Json | null

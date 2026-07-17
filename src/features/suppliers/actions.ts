@@ -34,6 +34,7 @@ export async function createProveedor(
     iva_rate: values.iva_rate ?? 0,
     descuento_pct: values.descuento_pct ?? 0,
     payment_rule: values.payment_rule ?? null,
+    metodo_pago_default: values.metodo_pago_default ?? null,
   })
 
   if (error) {
@@ -65,6 +66,7 @@ export async function updateProveedor(
       iva_rate: values.iva_rate ?? 0,
       descuento_pct: values.descuento_pct ?? 0,
       payment_rule: values.payment_rule ?? null,
+      metodo_pago_default: values.metodo_pago_default ?? null,
     })
     .eq('id', id)
 

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
-import { METODO_LABELS } from '../schemas'
+import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared } from '../actions'
 import { CompraDialog } from './compra-dialog'
 import { PagoDialog } from './pago-dialog'
@@ -669,6 +669,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
         proveedorId={proveedor.id}
         proveedorName={proveedor.name}
         defaultMonto={pagoDefaultMonto}
+        defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
       />
     </div>
