@@ -145,7 +145,10 @@ async function extractViaOpenRouter<T extends z.ZodType>(
   // Zod v4 tiene z.toJSONSchema built-in. OpenRouter espera JSON Schema
   // estandar bajo response_format.json_schema.schema (con strict:true fuerza
   // al modelo a devolver JSON que valide contra el schema).
-  const jsonSchema = z.toJSONSchema(opts.schema)
+  // Sanitizamos: strict mode (OpenAI/Anthropic-via-OpenRouter) rechaza
+  // keywords como `minimum`, `maximum`, `pattern`, `format`. Los sacamos del
+  // JSON schema porque igual validamos con Zod al volver — no perdemos nada.
+  const jsonSchema = stripUnsupportedKeywords(z.toJSONSchema(opts.schema))
 
   const body: Record<string, unknown> = {
     model,
@@ -204,4 +207,28 @@ async function extractViaOpenRouter<T extends z.ZodType>(
     return { error: `Schema validation fallo: ${result.error.message}`, rawResponse: json }
   }
   return { data: result.data as z.infer<T>, rawResponse: json }
+}
+
+// Strict structured-outputs (OpenAI y Anthropic-via-OpenRouter) rechazan
+// varios keywords de JSON Schema. Los sacamos recursivamente. La validacion
+// de rangos/patrones sigue vigente porque despues corremos Zod.safeParse.
+const UNSUPPORTED_KEYWORDS = new Set([
+  'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+  'minLength', 'maxLength', 'pattern',
+  'minItems', 'maxItems', 'uniqueItems',
+  'minProperties', 'maxProperties',
+  'format',
+])
+
+function stripUnsupportedKeywords(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(stripUnsupportedKeywords)
+  if (node && typeof node === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (UNSUPPORTED_KEYWORDS.has(k)) continue
+      out[k] = stripUnsupportedKeywords(v)
+    }
+    return out
+  }
+  return node
 }
