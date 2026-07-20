@@ -4,9 +4,13 @@ import { formatCurrency, formatCurrencyShort } from '@/lib/format'
 import type { DashboardOverview } from '../queries'
 
 export function HeroCards({ overview }: { overview: DashboardOverview }) {
-  const delta = overview.facturacionDeltaPct
-  const deltaPositive = delta !== null && delta > 0
-  const DeltaIcon = deltaPositive ? TrendingUpIcon : TrendingDownIcon
+  const facturacionDelta = overview.facturacionDeltaPct
+  const facturacionDeltaPositive = facturacionDelta !== null && facturacionDelta > 0
+  const FacturacionDeltaIcon = facturacionDeltaPositive ? TrendingUpIcon : TrendingDownIcon
+
+  const margenDelta = overview.margenOperativoDeltaPct
+  const margenDeltaPositive = margenDelta !== null && margenDelta > 0
+  const MargenDeltaIcon = margenDeltaPositive ? TrendingUpIcon : TrendingDownIcon
 
   return (
     <section className="grid grid-cols-1 gap-3 md:grid-cols-12">
@@ -25,21 +29,22 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
           </p>
         </div>
         <div className="relative mt-5">
-          {delta !== null ? (
+          {facturacionDelta !== null ? (
             <div
               className={cn(
                 'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-metric',
-                deltaPositive
+                facturacionDeltaPositive
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : 'border-rose-200 bg-rose-50 text-rose-700',
               )}
+              title="Mismo tramo del mes anterior"
             >
-              <DeltaIcon className="size-3" aria-hidden />
-              {deltaPositive ? '+' : ''}
-              {delta.toFixed(1)}% vs. período anterior
+              <FacturacionDeltaIcon className="size-3" aria-hidden />
+              {facturacionDeltaPositive ? '+' : ''}
+              {facturacionDelta.toFixed(1)}% vs. mes anterior
             </div>
           ) : (
-            <p className="text-xs italic text-muted-foreground">Sin período anterior comparable</p>
+            <p className="text-xs italic text-muted-foreground">Sin mes anterior comparable</p>
           )}
         </div>
       </div>
@@ -79,16 +84,35 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
             <p className="mt-4 num-editorial text-[3.25rem] leading-none text-foreground">
               {formatCurrencyShort(overview.margenOperativo)}
             </p>
-            <p className="mt-5 text-xs text-muted-foreground">
-              facturación − food{' '}
-              <span className="text-metric font-medium text-foreground">
-                {formatCurrencyShort(overview.foodCostMonto)}
-              </span>{' '}
-              − labor{' '}
-              <span className="text-metric font-medium text-foreground">
-                {formatCurrencyShort(overview.laborCostMonto)}
-              </span>
-            </p>
+            <div className="mt-5 space-y-1.5">
+              {margenDelta !== null ? (
+                <div
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-metric',
+                    margenDeltaPositive
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-rose-200 bg-rose-50 text-rose-700',
+                  )}
+                  title="Mismo tramo del mes anterior"
+                >
+                  <MargenDeltaIcon className="size-3" aria-hidden />
+                  {margenDeltaPositive ? '+' : ''}
+                  {margenDelta.toFixed(1)}% vs. mes anterior
+                </div>
+              ) : (
+                <p className="text-xs italic text-muted-foreground">Sin mes anterior comparable</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                facturación − food{' '}
+                <span className="text-metric font-medium text-foreground">
+                  {formatCurrencyShort(overview.foodCostMonto)}
+                </span>{' '}
+                − labor{' '}
+                <span className="text-metric font-medium text-foreground">
+                  {formatCurrencyShort(overview.laborCostMonto)}
+                </span>
+              </p>
+            </div>
           </>
         ) : (
           <>

@@ -3,16 +3,29 @@ import { getActiveTenantId } from '@/lib/tenant/server'
 
 /* ---------- helpers ---------- */
 
-/** Período anterior de igual duración (para deltas y comparaciones mes/mes). */
+/**
+ * Retrocede una cantidad de meses conservando el mismo dia calendario. Si el
+ * dia no existe en el mes destino (ej. 31 → febrero), cae al ultimo dia del
+ * mes destino — mismo criterio que la logica de vencimiento de cheques.
+ */
+function shiftMonth(iso: string, months: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const targetMonthIdx = (m! - 1) + months
+  const targetYear = y! + Math.floor(targetMonthIdx / 12)
+  const targetMonth = ((targetMonthIdx % 12) + 12) % 12
+  const lastDayOfTarget = new Date(targetYear, targetMonth + 1, 0).getDate()
+  const day = Math.min(d!, lastDayOfTarget)
+  return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/**
+ * Periodo de comparacion: mismo tramo del mes anterior. Ej. si el rango es
+ * 01/07-20/07, devuelve 01/06-20/06. Preserva estacionalidad mensual (fin de
+ * mes, quincenas, dias de la semana en el mes) — mas comparable que restar
+ * dias fijos hacia atras cuando la unidad de analisis es "mes en curso".
+ */
 function prevPeriod(from: string, to: string): { from: string; to: string } {
-  const fromD = new Date(from)
-  const toD = new Date(to)
-  const ms = toD.getTime() - fromD.getTime()
-  const prevTo = new Date(fromD.getTime())
-  const prevFrom = new Date(fromD.getTime() - ms)
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return { from: iso(prevFrom), to: iso(prevTo) }
+  return { from: shiftMonth(from, -1), to: shiftMonth(to, -1) }
 }
 
 /* ---------- types ---------- */
@@ -36,6 +49,8 @@ export type DashboardOverview = {
   resultadoCajaPct: number | null
   margenOperativo: number | null
   margenOperativoPct: number | null
+  margenOperativoPrev: number | null
+  margenOperativoDeltaPct: number | null
 }
 
 export type DailyVentas = {
@@ -95,24 +110,35 @@ export type InsumoCritico = {
 
 /* ---------- queries ---------- */
 
-export async function getDashboardOverview(from: string, to: string): Promise<DashboardOverview> {
-  const supabase = await createClient()
-  const tenantId = await getActiveTenantId()
-  const { from: prevFrom, to: prevTo } = prevPeriod(from, to)
+// Metricas "core" que necesitamos para ambos periodos (actual + previo) para
+// poder mostrar deltas. facturacion + foodCost + laborCost + margenOperativo.
+// Comparten las 3 mismas queries (cierres, productos vendidos, egresos), asi
+// que las agrupamos en un helper reutilizable.
+type CoreMetrics = {
+  facturacion: number
+  foodCostMonto: number
+  laborCostMonto: number
+  margenOperativo: number | null
+  ventasMatcheadas: number
+  costosPorProducto: Map<string, number>
+}
 
-  const [cierresRes, cierresPrevRes, productosRes, sueldosRes] = await Promise.all([
+async function computeCoreMetrics(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  from: string,
+  to: string,
+): Promise<CoreMetrics & {
+  cierres: Array<{ total_vendido: number | null; monto_salon: number | null; cubiertos: number | null; cantidad_ventas: number | null }>
+  egresos: Array<{ monto: number | null; categoria: string | null }>
+}> {
+  const [cierresRes, productosRes, egresosRes] = await Promise.all([
     supabase
       .from('cierres_caja_active')
       .select('total_vendido, monto_salon, cubiertos, cantidad_ventas')
       .eq('tenant_id', tenantId)
       .gte('fecha_cierre_local', from)
       .lt('fecha_cierre_local', to),
-    supabase
-      .from('cierres_caja_active')
-      .select('total_vendido')
-      .eq('tenant_id', tenantId)
-      .gte('fecha_cierre_local', prevFrom)
-      .lt('fecha_cierre_local', prevTo),
     supabase
       .from('cierre_caja_productos_active')
       .select('cantidad, monto_total, producto_id')
@@ -129,36 +155,20 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
   ])
 
   if (cierresRes.error) throw new Error(cierresRes.error.message)
-  if (cierresPrevRes.error) throw new Error(cierresPrevRes.error.message)
   if (productosRes.error) throw new Error(productosRes.error.message)
-  if (sueldosRes.error) throw new Error(sueldosRes.error.message)
+  if (egresosRes.error) throw new Error(egresosRes.error.message)
 
-  const facturacion = (cierresRes.data ?? []).reduce((s, c) => s + (Number(c.total_vendido) || 0), 0)
-  const facturacionPrev = (cierresPrevRes.data ?? []).reduce(
-    (s, c) => s + (Number(c.total_vendido) || 0),
-    0,
-  )
-  const facturacionDeltaPct =
-    facturacionPrev > 0 ? ((facturacion - facturacionPrev) / facturacionPrev) * 100 : null
+  const cierres = cierresRes.data ?? []
+  const egresos = egresosRes.data ?? []
 
-  const montoSalon = (cierresRes.data ?? []).reduce((s, c) => s + (Number(c.monto_salon) || 0), 0)
-  const cubiertosSalon = (cierresRes.data ?? []).reduce((s, c) => s + (Number(c.cubiertos) || 0), 0)
-  const ticketPromedioSalon = cubiertosSalon > 0 ? montoSalon / cubiertosSalon : 0
-  const cantidadVentas = (cierresRes.data ?? []).reduce(
-    (s, c) => s + (Number(c.cantidad_ventas) || 0),
-    0,
-  )
-  const ticketPromedio = cantidadVentas > 0 ? facturacion / cantidadVentas : 0
+  const facturacion = cierres.reduce((s, c) => s + (Number(c.total_vendido) || 0), 0)
 
-  // Food cost: necesita join con product_costs
   const productosIds = Array.from(
     new Set((productosRes.data ?? []).map((p) => p.producto_id).filter((id): id is string => !!id)),
   )
-
   let foodCostMonto = 0
   let ventasMatcheadas = 0
-  let costosPorProducto: Map<string, number> = new Map()
-
+  const costosPorProducto: Map<string, number> = new Map()
   if (productosIds.length > 0) {
     const { data: costsData } = await supabase
       .from('product_costs')
@@ -167,7 +177,6 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
     for (const c of costsData ?? []) {
       if (c.id) costosPorProducto.set(c.id, Number(c.total_cost) || 0)
     }
-
     for (const row of productosRes.data ?? []) {
       if (!row.producto_id) continue
       const cost = costosPorProducto.get(row.producto_id) ?? 0
@@ -176,34 +185,73 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
     }
   }
 
-  const foodCostPct = ventasMatcheadas > 0 ? (foodCostMonto / ventasMatcheadas) * 100 : null
-  const margenPonderadoPct = foodCostPct !== null ? 100 - foodCostPct : null
-
-  // Egresos totales del período (todos los movimientos de caja tipo egreso)
-  const egresosTotales = (sueldosRes.data ?? []).reduce((s, m) => s + (Number(m.monto) || 0), 0)
-
-  // Labor cost: todo lo clasificado como "Pago a empleados". La categoria
-  // llega por 3 caminos: sync Bistrosoft (auto-detecta "PAGO A PROVEEDORES -
-  // sueldos"), egreso digital cargado con esa cat, o egreso caja mayor
-  // cargado con esa cat.
-  const laborCostMonto = (sueldosRes.data ?? [])
+  const laborCostMonto = egresos
     .filter((m) => m.categoria === 'Pago a empleados')
     .reduce((s, m) => s + (Number(m.monto) || 0), 0)
-  const laborCostPct = facturacion > 0 ? (laborCostMonto / facturacion) * 100 : null
-  const primeCostPct =
-    foodCostPct !== null && laborCostPct !== null ? foodCostPct + laborCostPct : null
 
-  // Resultado de caja: lo que entró menos todo lo que salió (cash real).
+  const margenOperativo =
+    foodCostMonto > 0 || laborCostMonto > 0 ? facturacion - foodCostMonto - laborCostMonto : null
+
+  return {
+    facturacion,
+    foodCostMonto,
+    laborCostMonto,
+    margenOperativo,
+    ventasMatcheadas,
+    costosPorProducto,
+    cierres,
+    egresos,
+  }
+}
+
+export async function getDashboardOverview(from: string, to: string): Promise<DashboardOverview> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { from: prevFrom, to: prevTo } = prevPeriod(from, to)
+
+  // Calculamos ambos periodos en paralelo. El "current" trae ademas datos
+  // extras que solo aplican al periodo mostrado (cubiertos, ticket promedio).
+  const [current, prev] = await Promise.all([
+    computeCoreMetrics(supabase, tenantId, from, to),
+    computeCoreMetrics(supabase, tenantId, prevFrom, prevTo),
+  ])
+
+  const facturacion = current.facturacion
+  const facturacionPrev = prev.facturacion
+  const facturacionDeltaPct =
+    facturacionPrev > 0 ? ((facturacion - facturacionPrev) / facturacionPrev) * 100 : null
+
+  const montoSalon = current.cierres.reduce((s, c) => s + (Number(c.monto_salon) || 0), 0)
+  const cubiertosSalon = current.cierres.reduce((s, c) => s + (Number(c.cubiertos) || 0), 0)
+  const ticketPromedioSalon = cubiertosSalon > 0 ? montoSalon / cubiertosSalon : 0
+  const cantidadVentas = current.cierres.reduce((s, c) => s + (Number(c.cantidad_ventas) || 0), 0)
+  const ticketPromedio = cantidadVentas > 0 ? facturacion / cantidadVentas : 0
+
+  const foodCostMonto = current.foodCostMonto
+  const foodCostPct = current.ventasMatcheadas > 0 ? (foodCostMonto / current.ventasMatcheadas) * 100 : null
+  const margenPonderadoPct = foodCostPct !== null ? 100 - foodCostPct : null
+
+  const egresosTotales = current.egresos.reduce((s, m) => s + (Number(m.monto) || 0), 0)
+
+  const laborCostMonto = current.laborCostMonto
+  const laborCostPct = facturacion > 0 ? (laborCostMonto / facturacion) * 100 : null
+  const primeCostPct = foodCostPct !== null && laborCostPct !== null ? foodCostPct + laborCostPct : null
+
   const resultadoCaja = facturacion - egresosTotales
   const resultadoCajaPct = facturacion > 0 ? (resultadoCaja / facturacion) * 100 : null
 
-  // Margen operativo: facturación menos prime cost (food + labor). Rentabilidad
-  // de la operación, sin gastos fijos ni timing de compras. Solo cuando hay
-  // food cost calculable (productos con receta).
-  const margenOperativo =
-    foodCostMonto > 0 || laborCostMonto > 0 ? facturacion - foodCostMonto - laborCostMonto : null
+  const margenOperativo = current.margenOperativo
   const margenOperativoPct =
     margenOperativo !== null && facturacion > 0 ? (margenOperativo / facturacion) * 100 : null
+
+  // Delta del margen operativo: solo cuando ambos periodos tienen valor
+  // positivo (comparar contra 0 o negativo genera % engañoso). Si el previo
+  // fue negativo/cero, mostramos null y la UI cae al "sin comparable".
+  const margenOperativoPrev = prev.margenOperativo
+  const margenOperativoDeltaPct =
+    margenOperativoPrev !== null && margenOperativoPrev > 0 && margenOperativo !== null
+      ? ((margenOperativo - margenOperativoPrev) / margenOperativoPrev) * 100
+      : null
 
   return {
     facturacion,
@@ -224,6 +272,8 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
     resultadoCajaPct,
     margenOperativo,
     margenOperativoPct,
+    margenOperativoPrev,
+    margenOperativoDeltaPct,
   }
 }
 
