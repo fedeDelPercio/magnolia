@@ -28,7 +28,7 @@ type ModelTier = 'sonnet' | 'opus'
 // prefijo "anthropic/" y version corta con puntos (ej. "claude-sonnet-4.5").
 const MODELS: Record<Provider, Record<ModelTier, string>> = {
   anthropic:  { sonnet: 'claude-sonnet-4-6',           opus: 'claude-opus-4-7' },
-  openrouter: { sonnet: 'anthropic/claude-sonnet-4.5', opus: 'anthropic/claude-opus-4.1' },
+  openrouter: { sonnet: 'anthropic/claude-sonnet-4.6', opus: 'anthropic/claude-opus-4.7' },
 }
 
 function currentProvider(): Provider {
