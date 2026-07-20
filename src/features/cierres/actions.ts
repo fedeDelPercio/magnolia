@@ -1,11 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import Anthropic from '@anthropic-ai/sdk'
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
+import { extractStructuredFromFile } from '@/lib/llm/vision'
 import { cierreCajaExtractSchema, type CierreCajaExtract, type ProductoMatch, type SaveMapping } from './schemas'
 import { topSuggestion } from './lib/similarity'
 import type { Json } from '@/types/database'
@@ -98,47 +97,34 @@ export async function extractCierreCaja(formData: FormData): Promise<ExtractResu
   if (file.type !== 'application/pdf') return { error: 'El archivo debe ser un PDF' }
   if (file.size > 32 * 1024 * 1024) return { error: 'El PDF supera los 32MB' }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return { error: 'ANTHROPIC_API_KEY no configurada' }
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const result = await extractStructuredFromFile({
+    fileBytes: buffer,
+    mimeType: 'application/pdf',
+    systemPrompt: SYSTEM_PROMPT,
+    userPrompt: USER_PROMPT,
+    schema: cierreCajaExtractSchema,
+    modelTier: 'opus',
+    maxTokens: 16000,
+    schemaName: 'cierre_caja_extract',
+  })
 
-  try {
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const base64 = buffer.toString('base64')
-
-    const client = new Anthropic({ apiKey })
-    const response = await client.messages.parse({
-      model: 'claude-opus-4-7',
-      max_tokens: 16000,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-            { type: 'text', text: USER_PROMPT },
-          ],
-        },
-      ],
-      output_config: { format: zodOutputFormat(cierreCajaExtractSchema) },
-    })
-
-    if (!response.parsed_output) return { error: 'No se pudo parsear la respuesta del modelo' }
-
-    const data = response.parsed_output
-    const dow = dowFromFechaLocal(fechaLocalArgentina(data.fecha_cierre))
-    const matches = await resolveMatches(
-      data.productos.map((p) => ({
-        nombre: p.nombre,
-        canal: canalFromCategoria(p.categoria),
-        formato: formatoFromNombre(p.nombre),
-      })),
-      dow,
-    )
-
-    return { data, matches }
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Error desconocido al extraer' }
+  if (result.error || !result.data) {
+    return { error: result.error ?? 'No se pudo parsear la respuesta del modelo' }
   }
+
+  const data = result.data
+  const dow = dowFromFechaLocal(fechaLocalArgentina(data.fecha_cierre))
+  const matches = await resolveMatches(
+    data.productos.map((p) => ({
+      nombre: p.nombre,
+      canal: canalFromCategoria(p.categoria),
+      formato: formatoFromNombre(p.nombre),
+    })),
+    dow,
+  )
+
+  return { data, matches }
 }
 
 // ---------- Matching ----------
