@@ -129,13 +129,13 @@ async function computeCoreMetrics(
   from: string,
   to: string,
 ): Promise<CoreMetrics & {
-  cierres: Array<{ total_vendido: number | null; monto_salon: number | null; cubiertos: number | null; cantidad_ventas: number | null }>
+  cierres: Array<{ fecha_cierre_local: string | null; total_vendido: number | null; monto_salon: number | null; cubiertos: number | null; cantidad_ventas: number | null }>
   egresos: Array<{ monto: number | null; categoria: string | null }>
 }> {
   const [cierresRes, productosRes, egresosRes] = await Promise.all([
     supabase
       .from('cierres_caja_active')
-      .select('total_vendido, monto_salon, cubiertos, cantidad_ventas')
+      .select('fecha_cierre_local, total_vendido, monto_salon, cubiertos, cantidad_ventas')
       .eq('tenant_id', tenantId)
       .gte('fecha_cierre_local', from)
       .lt('fecha_cierre_local', to),
@@ -204,17 +204,36 @@ async function computeCoreMetrics(
   }
 }
 
+/** Suma N dias a un ISO date (YYYY-MM-DD) sin tocar la hora local. */
+function isoAddDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(y!, m! - 1, d! + days)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
 export async function getDashboardOverview(from: string, to: string): Promise<DashboardOverview> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
-  const { from: prevFrom, to: prevTo } = prevPeriod(from, to)
 
-  // Calculamos ambos periodos en paralelo. El "current" trae ademas datos
-  // extras que solo aplican al periodo mostrado (cubiertos, ticket promedio).
-  const [current, prev] = await Promise.all([
-    computeCoreMetrics(supabase, tenantId, from, to),
-    computeCoreMetrics(supabase, tenantId, prevFrom, prevTo),
-  ])
+  // Traemos primero el periodo actual para saber hasta que dia realmente hay
+  // datos. El rango que llega desde el picker suele ser el mes calendario
+  // completo (ej. 01/07-01/08), pero si estamos en el 17/07 los cierres solo
+  // llegan hasta el 16/07. Comparar "julio parcial vs junio completo" seria
+  // engañoso — hay que cortar el periodo previo al mismo tramo que tiene
+  // datos el actual.
+  const current = await computeCoreMetrics(supabase, tenantId, from, to)
+
+  const lastFechaConDato = current.cierres
+    .map((c) => c.fecha_cierre_local)
+    .filter((f): f is string => !!f)
+    .sort()
+    .at(-1)
+  // effectiveTo es exclusivo (misma semantica que .lt). Si el ultimo dia con
+  // dato es 16/07, effectiveTo = 17/07. Si no hay datos, cae al `to` original.
+  const effectiveTo = lastFechaConDato ? isoAddDays(lastFechaConDato, 1) : to
+  const { from: prevFrom, to: prevTo } = prevPeriod(from, effectiveTo)
+
+  const prev = await computeCoreMetrics(supabase, tenantId, prevFrom, prevTo)
 
   const facturacion = current.facturacion
   const facturacionPrev = prev.facturacion
