@@ -59,9 +59,12 @@ export type ProductoConVariantesFormValues = z.infer<typeof productoConVariantes
 // Discriminador de variante en la UI.
 export const VARIANT_KEYS = ['base', 'delivery', 'menu'] as const
 export type VariantKey = (typeof VARIANT_KEYS)[number]
+// La variante `delivery` se muestra como "Barra" en la UI. El key interno,
+// el enum `canal='delivery'` en productos y el sufijo del name en la BD siguen
+// siendo 'delivery' — es solo un cambio de label visible.
 export const VARIANT_LABELS: Record<VariantKey, string> = {
   base: 'Base',
-  delivery: 'Delivery',
+  delivery: 'Barra',
   menu: 'Menú',
 }
 // Nombre del producto en la BD segun la variante. La tabla productos tiene

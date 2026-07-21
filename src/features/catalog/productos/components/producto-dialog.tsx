@@ -538,7 +538,7 @@ export function ProductoDialog({
                       onCheckedChange={(v) => toggleVariantEnabled('delivery', Boolean(v))}
                       disabled={readOnly}
                     />
-                    <span>Variante Delivery</span>
+                    <span>Variante {VARIANT_LABELS.delivery}</span>
                   </label>
                   <label className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
                     readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-background'
