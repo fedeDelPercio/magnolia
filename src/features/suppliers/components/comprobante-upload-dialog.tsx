@@ -232,7 +232,9 @@ export function ComprobanteUploadDialog({
     }
 
     setUploadId(result.uploadId ?? null)
-    if (result.fecha) setFecha(result.fecha)
+    // La fecha NO se toma de la IA: interpreta mal algún dígito seguido y la
+    // compra queda con fecha errónea. Dejamos el default (hoy, seteado arriba);
+    // la usuaria puede corregirla a mano en el input de fecha si hace falta.
     setObservaciones(result.observaciones ?? null)
 
     setLines(
