@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useImperativeHandle, useState, type Ref } from 'react'
 import { useFieldArray, useFormContext } from 'react-hook-form'
 import { PlusIcon, TrashIcon } from 'lucide-react'
 
@@ -14,12 +14,23 @@ import { formatCurrency } from '@/lib/format'
 
 type InsumoDescartable = Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>
 
+export type DescartablesEditorHandle = {
+  /**
+   * Si el user dejo un descartable "pendiente" en la fila de agregar (con
+   * insumo y cantidad completos) pero no toco el boton +, lo suma al form.
+   * Se llama desde el submit del dialog para no perder lo que la user penso
+   * que ya habia agregado.
+   */
+  flushPending: () => void
+}
+
 type Props = {
   insumos: InsumoDescartable[]
   readOnly?: boolean
+  ref?: Ref<DescartablesEditorHandle>
 }
 
-export function DescartablesEditor({ insumos, readOnly = false }: Props) {
+export function DescartablesEditor({ insumos, readOnly = false, ref }: Props) {
   const form = useFormContext<ProductoFormValues>()
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -36,6 +47,20 @@ export function DescartablesEditor({ insumos, readOnly = false }: Props) {
     setNewInsumoId('')
     setNewQty('')
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flushPending: () => {
+        const qty = parseFloat(newQty)
+        if (!newInsumoId || isNaN(qty) || qty <= 0) return
+        append({ insumo_id: newInsumoId, qty })
+        setNewInsumoId('')
+        setNewQty('')
+      },
+    }),
+    [newInsumoId, newQty, append],
+  )
 
   const usedIds = new Set(fields.map((f) => f.insumo_id))
   const available = insumos.filter((i) => !usedIds.has(i.id))

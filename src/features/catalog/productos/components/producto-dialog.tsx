@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -57,8 +57,8 @@ import {
 } from '../actions'
 import type { ProductoPriceHistoryEntry } from '../queries'
 import type { Tables } from '@/types/database'
-import { IngredientesEditor } from '../../recetas/components/ingredientes-editor'
-import { DescartablesEditor } from './descartables-editor'
+import { IngredientesEditor, type IngredientesEditorHandle } from '../../recetas/components/ingredientes-editor'
+import { DescartablesEditor, type DescartablesEditorHandle } from './descartables-editor'
 import { UNITS, UNIT_LABELS, type UnitKind } from '../../recetas/schemas'
 import type { RecetaParaProducto } from '../../recetas/queries'
 import { formatCurrency, formatDate } from '@/lib/format'
@@ -139,6 +139,16 @@ export function ProductoDialog({
   const [quickPriceOpen, setQuickPriceOpen] = useState(false)
   const [quickPrice, setQuickPrice] = useState('')
   const [quickPriceSubmitting, setQuickPriceSubmitting] = useState(false)
+  // Refs a los editores para "flushear" la fila pendiente (insumo+cantidad
+  // cargados pero sin apretar "+") antes de snapshotear el form al cambiar de
+  // variante o al guardar. Sin esto se perdia lo que la user pensaba agregado.
+  const ingredientesEditorRef = useRef<IngredientesEditorHandle>(null)
+  const descartablesEditorRef = useRef<DescartablesEditorHandle>(null)
+
+  function flushEditors() {
+    ingredientesEditorRef.current?.flushPending()
+    descartablesEditorRef.current?.flushPending()
+  }
 
   useEffect(() => {
     if (!open) return
@@ -198,6 +208,9 @@ export function ProductoDialog({
 
   function switchVariant(next: VariantKey) {
     if (next === activeVariant) return
+    // Flush de la fila pendiente antes de snapshotear, sino se pierde al
+    // cambiar de tab.
+    flushEditors()
     // Snapshot de la variante actual al mapa de inactivas
     const snap = snapshotFormAsVariant()
     setInactiveVariants((prev) => ({ ...prev, [activeVariant]: snap }))
@@ -250,13 +263,18 @@ export function ProductoDialog({
   }
 
   async function onSubmit(values: ProductoDialogFormValues) {
-    // Snapshot del form al mapa antes de armar el payload.
+    // Flush de la fila pendiente en los editores antes de leer el form: si la
+    // user cargo un insumo+cantidad pero no apreto "+", igual se guarda. El
+    // param `values` quedo capturado por handleSubmit ANTES del flush, asi que
+    // releemos con getValues() para tomar lo recien agregado.
+    flushEditors()
+    const fresh = form.getValues()
     const activeData: VariantData = {
       producto_id: inactiveVariants[activeVariant]?.producto_id ?? null,
-      receta_id: values.receta_id ?? null,
-      sale_price: values.sale_price,
-      ingredientes: values.ingredientes,
-      descartables: values.descartables,
+      receta_id: fresh.receta_id ?? null,
+      sale_price: fresh.sale_price,
+      ingredientes: fresh.ingredientes,
+      descartables: fresh.descartables,
     }
     const dataFor = (key: VariantKey): VariantData | null => {
       if (key === activeVariant) return activeData
@@ -668,6 +686,7 @@ export function ProductoDialog({
               {/* Ingredientes — de la variante activa */}
               <div className="border-t pt-4">
                 <IngredientesEditor
+                  ref={ingredientesEditorRef}
                   insumos={insumos}
                   recetas={subRecetas}
                   currentRecetaId={form.getValues().receta_id ?? undefined}
@@ -677,7 +696,7 @@ export function ProductoDialog({
 
               {/* Descartables — de la variante activa */}
               <div className="border-t pt-4">
-                <DescartablesEditor insumos={insumosDescartables} readOnly={readOnly} />
+                <DescartablesEditor ref={descartablesEditorRef} insumos={insumosDescartables} readOnly={readOnly} />
               </div>
             </form>
           </Form>
