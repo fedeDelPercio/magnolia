@@ -54,7 +54,11 @@ import {
   saveProductoConVariantes,
   updateProductoPrecio,
   fetchProductoPriceHistory,
+  findInsumosParaReventa,
+  createInsumoParaReventa,
+  type ReventaInsumoMatch,
 } from '../actions'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import type { ProductoPriceHistoryEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { IngredientesEditor, type IngredientesEditorHandle } from '../../recetas/components/ingredientes-editor'
@@ -72,6 +76,7 @@ export type ProductoDialogInput = {
   is_dynamic: boolean
   yield_qty: number
   yield_unit: UnitKind
+  es_reventa: boolean
   base: VariantData
   delivery: VariantData | null
   menu: VariantData | null
@@ -97,6 +102,7 @@ const DEFAULT_VALUES: ProductoDialogFormValues = {
   is_dynamic: false,
   yield_qty: 1,
   yield_unit: 'u',
+  es_reventa: false,
   ingredientes: [],
   descartables: [],
 }
@@ -150,6 +156,60 @@ export function ProductoDialog({
     descartablesEditorRef.current?.flushPending()
   }
 
+  // ---- Reventa (producto que se compra hecho) ----
+  const [reventaMatches, setReventaMatches] = useState<ReventaInsumoMatch[]>([])
+  const [reventaLoading, setReventaLoading] = useState(false)
+  const [createdInsumos, setCreatedInsumos] = useState<
+    Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
+  >([])
+  const esReventa = form.watch('es_reventa')
+  const reventaInsumoId = form.watch('ingredientes')?.[0]?.insumo_id ?? ''
+  const allInsumosForReventa = [...insumos, ...createdInsumos]
+
+  async function toggleReventa(on: boolean) {
+    form.setValue('es_reventa', on)
+    if (on) {
+      setReventaLoading(true)
+      const matches = await findInsumosParaReventa(form.getValues().name)
+      setReventaMatches(matches)
+      setReventaLoading(false)
+    } else {
+      // Al desmarcar, limpiamos el ingrediente 1:1 para volver a receta normal.
+      form.setValue('ingredientes', [])
+      setReventaMatches([])
+    }
+  }
+
+  function selectReventaInsumo(insumoId: string) {
+    const insumo = allInsumosForReventa.find((i) => i.id === insumoId)
+    if (!insumo) return
+    form.setValue('ingredientes', [
+      { kind: 'insumo', insumo_id: insumoId, qty: 1, unit: insumo.unit as UnitKind },
+    ])
+  }
+
+  async function handleCreateReventaInsumo() {
+    const name = form.getValues().name.trim()
+    if (!name) {
+      toast.error('Poné primero el nombre del producto')
+      return
+    }
+    const res = await createInsumoParaReventa(name, 'u')
+    if (res.error || !res.data) {
+      toast.error(res.error ?? 'No se pudo crear el insumo')
+      return
+    }
+    const created = {
+      id: res.data.id,
+      name: res.data.name,
+      unit: res.data.unit as Tables<'insumos'>['unit'],
+      current_price: 0,
+    }
+    setCreatedInsumos((prev) => [...prev, created])
+    selectReventaInsumo(created.id)
+    toast.success(`Insumo "${created.name}" creado y vinculado`)
+  }
+
   useEffect(() => {
     if (!open) return
     setEditing(mode !== 'view')
@@ -175,6 +235,7 @@ export function ProductoDialog({
       is_dynamic: input.is_dynamic,
       yield_qty: input.yield_qty,
       yield_unit: input.yield_unit,
+      es_reventa: input.es_reventa,
       ingredientes: input.base.ingredientes,
       descartables: input.base.descartables,
     })
@@ -286,6 +347,7 @@ export function ProductoDialog({
       is_dynamic: values.is_dynamic,
       yield_qty: values.yield_qty,
       yield_unit: values.yield_unit,
+      es_reventa: fresh.es_reventa,
       base: dataFor('base') ?? EMPTY_VARIANT,
       delivery: enabled.delivery ? dataFor('delivery') : null,
       menu: enabled.menu ? dataFor('menu') : null,
@@ -683,15 +745,85 @@ export function ProductoDialog({
                 )}
               </div>
 
-              {/* Ingredientes — de la variante activa */}
-              <div className="border-t pt-4">
-                <IngredientesEditor
-                  ref={ingredientesEditorRef}
-                  insumos={insumos}
-                  recetas={subRecetas}
-                  currentRecetaId={form.getValues().receta_id ?? undefined}
-                  readOnly={readOnly}
-                />
+              {/* Reventa toggle + Ingredientes (o picker de insumo de reventa) */}
+              <div className="border-t pt-4 space-y-3">
+                <label className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                  readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-muted/40'
+                } ${esReventa ? 'border-primary/40 bg-primary/5' : 'bg-background/60'}`}>
+                  <Checkbox
+                    checked={esReventa}
+                    onCheckedChange={(v) => toggleReventa(Boolean(v))}
+                    disabled={readOnly}
+                  />
+                  <span className="flex-1">Se compra hecho (reventa)</span>
+                </label>
+
+                {esReventa ? (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-muted-foreground">
+                      El producto no se produce: se compra ya hecho. Al venderlo se descuenta
+                      1 unidad de su insumo del stock. Elegí (o creá) ese insumo.
+                    </p>
+                    {reventaLoading ? (
+                      <p className="text-xs text-muted-foreground">Buscando insumos parecidos…</p>
+                    ) : (
+                      <>
+                        {!readOnly && reventaMatches.length > 0 && !reventaInsumoId && (
+                          <div className="rounded-md border border-amber-300/60 bg-amber-50 p-2 text-xs space-y-1 dark:bg-amber-950/30">
+                            <p className="font-medium">¿Es alguno de estos insumos que ya existen?</p>
+                            <div className="flex flex-wrap gap-1">
+                              {reventaMatches.map((m) => (
+                                <Button
+                                  key={m.id}
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => selectReventaInsumo(m.id)}
+                                >
+                                  {m.name}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <SearchableSelect
+                              options={allInsumosForReventa.map((i) => ({ value: i.id, label: i.name }))}
+                              value={reventaInsumoId}
+                              onValueChange={(v) => v && selectReventaInsumo(v)}
+                            />
+                          </div>
+                          {!readOnly && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="shrink-0 whitespace-nowrap"
+                              onClick={handleCreateReventaInsumo}
+                            >
+                              + Crear nuevo
+                            </Button>
+                          )}
+                        </div>
+                        {reventaInsumoId && (
+                          <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                            Vinculado a: {allInsumosForReventa.find((i) => i.id === reventaInsumoId)?.name ?? '—'} ✓
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <IngredientesEditor
+                    ref={ingredientesEditorRef}
+                    insumos={insumos}
+                    recetas={subRecetas}
+                    currentRecetaId={form.getValues().receta_id ?? undefined}
+                    readOnly={readOnly}
+                  />
+                )}
               </div>
 
               {/* Descartables — de la variante activa */}

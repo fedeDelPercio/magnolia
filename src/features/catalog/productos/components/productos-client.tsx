@@ -152,6 +152,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
       name: base.name ?? '',
       target_margin_pct: base.target_margin_pct ?? 30,
       is_dynamic: base.is_dynamic ?? false,
+      es_reventa: base.es_reventa ?? false,
       yield_qty: baseReceta?.yield_qty ?? 1,
       yield_unit: (baseReceta?.yield_unit ?? 'u') as ProductoDialogInput['yield_unit'],
       base: dataFor(base) ?? { producto_id: null, receta_id: null, sale_price: 0, ingredientes: [], descartables: [] },

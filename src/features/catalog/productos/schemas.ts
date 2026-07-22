@@ -49,6 +49,9 @@ export const productoConVariantesSchema = z.object({
   is_dynamic: z.boolean().default(false),
   yield_qty: z.number().positive('El rendimiento debe ser mayor a 0').default(1),
   yield_unit: z.enum(UNITS).default('u'),
+  // Producto que se compra ya hecho (gaseosa, agua, medialuna): su receta es
+  // 1 insumo 1:1 que se descuenta del stock por venta. Ver migracion 0056.
+  es_reventa: z.boolean().default(false),
   // Base siempre existe. delivery y menu son opcionales (null = no hay variante).
   base: variantDataSchema,
   delivery: variantDataSchema.nullable().default(null),
@@ -90,6 +93,7 @@ export const productoDialogFormSchema = z.object({
   receta_id: z.string().uuid().nullable().optional(),
   yield_qty: z.number().positive('El rendimiento debe ser mayor a 0').default(1),
   yield_unit: z.enum(UNITS).default('u'),
+  es_reventa: z.boolean().default(false),
   ingredientes: z.array(ingredienteFormSchema).default([]),
   descartables: z.array(descartableItemSchema).default([]),
 })

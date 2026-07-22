@@ -11,6 +11,7 @@ import type {
 } from './schemas'
 import { variantProductoName } from './schemas'
 import type { ProductoPriceHistoryEntry } from './queries'
+import type { Database } from '@/types/database'
 
 function mapError(msg: string): string {
   if (msg.includes('idx_productos_variante_unica'))
@@ -419,7 +420,7 @@ async function upsertVariantProducto(
   tenantId: string,
   key: VariantKey,
   baseName: string,
-  common: Pick<ProductoConVariantesFormValues, 'target_margin_pct' | 'is_dynamic' | 'yield_qty' | 'yield_unit'>,
+  common: Pick<ProductoConVariantesFormValues, 'target_margin_pct' | 'is_dynamic' | 'yield_qty' | 'yield_unit' | 'es_reventa'>,
   variant: VariantData,
   conceptoId: string | null,
   currentUserId: string | null,
@@ -543,6 +544,7 @@ async function upsertVariantProducto(
         receta_id: recetaId,
         target_margin_pct: common.target_margin_pct,
         is_dynamic: common.is_dynamic,
+        es_reventa: common.es_reventa,
         concepto_id: conceptoId,
         canal,
         formato,
@@ -559,6 +561,7 @@ async function upsertVariantProducto(
         receta_id: recetaId,
         target_margin_pct: common.target_margin_pct,
         is_dynamic: common.is_dynamic,
+        es_reventa: common.es_reventa,
         tenant_id: tenantId,
         concepto_id: conceptoId,
         canal,
@@ -682,6 +685,84 @@ export async function saveProductoConVariantes(
 
     revalidatePath('/catalogo/productos')
     return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Error desconocido' }
+  }
+}
+
+// ---- Productos de reventa ----------------------------------------------
+
+function normalizeName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export type ReventaInsumoMatch = { id: string; name: string; unit: string; score: number }
+
+// Busca insumos candidatos para vincular a un producto de reventa, rankeados
+// por similitud de nombre (token overlap + contención). Se usa para el
+// "¿es el mismo insumo?" cuando la usuaria tilda "se compra hecho".
+export async function findInsumosParaReventa(productName: string): Promise<ReventaInsumoMatch[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('insumos')
+    .select('id, name, unit')
+    .eq('active', true)
+    .order('name')
+
+  const target = normalizeName(productName)
+  const targetTokens = new Set(target.split(' ').filter(Boolean))
+  if (targetTokens.size === 0) return []
+
+  const scored = (data ?? []).map((i) => {
+    const n = normalizeName(i.name)
+    const tokens = new Set(n.split(' ').filter(Boolean))
+    const inter = [...targetTokens].filter((t) => tokens.has(t)).length
+    const union = new Set([...targetTokens, ...tokens]).size
+    let score = union ? inter / union : 0
+    if (n === target) score = 1
+    else if (n && (n.includes(target) || target.includes(n))) score = Math.max(score, 0.85)
+    return { id: i.id, name: i.name, unit: i.unit as string, score }
+  })
+
+  return scored
+    .filter((s) => s.score >= 0.3)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+}
+
+// Crea un insumo simple para usar como item de reventa: kind 'ingrediente',
+// track_stock on (asi el stock se descuenta por venta via la view insumo_stock),
+// precio 0 (se actualiza con la primera compra). Devuelve el insumo creado para
+// que el dialog lo use como el unico ingrediente 1:1 de la receta del producto.
+export async function createInsumoParaReventa(
+  name: string,
+  unit: string,
+): Promise<{ error?: string; data?: { id: string; name: string; unit: string } }> {
+  try {
+    const supabase = await createClient()
+    const tenantId = await getActiveTenantId()
+    const { data, error } = await supabase
+      .from('insumos')
+      .insert({
+        name: name.trim(),
+        kind: 'ingrediente',
+        unit: unit as Database['public']['Enums']['unit_kind'],
+        current_price: 0,
+        track_stock: true,
+        stock_inicial: 0,
+        tenant_id: tenantId,
+      })
+      .select('id, name, unit')
+      .single()
+    if (error) return { error: mapError(error.message) }
+    revalidatePath('/catalogo/insumos')
+    return { data: data as { id: string; name: string; unit: string } }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Error desconocido' }
   }

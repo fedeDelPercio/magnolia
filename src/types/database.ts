@@ -1930,6 +1930,7 @@ export type Database = {
           canal: Database["public"]["Enums"]["producto_canal"] | null
           concepto_id: string | null
           created_at: string
+          es_reventa: boolean
           formato: Database["public"]["Enums"]["producto_formato"] | null
           id: string
           is_dynamic: boolean
@@ -1945,6 +1946,7 @@ export type Database = {
           canal?: Database["public"]["Enums"]["producto_canal"] | null
           concepto_id?: string | null
           created_at?: string
+          es_reventa?: boolean
           formato?: Database["public"]["Enums"]["producto_formato"] | null
           id?: string
           is_dynamic?: boolean
@@ -1960,6 +1962,7 @@ export type Database = {
           canal?: Database["public"]["Enums"]["producto_canal"] | null
           concepto_id?: string | null
           created_at?: string
+          es_reventa?: boolean
           formato?: Database["public"]["Enums"]["producto_formato"] | null
           id?: string
           is_dynamic?: boolean
@@ -2551,6 +2554,7 @@ export type Database = {
           canal: Database["public"]["Enums"]["producto_canal"] | null
           concepto_id: string | null
           descartable_cost: number | null
+          es_reventa: boolean | null
           formato: Database["public"]["Enums"]["producto_formato"] | null
           id: string | null
           ingredient_cost: number | null
