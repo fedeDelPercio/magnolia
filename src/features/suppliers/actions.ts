@@ -361,12 +361,47 @@ export async function deleteCompra(
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
 
+  // Insumos tocados por esta compra: los necesitamos DESPUES de borrar para
+  // recalcular su current_price. Los capturamos antes porque el delete de la
+  // compra cascadea los compra_items.
+  const { data: itemsAfectados } = await supabase
+    .from('compra_items')
+    .select('insumo_id')
+    .eq('compra_id', compraId)
+  const insumoIds = [...new Set((itemsAfectados ?? []).map((i) => i.insumo_id))]
+
   // Si esta compra disparo el tracking de algun insumo (F2), revertir el
   // track_stock + stock_inicial antes de borrar para que no quede stock fantasma.
   await revertTrackingForCompra(supabase, compraId)
 
   const { error } = await supabase.from('compras').delete().eq('id', compraId)
   if (error) return { error: error.message }
+
+  // Limpiar el historial de precios que dejo esta compra. Sin esto quedaba un
+  // registro "fantasma" en insumo_price_history y, si era el ultimo, el
+  // current_price seguia apuntando a un precio de una compra inexistente.
+  await supabase
+    .from('insumo_price_history')
+    .delete()
+    .eq('source', 'compra')
+    .eq('source_id', compraId)
+
+  // Recalcular current_price de cada insumo afectado al ultimo precio real que
+  // quede en el historial (que tambien esta en bruto con IVA, igual que
+  // current_price). Si no queda historial, dejamos el precio como esta —
+  // borrar la unica compra no deberia poner el precio en 0.
+  for (const insumoId of insumoIds) {
+    const { data: ultimo } = await supabase
+      .from('insumo_price_history')
+      .select('price')
+      .eq('insumo_id', insumoId)
+      .order('valid_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (ultimo) {
+      await supabase.from('insumos').update({ current_price: ultimo.price }).eq('id', insumoId)
+    }
+  }
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
