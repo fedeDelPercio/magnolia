@@ -5,7 +5,7 @@ import type { Tables } from '@/types/database'
 export type DiaOperativo = Tables<'dias_operativos'>
 
 export type MovimientoConProducto = Tables<'movimientos_diarios'> & {
-  productos: Pick<Tables<'productos'>, 'name' | 'sale_price'>
+  productos: Pick<Tables<'productos'>, 'name' | 'sale_price' | 'concepto_id' | 'canal' | 'formato'>
 }
 
 export type DiaConMovimientos = DiaOperativo & {
@@ -57,7 +57,7 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
       *,
       movimientos_diarios(
         *,
-        productos(name, sale_price)
+        productos(name, sale_price, concepto_id, canal, formato)
       )
     `)
     .eq('id', diaId)
@@ -128,7 +128,7 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
           *,
           movimientos_diarios(
             *,
-            productos(name, sale_price)
+            productos(name, sale_price, concepto_id, canal, formato)
           )
         `)
         .eq('id', diaId)

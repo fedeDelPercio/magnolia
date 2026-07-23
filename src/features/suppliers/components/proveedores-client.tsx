@@ -18,6 +18,7 @@ import { ProveedorDialog } from './proveedor-dialog'
 import type { SaldoProveedor } from '../queries'
 import type { Tables } from '@/types/database'
 import { PROVEEDOR_TIPO_LABELS, type ProveedorTipo } from '../schemas'
+import { matchesSearch } from '@/lib/text'
 
 type Props = { proveedores: SaldoProveedor[] }
 
@@ -41,11 +42,11 @@ export function ProveedoresClient({ proveedores }: Props) {
   const [tipoFilter, setTipoFilter] = useState<TipoFilter>('todos')
 
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase()
+    const s = search.trim()
     return proveedores.filter((p) => {
       if (!showInactivos && !p.active) return false
       if (tipoFilter !== 'todos' && p.tipo !== tipoFilter) return false
-      if (s && !p.name.toLowerCase().includes(s)) return false
+      if (s && !matchesSearch(p.name, s)) return false
       return true
     })
   }, [proveedores, search, showInactivos, tipoFilter])

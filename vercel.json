@@ -3,7 +3,8 @@
   "crons": [
     {
       "path": "/api/cron/bistro-sync",
-      "schedule": "0 9 * * *"
+      "comment": "02:00 UTC = 23:00 Argentina (UTC-3). Corre al cierre del dia para tomar los datos del mismo dia.",
+      "schedule": "0 2 * * *"
     }
   ]
 }

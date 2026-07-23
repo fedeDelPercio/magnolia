@@ -650,6 +650,15 @@ export async function saveProductoConVariantes(
       await snapshotPriceHistory(supabase, baseRes.id, tenantId, user?.id ?? null)
     }
 
+    // La variante Barra (delivery) SIEMPRE comparte los ingredientes del base
+    // (Mostrador): entre barra y salon solo cambian los descartables. Forzamos
+    // la copia aca (fuente de verdad) para que queden sincronizados aunque el
+    // UI no los haya copiado o el usuario haya editado el base despues. El menu
+    // del dia NO se toca: puede tener receta propia.
+    if (values.delivery) {
+      values.delivery = { ...values.delivery, ingredientes: values.base.ingredientes }
+    }
+
     // Delivery / Menu
     for (const key of ['delivery', 'menu'] as const) {
       const variant = values[key]

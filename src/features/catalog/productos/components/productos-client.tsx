@@ -29,6 +29,7 @@ import type { ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
 import type { RecetaParaProducto, DescartableParaProducto } from '../../recetas/queries'
 import type { VariantData } from '../schemas'
+import { matchesSearch } from '@/lib/text'
 
 type Props = {
   productos: ProductoCost[]
@@ -110,7 +111,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
     () =>
       collapsed.filter((p) => {
         if (onlySinReceta && p.receta_id) return false
-        return (p.name ?? '').toLowerCase().includes(search.toLowerCase())
+        return matchesSearch(p.name ?? '', search)
       }),
     [collapsed, search, onlySinReceta],
   )

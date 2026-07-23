@@ -28,6 +28,7 @@ import { RecetaDialog } from './receta-dialog'
 import type { RecetaWithIngredientes } from '../queries'
 import type { Tables } from '@/types/database'
 import { formatCurrency } from '@/lib/format'
+import { matchesSearch } from '@/lib/text'
 
 type Props = {
   recetas: RecetaWithIngredientes[]
@@ -44,7 +45,7 @@ export function RecetasClient({ recetas, insumos }: Props) {
   const [, startTransition] = useTransition()
 
   const filtered = useMemo(
-    () => recetas.filter((r) => r.name.toLowerCase().includes(search.toLowerCase())),
+    () => recetas.filter((r) => matchesSearch(r.name, search)),
     [recetas, search],
   )
 

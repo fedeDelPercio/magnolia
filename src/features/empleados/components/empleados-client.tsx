@@ -20,6 +20,7 @@ import { formatCurrency } from '@/lib/format'
 import { toggleEmpleadoActivo } from '../actions'
 import { EmpleadoDialog } from './empleado-dialog'
 import type { Empleado, EmpleadoListItem } from '../queries'
+import { matchesSearch } from '@/lib/text'
 
 type Props = { empleados: EmpleadoListItem[] }
 
@@ -41,10 +42,10 @@ export function EmpleadosClient({ empleados }: Props) {
   const [search, setSearch] = useState('')
 
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase()
+    const s = search.trim()
     return empleados.filter((e) => {
       if (!showInactivos && !e.activo) return false
-      if (s && !e.name.toLowerCase().includes(s)) return false
+      if (s && !matchesSearch(e.name, s)) return false
       return true
     })
   }, [empleados, showInactivos, search])

@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/format'
 import { cerrarDia, reabrirDia } from '../actions'
 import { MovimientoRow } from './movimiento-row'
-import type { DiaConMovimientos } from '../queries'
+import { MovimientoGroupRow } from './movimiento-group-row'
+import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
 import { ImportCierreDialog } from '@/features/cierres/components/import-cierre-dialog'
 import { CierreDetailDialog } from '@/features/cierres/components/cierre-detail-dialog'
@@ -24,6 +25,38 @@ function formatFecha(fechaStr: string) {
   const parts = fechaStr.split('-').map(Number)
   const [year, month, day] = [parts[0]!, parts[1]!, parts[2]!]
   return `${day} de ${MESES[month - 1]!} de ${year}`
+}
+
+type MovimientoGroup = {
+  key: string
+  name: string
+  primary: MovimientoConProducto
+  secondaries: MovimientoConProducto[]
+}
+
+// Agrupa las variantes de canal (Mostrador base + Barra/delivery) de un mismo
+// producto en un solo grupo, para mostrar una produccion unica por producto.
+// El menu del dia (formato='menu') y los productos sin concepto quedan como
+// grupos propios de una sola fila.
+function buildMovimientoGroups(movs: MovimientoConProducto[]): MovimientoGroup[] {
+  const map = new Map<string, MovimientoConProducto[]>()
+  for (const m of movs) {
+    const p = m.productos
+    const isMenu = p.formato === 'menu'
+    const key = p.concepto_id && !isMenu ? `concepto:${p.concepto_id}` : `prod:${m.producto_id}`
+    const arr = map.get(key) ?? []
+    arr.push(m)
+    map.set(key, arr)
+  }
+  const groups: MovimientoGroup[] = []
+  for (const [key, arr] of map) {
+    // Primaria = variante base (canal null). Fallback: la primera.
+    const primary = arr.find((m) => m.productos.canal === null) ?? arr[0]!
+    const secondaries = arr.filter((m) => m.id !== primary.id)
+    groups.push({ key, name: primary.productos.name, primary, secondaries })
+  }
+  groups.sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  return groups
 }
 
 type Props = {
@@ -41,9 +74,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   const [selectedCierre, setSelectedCierre] = useState<CierreCajaWithProductos | null>(null)
 
   const readonly = dia.status === 'cerrado'
-  const movimientos = [...dia.movimientos_diarios].sort((a, b) =>
-    a.productos.name.localeCompare(b.productos.name, 'es'),
-  )
+  const groups = buildMovimientoGroups(dia.movimientos_diarios)
 
   function handleCerrar() {
     setLoading(true)
@@ -88,7 +119,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
           </Button>
           <div>
             <h1 className="text-lg font-semibold">{formatFecha(dia.fecha)}</h1>
-            <p className="text-sm text-muted-foreground">{movimientos.length} productos</p>
+            <p className="text-sm text-muted-foreground">{groups.length} productos</p>
           </div>
           <Badge
             variant="outline"
@@ -141,16 +172,26 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
             </tr>
           </thead>
           <tbody className="divide-y">
-            {movimientos.length === 0 ? (
+            {groups.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-muted-foreground">
                   Sin productos. Agregá productos activos desde el catálogo.
                 </td>
               </tr>
             ) : (
-              movimientos.map((mov) => (
-                <MovimientoRow key={mov.id} mov={mov} readonly={readonly} />
-              ))
+              groups.map((g) =>
+                g.secondaries.length === 0 ? (
+                  <MovimientoRow key={g.primary.id} mov={g.primary} readonly={readonly} />
+                ) : (
+                  <MovimientoGroupRow
+                    key={g.key}
+                    primary={g.primary}
+                    secondaries={g.secondaries}
+                    name={g.name}
+                    readonly={readonly}
+                  />
+                ),
+              )
             )}
           </tbody>
         </table>
@@ -161,7 +202,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
           El día está cerrado. Los datos son de solo lectura.
         </p>
       )}
-      {!readonly && movimientos.length > 0 && (
+      {!readonly && groups.length > 0 && (
         <p className="text-center text-xs text-muted-foreground">
           Los cambios se guardan automáticamente.
         </p>

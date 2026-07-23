@@ -28,6 +28,7 @@ import { toggleInsumoActive, deleteInsumo } from '../actions'
 import { InsumoDialog } from './insumo-dialog'
 import type { InsumoWithProveedor } from '../queries'
 import type { Tables } from '@/types/database'
+import { matchesSearch } from '@/lib/text'
 
 function StockBar({ insumo }: { insumo: InsumoWithProveedor }) {
   if (!insumo.track_stock || !insumo.stock) return null
@@ -86,7 +87,7 @@ export function InsumosClient({ insumos, proveedores }: Props) {
       insumos.filter((i) => {
         if (kindFilter !== 'todos' && i.kind !== kindFilter) return false
         if (onlyTrackStock && !i.track_stock) return false
-        return i.name.toLowerCase().includes(search.toLowerCase())
+        return matchesSearch(i.name, search)
       }),
     [insumos, search, kindFilter, onlyTrackStock],
   )

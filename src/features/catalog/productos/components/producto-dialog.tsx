@@ -632,7 +632,8 @@ export function ProductoDialog({
                   </label>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Al activar una variante podés setear un precio + ingredientes distintos.
+                  Barra comparte los ingredientes de Mostrador (solo cambian los descartables);
+                  podés setearle un precio propio. El Menú puede tener ingredientes distintos.
                   Usá el switch de arriba para editar cada una.
                 </p>
               </div>
@@ -814,6 +815,13 @@ export function ProductoDialog({
                         )}
                       </>
                     )}
+                  </div>
+                ) : activeVariant === 'delivery' ? (
+                  <div className="rounded-md border border-dashed bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+                    La variante <span className="font-medium text-foreground">Barra</span> usa
+                    siempre los mismos ingredientes que <span className="font-medium text-foreground">Mostrador</span>.
+                    Solo cambian los descartables (abajo). Para editar los ingredientes, cambiá a la
+                    pestaña <span className="font-medium text-foreground">{variantLabel('base')}</span>.
                   </div>
                 ) : (
                   <IngredientesEditor

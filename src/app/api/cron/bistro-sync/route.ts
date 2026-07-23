@@ -15,21 +15,23 @@ export const dynamic = 'force-dynamic'
 
 const AR_TZ = 'America/Argentina/Buenos_Aires'
 
-// Por defecto el cron sincroniza los ULTIMOS 3 DIAS en AR (hoy-3 .. ayer).
-// Por que no solo "ayer": Bistrosoft a veces publica los datos con retraso de
-// horas (cuando el dueno cierra caja despues de medianoche). Sincronizar
-// ventana corta hacia atras es idempotente (upsert por ticket id) y auto-recupera
-// dias que la API tenia vacios cuando corrio el cron anterior.
+// Por defecto el cron sincroniza los ULTIMOS 3 DIAS en AR, INCLUYENDO HOY
+// (hoy-3 .. hoy). El cron corre a las 23hs AR (ver vercel.json), cuando el dia
+// ya esta practicamente cerrado, asi que tomamos los datos del mismo dia.
+// Por que tambien dias hacia atras: Bistrosoft a veces publica los datos con
+// retraso de horas. Sincronizar una ventana corta hacia atras es idempotente
+// (upsert por ticket id) y auto-recupera dias que la API tenia vacios cuando
+// corrio el cron anterior.
 const CRON_DEFAULT_LOOKBACK_DAYS = 3
 
-// Devuelve { from, to } en hora Argentina cubriendo los ultimos N dias (sin
-// incluir hoy). Strings 'YYYY-MM-DD'.
+// Devuelve { from, to } en hora Argentina cubriendo los ultimos N dias
+// INCLUYENDO hoy. Strings 'YYYY-MM-DD'.
 function defaultRangeInArgentina(lookbackDays: number): { from: string; to: string } {
   const now = new Date()
   const todayAr = now.toLocaleDateString('en-CA', { timeZone: AR_TZ })
   const [y, m, d] = todayAr.split('-').map(Number)
-  // 'ayer' AR
-  const to = new Date(Date.UTC(y!, m! - 1, d! - 1))
+  // 'hoy' AR (el cron corre 23hs AR, el dia ya esta cerrado)
+  const to = new Date(Date.UTC(y!, m! - 1, d!))
   // hace N dias AR
   const from = new Date(Date.UTC(y!, m! - 1, d! - lookbackDays))
   return {

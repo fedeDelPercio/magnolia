@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import { formatCurrency, compactNumber } from '@/lib/format'
 import { MenuEngineeringHelp } from './menu-engineering-help'
 import { SectionHeader } from '@/components/shared/section-header'
@@ -17,8 +20,11 @@ const CUADRANTE_INFO = {
   caballito: { label: 'Caballitos', hex: '#2563EB', tint: '#EFF6FF', desc: 'Mucho volumen, poco margen. Bajar costo o subir precio.' },
 } as const
 
+type HoveredPoint = { p: MenuEngineeringPoint; cx: number; cy: number }
+
 export function MenuEngineeringMatrix({ data }: Props) {
   const { points, thresholdCantidad, thresholdMargen } = data
+  const [hovered, setHovered] = useState<HoveredPoint | null>(null)
 
   if (points.length === 0) {
     return (
@@ -194,12 +200,27 @@ export function MenuEngineeringMatrix({ data }: Props) {
             const cy = yScale(p.margen_unitario)
             const info = CUADRANTE_INFO[p.cuadrante]
             const r = Math.min(10, 3 + Math.sqrt(p.monto) / 60)
+            const isHovered = hovered?.p.id === p.id
             return (
-              <g key={p.id}>
-                <circle cx={cx} cy={cy} r={r} fill={info.hex} fillOpacity={0.7} stroke={info.hex} strokeWidth={1.5}>
-                  <title>{`${p.name}\n${Math.round(p.cantidad)} unid. × ${formatCurrency(p.margen_unitario)} = ${formatCurrency(p.monto)}\nCuadrante: ${info.label}`}</title>
-                </circle>
-                {labelSet.has(p.id) && (
+              <g
+                key={p.id}
+                className="cursor-pointer"
+                onMouseEnter={() => setHovered({ p, cx, cy })}
+                onMouseLeave={() => setHovered((h) => (h?.p.id === p.id ? null : h))}
+              >
+                {/* Hit target invisible mas grande, para que sea facil apuntar
+                    incluso a los puntos chicos */}
+                <circle cx={cx} cy={cy} r={Math.max(r, 12)} fill="transparent" />
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  fill={info.hex}
+                  fillOpacity={isHovered ? 1 : 0.7}
+                  stroke={info.hex}
+                  strokeWidth={isHovered ? 2.5 : 1.5}
+                />
+                {labelSet.has(p.id) && !isHovered && (
                   <text
                     x={cx + r + 4}
                     y={cy + 3}
@@ -211,6 +232,53 @@ export function MenuEngineeringMatrix({ data }: Props) {
               </g>
             )
           })}
+
+          {/* Tooltip custom: muestra el nombre de CUALQUIER punto al pasar el
+              cursor (no solo los top-2 etiquetados). Se dibuja al final para
+              quedar por encima del resto. */}
+          {hovered && (() => {
+            const { p, cx, cy } = hovered
+            const info = CUADRANTE_INFO[p.cuadrante]
+            const line1 = p.name
+            const line2 = `${Math.round(p.cantidad)} u × ${formatCurrency(p.margen_unitario)} = ${formatCurrency(p.monto)}`
+            const charW = 6.4
+            const boxW = Math.max(line1.length, line2.length) * charW + 22
+            const boxH = 54
+            let bx = cx + 14
+            if (bx + boxW > padding.left + innerW) bx = cx - boxW - 14
+            if (bx < padding.left) bx = padding.left
+            let by = cy - boxH - 10
+            if (by < padding.top) by = cy + 16
+            return (
+              <g pointerEvents="none">
+                <rect
+                  x={bx}
+                  y={by}
+                  width={boxW}
+                  height={boxH}
+                  rx={6}
+                  fill="white"
+                  stroke={info.hex}
+                  strokeOpacity={0.6}
+                  style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.18))' }}
+                />
+                <text x={bx + 11} y={by + 19} className="fill-foreground text-[12px] font-semibold">
+                  {line1}
+                </text>
+                <text x={bx + 11} y={by + 35} className="fill-muted-foreground text-[11px] tabular-nums">
+                  {line2}
+                </text>
+                <text
+                  x={bx + 11}
+                  y={by + 48}
+                  fill={info.hex}
+                  className="text-[10px] font-semibold uppercase tracking-wider"
+                >
+                  {info.label}
+                </text>
+              </g>
+            )
+          })()}
         </svg>
       </div>
 

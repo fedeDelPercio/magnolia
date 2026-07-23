@@ -12,6 +12,14 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
   const margenDeltaPositive = margenDelta !== null && margenDelta > 0
   const MargenDeltaIcon = margenDeltaPositive ? TrendingUpIcon : TrendingDownIcon
 
+  const movimientosDelta = overview.cantidadVentasDeltaPct
+  const movimientosDeltaPositive = movimientosDelta !== null && movimientosDelta > 0
+  const MovimientosDeltaIcon = movimientosDeltaPositive ? TrendingUpIcon : TrendingDownIcon
+
+  const ticketDelta = overview.ticketPromedioDeltaPct
+  const ticketDeltaPositive = ticketDelta !== null && ticketDelta > 0
+  const TicketDeltaIcon = ticketDeltaPositive ? TrendingUpIcon : TrendingDownIcon
+
   return (
     <section className="grid grid-cols-1 gap-3 md:grid-cols-12">
       {/* === Fila 1: Facturación + Movimientos === */}
@@ -57,14 +65,31 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
             {overview.cantidadVentas.toLocaleString('es-AR')}
           </p>
         </div>
-        <div className="mt-5 space-y-0.5 text-xs text-muted-foreground">
-          <p>
-            <span className="text-metric font-medium text-foreground">ventas</span> en total
-          </p>
-          <p>
-            <span className="text-metric font-medium text-foreground">{overview.cubiertosSalon}</span>{' '}
-            cubiertos en salón
-          </p>
+        <div className="mt-5 space-y-1.5">
+          {movimientosDelta !== null && (
+            <div
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-metric',
+                movimientosDeltaPositive
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-rose-200 bg-rose-50 text-rose-700',
+              )}
+              title="Mismo tramo del mes anterior"
+            >
+              <MovimientosDeltaIcon className="size-3" aria-hidden />
+              {movimientosDeltaPositive ? '+' : ''}
+              {movimientosDelta.toFixed(1)}% vs. mes anterior
+            </div>
+          )}
+          <div className="space-y-0.5 text-xs text-muted-foreground">
+            <p>
+              <span className="text-metric font-medium text-foreground">ventas</span> en total
+            </p>
+            <p>
+              <span className="text-metric font-medium text-foreground">{overview.cubiertosSalon}</span>{' '}
+              cubiertos en salón
+            </p>
+          </div>
         </div>
       </div>
 
@@ -132,12 +157,29 @@ export function HeroCards({ overview }: { overview: DashboardOverview }) {
             {formatCurrencyShort(overview.ticketPromedio)}
           </p>
         </div>
-        <p className="mt-5 text-xs text-muted-foreground">
-          por venta · salón{' '}
-          <span className="text-metric font-medium text-foreground">
-            {formatCurrency(overview.ticketPromedioSalon)}
-          </span>
-        </p>
+        <div className="mt-5 space-y-1.5">
+          {ticketDelta !== null && (
+            <div
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-metric',
+                ticketDeltaPositive
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-rose-200 bg-rose-50 text-rose-700',
+              )}
+              title="Mismo tramo del mes anterior"
+            >
+              <TicketDeltaIcon className="size-3" aria-hidden />
+              {ticketDeltaPositive ? '+' : ''}
+              {ticketDelta.toFixed(1)}% vs. mes anterior
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            por venta · salón{' '}
+            <span className="text-metric font-medium text-foreground">
+              {formatCurrency(overview.ticketPromedioSalon)}
+            </span>
+          </p>
+        </div>
       </div>
     </section>
   )

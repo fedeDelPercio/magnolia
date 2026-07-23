@@ -37,7 +37,11 @@ export type DashboardOverview = {
   cubiertosSalon: number
   ticketPromedioSalon: number
   cantidadVentas: number
+  cantidadVentasPrev: number
+  cantidadVentasDeltaPct: number | null
   ticketPromedio: number
+  ticketPromedioPrev: number
+  ticketPromedioDeltaPct: number | null
   foodCostPct: number | null
   foodCostMonto: number
   laborCostPct: number | null
@@ -246,6 +250,16 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
   const cantidadVentas = current.cierres.reduce((s, c) => s + (Number(c.cantidad_ventas) || 0), 0)
   const ticketPromedio = cantidadVentas > 0 ? facturacion / cantidadVentas : 0
 
+  // Comparacion vs mismo tramo del mes anterior (prev ya esta cortado al mismo
+  // dia que tiene datos el actual, ver arriba). Movimientos = cantidad de
+  // ventas; ticket promedio = facturacion / ventas del periodo previo.
+  const cantidadVentasPrev = prev.cierres.reduce((s, c) => s + (Number(c.cantidad_ventas) || 0), 0)
+  const cantidadVentasDeltaPct =
+    cantidadVentasPrev > 0 ? ((cantidadVentas - cantidadVentasPrev) / cantidadVentasPrev) * 100 : null
+  const ticketPromedioPrev = cantidadVentasPrev > 0 ? facturacionPrev / cantidadVentasPrev : 0
+  const ticketPromedioDeltaPct =
+    ticketPromedioPrev > 0 ? ((ticketPromedio - ticketPromedioPrev) / ticketPromedioPrev) * 100 : null
+
   const foodCostMonto = current.foodCostMonto
   const foodCostPct = current.ventasMatcheadas > 0 ? (foodCostMonto / current.ventasMatcheadas) * 100 : null
   const margenPonderadoPct = foodCostPct !== null ? 100 - foodCostPct : null
@@ -279,7 +293,11 @@ export async function getDashboardOverview(from: string, to: string): Promise<Da
     cubiertosSalon,
     ticketPromedioSalon,
     cantidadVentas,
+    cantidadVentasPrev,
+    cantidadVentasDeltaPct,
     ticketPromedio,
+    ticketPromedioPrev,
+    ticketPromedioDeltaPct,
     foodCostPct,
     foodCostMonto,
     laborCostPct,

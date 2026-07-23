@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckIcon, ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { matchesSearch } from '@/lib/text'
 
 export type SearchableOption = { value: string; label: string }
 
@@ -39,9 +40,7 @@ export function SearchableSelect({
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = options.filter((o) =>
-    o.label.toLowerCase().includes(search.toLowerCase()),
-  )
+  const filtered = options.filter((o) => matchesSearch(o.label, search))
 
   const selectedLabel = options.find((o) => o.value === value)?.label
 
