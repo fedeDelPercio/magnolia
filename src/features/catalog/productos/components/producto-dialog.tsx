@@ -206,7 +206,13 @@ export function ProductoDialog({
       current_price: 0,
     }
     setCreatedInsumos((prev) => [...prev, created])
-    selectReventaInsumo(created.id)
+    // Vinculamos con el objeto recien creado que ya tenemos en mano. No usamos
+    // selectReventaInsumo() porque ese busca en allInsumosForReventa, que en
+    // este render todavia NO incluye al insumo nuevo (setCreatedInsumos aun no
+    // re-renderizo) y devolveria undefined dejandolo sin vincular.
+    form.setValue('ingredientes', [
+      { kind: 'insumo', insumo_id: created.id, qty: 1, unit: created.unit as UnitKind },
+    ])
     toast.success(`Insumo "${created.name}" creado y vinculado`)
   }
 
