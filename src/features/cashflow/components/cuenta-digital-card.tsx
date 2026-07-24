@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { registrarEgresoDigital, registrarIngresoDigital, eliminarMovimientoDigital } from '../caja-mayor-actions'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
-import { DerivarFondoButton } from './fondo-emergencia-card'
+import { FONDO_EMERGENCIA_CATEGORIA } from '../constants'
 
 type Props = { summary: CuentaDigitalSummary }
 
@@ -58,12 +58,9 @@ export function CuentaDigitalCard({ summary }: Props) {
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="flex justify-between gap-3 text-[11px] text-muted-foreground">
-          <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
-          <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
-        </div>
-        <DerivarFondoButton origen="cuenta_digital" />
+      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+        <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
+        <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
       </div>
 
       <MovimientoDigitalDialog tipo="egreso" open={egresoOpen} onOpenChange={setEgresoOpen} />
@@ -176,6 +173,7 @@ const EGRESO_CATEGORIAS = [
   { value: 'Egreso digital', label: 'Egreso digital (default)' },
   { value: 'Pago a empleados', label: 'Pago a empleados' },
   { value: 'Pago a proveedores', label: 'Pago a proveedores' },
+  { value: FONDO_EMERGENCIA_CATEGORIA, label: 'Fondo de emergencia (deriva al fondo)' },
 ] as const
 
 function MovimientoDigitalDialog({
@@ -271,6 +269,11 @@ function MovimientoDigitalDialog({
               {categoria === 'Pago a empleados' && (
                 <p className="text-[11px] text-emerald-700">
                   Se suma al labor cost del dashboard.
+                </p>
+              )}
+              {categoria === FONDO_EMERGENCIA_CATEGORIA && (
+                <p className="text-[11px] text-amber-700">
+                  La plata se deriva al fondo de emergencia (sale de esta cuenta).
                 </p>
               )}
             </div>

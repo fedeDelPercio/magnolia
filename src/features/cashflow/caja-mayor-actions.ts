@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
+import { FONDO_EMERGENCIA_CATEGORIA } from './constants'
 
 const baseSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha invalida'),
@@ -31,6 +32,25 @@ export async function registrarEgresoCajaMayor(input: EgresoInput): Promise<{ er
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  // Categoría especial: deriva al fondo de emergencia (doble asiento). En vez de
+  // un egreso de caja mayor, creamos un ingreso al fondo con origen caja mayor;
+  // getCajaMayorSummary lo resta del saldo de caja mayor.
+  if (parsed.data.categoria === FONDO_EMERGENCIA_CATEGORIA) {
+    const { error } = await supabase.from('fondo_emergencia_movimientos').insert({
+      tenant_id: tenantId,
+      fecha: parsed.data.fecha,
+      tipo: 'ingreso',
+      monto: parsed.data.monto,
+      descripcion: parsed.data.descripcion ?? null,
+      origen: 'caja_efectivo',
+      source: 'manual',
+      created_by: user?.id ?? null,
+    })
+    if (error) return { error: error.message }
+    revalidatePath('/caja')
+    return {}
+  }
 
   const { error } = await supabase.from('caja_mayor_movimientos').insert({
     tenant_id: tenantId,
@@ -142,6 +162,29 @@ export async function registrarEgresoDigital(input: EgresoDigitalInput): Promise
 
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
+
+  // Categoría especial: deriva al fondo de emergencia (doble asiento). Creamos
+  // un ingreso al fondo con origen cuenta digital; getCuentaDigitalSummary lo
+  // resta del saldo digital.
+  if (parsed.data.categoria === FONDO_EMERGENCIA_CATEGORIA) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    const { error } = await supabase.from('fondo_emergencia_movimientos').insert({
+      tenant_id: tenantId,
+      fecha: parsed.data.fecha,
+      tipo: 'ingreso',
+      monto: parsed.data.monto,
+      descripcion: parsed.data.descripcion ?? null,
+      origen: 'cuenta_digital',
+      source: 'manual',
+      created_by: user?.id ?? null,
+    })
+    if (error) return { error: error.message }
+    revalidatePath('/caja')
+    revalidatePath('/dashboard')
+    return {}
+  }
 
   const { error } = await supabase.from('caja_movimientos').insert({
     tenant_id: tenantId,

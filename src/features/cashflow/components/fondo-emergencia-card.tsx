@@ -86,21 +86,6 @@ export function FondoEmergenciaCard({ summary, categorias }: Props) {
   )
 }
 
-// Boton reutilizable para "Derivar a fondo" desde otra cuenta (Caja Mayor /
-// Medios Digitales). Crea un ingreso al fondo con el origen fijo de esa cuenta.
-export function DerivarFondoButton({ origen, label }: { origen: Exclude<Origen, 'externo'>; label?: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setOpen(true)}>
-        <ShieldIcon className="size-3 mr-0.5 text-amber-600" />
-        {label ?? 'A fondo'}
-      </Button>
-      <IngresoFondoDialog open={open} onOpenChange={setOpen} origenFijo={origen} />
-    </>
-  )
-}
-
 function DetalleDialog({
   open, onOpenChange, summary,
 }: { open: boolean; onOpenChange: (v: boolean) => void; summary: FondoEmergenciaSummary }) {

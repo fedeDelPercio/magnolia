@@ -20,7 +20,7 @@ import {
   crearCajaCategoria,
 } from '../caja-mayor-actions'
 import type { CajaMayorMovimiento, CajaMayorSummary } from '../caja-mayor-queries'
-import { DerivarFondoButton } from './fondo-emergencia-card'
+import { FONDO_EMERGENCIA_CATEGORIA } from '../constants'
 
 type Props = { summary: CajaMayorSummary; month: string; categorias: string[] }
 
@@ -68,12 +68,9 @@ export function CajaMayorCard({ summary, categorias }: Props) {
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="flex justify-between gap-3 text-[11px] text-muted-foreground">
-          <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
-          <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
-        </div>
-        <DerivarFondoButton origen="caja_efectivo" />
+      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+        <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
+        <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
       </div>
 
       <IngresoDialog open={ingresoOpen} onOpenChange={setIngresoOpen} />
@@ -363,10 +360,18 @@ function EgresoDialog({
                 className="h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
                 <option value="">— Sin categoría —</option>
-                {localCategorias.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
+                <option value={FONDO_EMERGENCIA_CATEGORIA}>Fondo de emergencia (deriva al fondo)</option>
+                {localCategorias
+                  .filter((c) => c !== FONDO_EMERGENCIA_CATEGORIA)
+                  .map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
               </select>
+            )}
+            {!addingCategoria && categoria === FONDO_EMERGENCIA_CATEGORIA && (
+              <p className="text-[11px] text-amber-700">
+                La plata se deriva al fondo de emergencia (sale de Caja Mayor).
+              </p>
             )}
           </div>
           <div className="space-y-1">
