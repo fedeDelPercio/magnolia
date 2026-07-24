@@ -631,6 +631,7 @@ export async function createPagoServicio(
       concepto_id: values.concepto_id ?? null,
       fecha: values.fecha,
       monto: values.monto,
+      metodo: values.metodo,
       notas: values.notas || null,
       caja_movimiento_id: cajaMovimientoId,
     })
@@ -643,6 +644,8 @@ export async function createPagoServicio(
   }
   revalidatePath(`/proveedores/${proveedorId}`)
   revalidatePath('/caja')
+  // El método transferencia descuenta de Medios Digitales, que el dashboard mira.
+  revalidatePath('/dashboard')
   return {}
 }
 

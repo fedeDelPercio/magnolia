@@ -67,6 +67,7 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     ingresosManualesMes,
     fondoAcc,
     fondoMes,
+    serviciosByMetodoRows,
   ] = await Promise.all([
     // Ventas acumuladas — pagina porque puede haber decenas de miles de rows
     fetchAllPaged<{ amount_total: number; payment_method: string | null; transaction_type: string | null }>((rf, rt) =>
@@ -164,11 +165,23 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       .gte('fecha', from)
       .lt('fecha', nextMonth)
       .order('fecha', { ascending: false }),
+    // Método de los pagos a proveedores de servicios. Su egreso en caja tiene
+    // ref_kind='pago_servicio' y linkea via caja_movimiento_id (link inverso),
+    // así que indexamos metodo por caja_movimiento_id para saber si fue transfer.
+    supabase
+      .from('proveedor_servicio_pagos')
+      .select('caja_movimiento_id, metodo')
+      .eq('tenant_id', tenantId),
   ])
 
   // Index de pagos por id -> metodo
   const pagoMetodo = new Map<string, string>()
   for (const p of pagosByMetodoRows.data ?? []) pagoMetodo.set(p.id, p.metodo ?? '')
+  // Index de pagos de servicio: caja_movimiento_id -> metodo (link inverso).
+  const servicioMetodoByCajaId = new Map<string, string>()
+  for (const p of serviciosByMetodoRows.data ?? []) {
+    if (p.caja_movimiento_id) servicioMetodoByCajaId.set(p.caja_movimiento_id, p.metodo ?? '')
+  }
 
   // Categorias que la card de cuenta digital ofrece cargar. Todas
   // representan plata que sale de la cuenta digital, asi que si se cargan
@@ -181,10 +194,14 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     'Pago a proveedores',
   ])
 
-  function isEgresoDigital(r: { ref_kind: string | null; ref_id: string | null; categoria: string }): boolean {
+  function isEgresoDigital(r: { id: string; ref_kind: string | null; ref_id: string | null; categoria: string }): boolean {
     if (!r.ref_kind && CATEGORIAS_DIGITALES_MANUALES.has(r.categoria)) return true
     if (r.ref_kind === 'pago_proveedor' && r.ref_id) {
       return pagoMetodo.get(r.ref_id) === 'transferencia'
+    }
+    // Pago a proveedor de servicio: digital solo si el metodo fue transferencia.
+    if (r.ref_kind === 'pago_servicio') {
+      return servicioMetodoByCajaId.get(r.id) === 'transferencia'
     }
     return false
   }

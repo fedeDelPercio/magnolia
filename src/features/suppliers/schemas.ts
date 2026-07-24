@@ -83,6 +83,9 @@ export type ConceptoServicioFormValues = z.infer<typeof conceptoServicioSchema>
 export const pagoServicioSchema = z.object({
   fecha: z.string().min(1, 'Fecha requerida'),
   monto: z.number().positive('El monto tiene que ser mayor a 0'),
+  // Método de pago — misma lógica que los pagos de insumos: si es
+  // 'transferencia', el egreso se descuenta de Medios Digitales.
+  metodo: z.enum(['efectivo', 'transferencia', 'cheque', 'otro']),
   concepto_id: z.string().uuid().nullable().optional(),
   notas: z.string().optional(),
   // Si true, adicionalmente al pago crea un egreso en caja movimientos

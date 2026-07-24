@@ -2107,6 +2107,7 @@ export type Database = {
           created_at: string
           fecha: string
           id: string
+          metodo: Database["public"]["Enums"]["pago_metodo"]
           monto: number
           notas: string | null
           proveedor_id: string
@@ -2118,6 +2119,7 @@ export type Database = {
           created_at?: string
           fecha: string
           id?: string
+          metodo?: Database["public"]["Enums"]["pago_metodo"]
           monto: number
           notas?: string | null
           proveedor_id: string
@@ -2129,6 +2131,7 @@ export type Database = {
           created_at?: string
           fecha?: string
           id?: string
+          metodo?: Database["public"]["Enums"]["pago_metodo"]
           monto?: number
           notas?: string | null
           proveedor_id?: string

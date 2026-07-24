@@ -10,7 +10,12 @@ import { CurrencyInput } from '@/components/ui/currency-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import { createPagoServicio } from '../actions'
+import { PAGO_METODOS, METODO_LABELS, type PagoMetodo } from '../schemas'
 import type { ConceptoServicio, SaldoProveedor } from '../queries'
+
+function isPagoMetodo(v: string | null): v is PagoMetodo {
+  return !!v && (PAGO_METODOS as readonly string[]).includes(v)
+}
 
 type Props = {
   open: boolean
@@ -29,9 +34,13 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
   const [fecha, setFecha] = useState(todayStr())
   const [conceptoId, setConceptoId] = useState<string>(NONE_CONCEPT)
   const [montoStr, setMontoStr] = useState('')
+  const [metodo, setMetodo] = useState<PagoMetodo>(() =>
+    isPagoMetodo(proveedor.metodo_pago_default) ? proveedor.metodo_pago_default : 'transferencia',
+  )
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const metodoDefault = proveedor.metodo_pago_default
   useEffect(() => {
     if (open) {
       setFecha(todayStr())
@@ -39,9 +48,10 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
       // (ej. proveedor de un solo servicio como Fibertel = Internet).
       setConceptoId(conceptos.length === 1 ? conceptos[0]!.id : NONE_CONCEPT)
       setMontoStr('')
+      setMetodo(isPagoMetodo(metodoDefault) ? metodoDefault : 'transferencia')
       setNotas('')
     }
-  }, [open, conceptos])
+  }, [open, conceptos, metodoDefault])
 
   async function handleSubmit() {
     const monto = parseFloat(montoStr)
@@ -53,6 +63,7 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
     const result = await createPagoServicio(proveedor.id, {
       fecha,
       monto,
+      metodo,
       concepto_id: conceptoId === NONE_CONCEPT ? null : conceptoId,
       notas: notas || undefined,
       // Los pagos de servicio siempre generan un egreso en caja mayor —
@@ -88,6 +99,29 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
                 placeholder="0"
               />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Método de pago</label>
+            <Select value={metodo} onValueChange={(v) => { if (isPagoMetodo(v)) setMetodo(v) }}>
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {(v: string | null) => (v ? METODO_LABELS[v] ?? v : null)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {PAGO_METODOS.map((m) => (
+                  <SelectItem key={m} value={m} label={METODO_LABELS[m]}>
+                    {METODO_LABELS[m]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {metodo === 'transferencia' && (
+              <p className="text-xs text-muted-foreground">
+                Se descuenta de Medios Digitales.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
