@@ -54,6 +54,17 @@ export async function saveMovimiento(
   return {}
 }
 
+export async function traerStockDiaAnterior(diaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { error } = await supabase.rpc('resembrar_stock_inicial', { p_dia_id: diaId })
+  if (error) return { error: error.message }
+
+  revalidatePath('/operacion')
+  revalidatePath(`/operacion/${diaId}`)
+  return {}
+}
+
 export async function cerrarDia(diaId: string): Promise<{ error?: string; sueldosPagados?: number }> {
   const supabase = await createClient()
 

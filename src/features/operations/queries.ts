@@ -68,7 +68,8 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
   // Si el día está abierto, sincronizamos: agregamos movimientos para
   // productos activos que se crearon después de abrir el día.
   // Para esos movimientos nuevos, heredamos stock_anterior del último día
-  // cerrado (mismo tenant, fecha anterior). Los días cerrados son inmutables.
+  // previo (sin exigir que esté cerrado — en la práctica quedan abiertos):
+  // el conteo físico si se cargó, o el teórico en vivo si no.
   if (data.status === 'abierto') {
     const existingProductIds = new Set(
       (data.movimientos_diarios as unknown as Array<{ producto_id: string }>).map((m) => m.producto_id),
@@ -83,30 +84,32 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
     const missing = (activeProducts ?? []).filter((p) => !existingProductIds.has(p.id))
 
     if (missing.length > 0) {
-      // Buscamos el último día cerrado anterior para heredar stock
-      const { data: prevClosed } = await supabase
+      // Buscamos el último día anterior (cualquier estado) para heredar stock
+      const { data: prevDia } = await supabase
         .from('dias_operativos')
         .select('id')
         .eq('tenant_id', data.tenant_id)
-        .eq('status', 'cerrado')
         .lt('fecha', data.fecha)
         .order('fecha', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      // Mapa producto_id → conteo_fisico del último día cerrado
+      // Mapa producto_id → stock final del día anterior (conteo físico si se
+      // cargó, o teórico en vivo: stock_ant + prod - ventas - desperd - almuerzo)
       const prevStock = new Map<string, number>()
-      if (prevClosed) {
+      if (prevDia) {
         const { data: prevMovs } = await supabase
           .from('movimientos_diarios')
-          .select('producto_id, conteo_fisico')
-          .eq('dia_id', prevClosed.id)
+          .select('producto_id, conteo_fisico, stock_anterior, produccion, ventas, desperdicio, almuerzo')
+          .eq('dia_id', prevDia.id)
           .in(
             'producto_id',
             missing.map((p) => p.id),
           )
         for (const m of prevMovs ?? []) {
-          prevStock.set(m.producto_id, m.conteo_fisico ?? 0)
+          const teorico =
+            (m.stock_anterior ?? 0) + (m.produccion ?? 0) - (m.ventas ?? 0) - (m.desperdicio ?? 0) - (m.almuerzo ?? 0)
+          prevStock.set(m.producto_id, m.conteo_fisico ?? teorico)
         }
       }
 

@@ -3,12 +3,12 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon } from 'lucide-react'
+import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon, RotateCcwIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/format'
-import { cerrarDia, reabrirDia } from '../actions'
+import { cerrarDia, reabrirDia, traerStockDiaAnterior } from '../actions'
 import { MovimientoRow } from './movimiento-row'
 import { MovimientoGroupRow } from './movimiento-group-row'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
@@ -95,6 +95,26 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     })
   }
 
+  function handleTraerStock() {
+    if (
+      !window.confirm(
+        'Esto reemplaza el stock anterior de todos los productos con lo que quedó el día previo (conteo físico, o teórico si no se contó). ¿Continuar?',
+      )
+    )
+      return
+    setLoading(true)
+    startTransition(async () => {
+      const result = await traerStockDiaAnterior(dia.id)
+      setLoading(false)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Stock anterior traído del día previo')
+        router.refresh()
+      }
+    })
+  }
+
   function handleReabrir() {
     setLoading(true)
     startTransition(async () => {
@@ -135,10 +155,16 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
 
         <div className="flex gap-2">
           {dia.status === 'abierto' ? (
-            <Button onClick={handleCerrar} disabled={loading}>
-              <LockIcon className="size-4" />
-              {loading ? 'Cerrando...' : 'Cerrar día'}
-            </Button>
+            <>
+              <Button variant="outline" onClick={handleTraerStock} disabled={loading}>
+                <RotateCcwIcon className="size-4" />
+                Traer stock anterior
+              </Button>
+              <Button onClick={handleCerrar} disabled={loading}>
+                <LockIcon className="size-4" />
+                {loading ? 'Cerrando...' : 'Cerrar día'}
+              </Button>
+            </>
           ) : (
             <Button variant="outline" onClick={handleReabrir} disabled={loading}>
               <LockOpenIcon className="size-4" />

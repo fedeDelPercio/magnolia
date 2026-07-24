@@ -171,9 +171,19 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
           />
         </td>
       ))}
-      {/* Ventas: suma de canales, solo lectura (viene de Bistrosoft) */}
-      <td className="px-2 py-2 text-right tabular-nums text-sm text-muted-foreground" title={ventasBreakdown}>
-        {ventasSum}
+      {/* Ventas: suma de canales, solo lectura (viene de Bistrosoft por canal).
+          Se muestra como input deshabilitado para que el recuadro quede igual
+          que el resto de las columnas. */}
+      <td className="px-2 py-2 text-right">
+        <input
+          type="text"
+          inputMode="numeric"
+          disabled
+          readOnly
+          className={inputCls}
+          value={ventasSum}
+          title={`Ventas por canal (viene de Bistrosoft) — ${ventasBreakdown}`}
+        />
       </td>
       {(['desperdicio', 'almuerzo', 'conteo_fisico'] as const).map((field) => (
         <td key={field} className="px-2 py-2 text-right">
