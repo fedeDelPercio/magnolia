@@ -15,6 +15,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { METODO_LABELS } from '../schemas'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -335,6 +336,8 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formatDate(p.fecha)}
+                      {' · '}
+                      <span className="text-foreground/70">{METODO_LABELS[p.metodo] ?? p.metodo}</span>
                       {p.notas && ` · ${p.notas}`}
                     </p>
                   </div>

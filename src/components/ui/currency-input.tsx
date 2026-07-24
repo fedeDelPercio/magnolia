@@ -25,8 +25,18 @@ function formatES(raw: string, decimals: number): string {
   })
 }
 
-function rawWithComma(raw: string): string {
-  return raw.replace('.', ',')
+// Display mientras el campo esta enfocado: agrupa los miles del entero en vivo
+// (12345 -> "12.345") y preserva la coma decimal y los decimales que se van
+// tipeando (raw "12345.6" -> "12.345,6", raw "12345." -> "12.345,"). Sigue
+// derivandose del value normalizado, sin estado local.
+function groupFocused(raw: string): string {
+  if (raw === '' || raw === '-') return raw
+  const [intPart = '', decPart] = raw.split('.')
+  const grouped =
+    intPart === '' || intPart === '-'
+      ? intPart
+      : Number(intPart).toLocaleString('es-AR', { maximumFractionDigits: 0 })
+  return raw.includes('.') ? `${grouped},${decPart ?? ''}` : grouped
 }
 
 // Quita separadores de miles (.) y normaliza coma decimal a punto. Tolera
@@ -61,7 +71,7 @@ export function CurrencyInput({
 }: Props) {
   const [focused, setFocused] = React.useState(false)
 
-  const display = focused ? rawWithComma(value) : formatES(value, decimals)
+  const display = focused ? groupFocused(value) : formatES(value, decimals)
 
   return (
     <Input
