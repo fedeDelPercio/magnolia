@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { registrarEgresoDigital, registrarIngresoDigital, eliminarMovimientoDigital } from '../caja-mayor-actions'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
+import { DerivarFondoButton } from './fondo-emergencia-card'
 
 type Props = { summary: CuentaDigitalSummary }
 
@@ -57,9 +58,12 @@ export function CuentaDigitalCard({ summary }: Props) {
         </div>
       </div>
 
-      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
-        <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
-        <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="flex justify-between gap-3 text-[11px] text-muted-foreground">
+          <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
+          <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
+        </div>
+        <DerivarFondoButton origen="cuenta_digital" />
       </div>
 
       <MovimientoDigitalDialog tipo="egreso" open={egresoOpen} onOpenChange={setEgresoOpen} />

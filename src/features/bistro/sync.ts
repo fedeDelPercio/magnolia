@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Json } from '@/types/database'
+import { mondayOfYMD } from '@/lib/week'
 import {
   fetchTransactions,
   parseTransactionDateTime,
@@ -176,9 +177,11 @@ type MatchMaps = {
   // Metadata para redirigir a la variante correcta del concepto.
   byId: Map<string, ProductoInfo>
   byConcepto: Map<string, ProductoInfo[]>
-  // Receta del dia: DOW -> producto_id. Se consulta antes que alias/name
-  // cuando el nombre del item matchea el patron de "receta del dia".
-  recetaDelDia: Map<number, string>
+  // Receta del dia: 'week_start|dow' -> producto_id. Se consulta antes que
+  // alias/name cuando el nombre del item matchea el patron de "receta del dia".
+  // Cada semana tiene su propio menu (ver migracion 0059). Si la semana del
+  // ticket no tiene menu cargado para ese dia, no hay match (cae a alias/name).
+  recetaDelDia: Map<string, string>
 }
 
 async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMaps> {
@@ -195,7 +198,7 @@ async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMap
       .in('source', ['bistrosoft', 'bistrosoft_sku']),
     client
       .from('receta_del_dia')
-      .select('dow, producto_id')
+      .select('week_start, dow, producto_id')
       .eq('tenant_id', tenantId),
   ])
 
@@ -227,21 +230,21 @@ async function loadMatchMaps(client: Client, tenantId: string): Promise<MatchMap
     else byNameAlias.set(normalize(a.alias), a.producto_id)
   }
 
-  const recetaDelDia = new Map<number, string>()
+  const recetaDelDia = new Map<string, string>()
   for (const r of recetaDiaRes.data ?? []) {
-    recetaDelDia.set(r.dow, r.producto_id)
+    recetaDelDia.set(`${r.week_start}|${r.dow}`, r.producto_id)
   }
 
   return { bySku, byNameAlias, byNameExact, byNameNorm, byId, byConcepto, recetaDelDia }
 }
 
-function matchItem(item: BistroLine, maps: MatchMaps, dow?: number): string | null {
+function matchItem(item: BistroLine, maps: MatchMaps, recetaKey?: string): string | null {
   // Receta del dia gana sobre alias/name: si el nombre matchea el patron y hay
-  // un producto asignado al DOW, lo devolvemos. Bistrosoft carga el mismo
-  // nombre generico ("Sugerencia del dia") todos los dias, pero la asignacion
-  // cambia por DOW — asi que no podemos usar alias.
-  if (item.item && dow !== undefined && isRecetaDelDia(item.item)) {
-    const rd = maps.recetaDelDia.get(dow)
+  // un producto asignado a (semana, dia), lo devolvemos. Bistrosoft carga el
+  // mismo nombre generico ("Sugerencia del dia") todos los dias, pero la
+  // asignacion cambia por semana y dia — asi que no podemos usar alias.
+  if (item.item && recetaKey && isRecetaDelDia(item.item)) {
+    const rd = maps.recetaDelDia.get(recetaKey)
     if (rd) return rd
   }
   if (item.sku) {
@@ -336,10 +339,11 @@ async function upsertTransaction(
   await client.from('bistro_transaccion_items').delete().eq('transaccion_id', upserted.id)
 
   const canal = canalFromOrigin(tx.origin)
-  const dow = dowFromFechaLocal(payload.fecha_local)
+  // Clave 'week_start|dow' para resolver la receta del dia de la semana del ticket.
+  const recetaKey = `${mondayOfYMD(payload.fecha_local)}|${dowFromFechaLocal(payload.fecha_local)}`
   let unmapped = 0
   const items = (tx.items ?? []).map((it) => {
-    const rawMatch = matchItem(it, maps, dow)
+    const rawMatch = matchItem(it, maps, recetaKey)
     const formato = formatoFromNombre(it.item)
     // Si matcheamos un producto que es variante de un concepto, elegimos la
     // variante que corresponde al (canal, formato) del ticket — asi los items

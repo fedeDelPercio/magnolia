@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
+import { mondayOfYMD } from '@/lib/week'
 import { extractStructuredFromFile } from '@/lib/llm/vision'
 import { cierreCajaExtractSchema, type CierreCajaExtract, type ProductoMatch, type SaveMapping } from './schemas'
 import { topSuggestion } from './lib/similarity'
@@ -114,14 +115,13 @@ export async function extractCierreCaja(formData: FormData): Promise<ExtractResu
   }
 
   const data = result.data
-  const dow = dowFromFechaLocal(fechaLocalArgentina(data.fecha_cierre))
   const matches = await resolveMatches(
     data.productos.map((p) => ({
       nombre: p.nombre,
       canal: canalFromCategoria(p.categoria),
       formato: formatoFromNombre(p.nombre),
     })),
-    dow,
+    fechaLocalArgentina(data.fecha_cierre),
   )
 
   return { data, matches }
@@ -141,10 +141,15 @@ export type ResolveInput = {
 
 export async function resolveMatches(
   inputs: ResolveInput[],
-  dow?: number,
+  fechaLocal?: string,
 ): Promise<ProductoMatch[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
+
+  // Receta del dia por (semana, dia): usamos el lunes de la semana del cierre y
+  // su DOW. Si esa semana no tiene menu cargado para ese dia, no hay match.
+  const weekStart = fechaLocal ? mondayOfYMD(fechaLocal) : null
+  const dow = fechaLocal ? dowFromFechaLocal(fechaLocal) : null
 
   const [productosRes, aliasesRes, recetaDiaRes] = await Promise.all([
     supabase
@@ -157,11 +162,12 @@ export async function resolveMatches(
       .select('alias, producto_id')
       .eq('tenant_id', tenantId)
       .eq('source', 'bistrosoft'),
-    dow !== undefined
+    weekStart !== null && dow !== null
       ? supabase
           .from('receta_del_dia')
           .select('producto_id')
           .eq('tenant_id', tenantId)
+          .eq('week_start', weekStart)
           .eq('dow', dow)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null } as { data: null; error: null }),

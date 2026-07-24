@@ -439,6 +439,56 @@ export type Database = {
           },
         ]
       }
+      fondo_emergencia_movimientos: {
+        Row: {
+          categoria: string | null
+          created_at: string
+          created_by: string | null
+          descripcion: string | null
+          fecha: string
+          id: string
+          monto: number
+          origen: string
+          source: string
+          tenant_id: string
+          tipo: string
+        }
+        Insert: {
+          categoria?: string | null
+          created_at?: string
+          created_by?: string | null
+          descripcion?: string | null
+          fecha: string
+          id?: string
+          monto: number
+          origen?: string
+          source?: string
+          tenant_id: string
+          tipo: string
+        }
+        Update: {
+          categoria?: string | null
+          created_at?: string
+          created_by?: string | null
+          descripcion?: string | null
+          fecha?: string
+          id?: string
+          monto?: number
+          origen?: string
+          source?: string
+          tenant_id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fondo_emergencia_movimientos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cierre_caja_productos: {
         Row: {
           canal: Database["public"]["Enums"]["producto_canal"] | null
@@ -2198,6 +2248,7 @@ export type Database = {
           producto_id: string
           tenant_id: string
           updated_at: string
+          week_start: string
         }
         Insert: {
           created_at?: string
@@ -2206,6 +2257,7 @@ export type Database = {
           producto_id: string
           tenant_id: string
           updated_at?: string
+          week_start: string
         }
         Update: {
           created_at?: string
@@ -2214,6 +2266,7 @@ export type Database = {
           producto_id?: string
           tenant_id?: string
           updated_at?: string
+          week_start?: string
         }
         Relationships: [
           {

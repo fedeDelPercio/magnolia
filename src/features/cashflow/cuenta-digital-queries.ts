@@ -23,7 +23,7 @@ export type CuentaDigitalMovimiento = {
   tipo: 'ingreso' | 'egreso'
   monto: number                 // monto NETO (descontando impuestos en ingresos)
   descripcion: string
-  source: 'bistro_venta' | 'caja_movimiento' | 'traspaso_caja_mayor'
+  source: 'bistro_venta' | 'caja_movimiento' | 'traspaso_caja_mayor' | 'traspaso_fondo'
   // Solo egresos manuales de categoria 'Egreso digital' pueden borrarse desde
   // acá — los pagos a proveedor y los traspasos se gestionan desde su feature.
   eliminable: boolean
@@ -65,6 +65,8 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     traspasosMes,
     ingresosManualesAcc,
     ingresosManualesMes,
+    fondoAcc,
+    fondoMes,
   ] = await Promise.all([
     // Ventas acumuladas — pagina porque puede haber decenas de miles de rows
     fetchAllPaged<{ amount_total: number; payment_method: string | null; transaction_type: string | null }>((rf, rt) =>
@@ -143,6 +145,25 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       .gte('fecha', from)
       .lt('fecha', nextMonth)
       .order('fecha', { ascending: false }),
+    // Traspasos a fondo de emergencia que salieron de la cuenta digital
+    // (fondo_emergencia_movimientos ingreso, origen='cuenta_digital'). Se
+    // restan como egresos, igual que los traspasos a caja mayor.
+    supabase
+      .from('fondo_emergencia_movimientos')
+      .select('monto')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('origen', 'cuenta_digital')
+      .lt('fecha', nextMonth),
+    supabase
+      .from('fondo_emergencia_movimientos')
+      .select('id, fecha, monto, descripcion')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('origen', 'cuenta_digital')
+      .gte('fecha', from)
+      .lt('fecha', nextMonth)
+      .order('fecha', { ascending: false }),
   ])
 
   // Index de pagos por id -> metodo
@@ -207,6 +228,8 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
   }
   // + traspasos a caja mayor
   egresosAcc += (traspasosAcc.data ?? []).reduce((s, r) => s + (Number(r.monto) || 0), 0)
+  // + traspasos a fondo de emergencia (que salieron de digital)
+  egresosAcc += (fondoAcc.data ?? []).reduce((s, r) => s + (Number(r.monto) || 0), 0)
 
   // 4. Egresos del mes (con detalle)
   let egresosMes = 0
@@ -238,6 +261,19 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       monto,
       descripcion: t.descripcion ?? 'Traspaso a caja mayor',
       source: 'traspaso_caja_mayor',
+      eliminable: false,
+    })
+  }
+  for (const f of fondoMes.data ?? []) {
+    const monto = Number(f.monto) || 0
+    egresosMes += monto
+    movimientosMes.push({
+      id: `fondo-${f.id}`,
+      fecha: f.fecha,
+      tipo: 'egreso',
+      monto,
+      descripcion: f.descripcion ?? 'Derivado a fondo de emergencia',
+      source: 'traspaso_fondo',
       eliminable: false,
     })
   }

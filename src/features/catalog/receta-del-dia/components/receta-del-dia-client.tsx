@@ -2,14 +2,15 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { CalendarDaysIcon, InfoIcon } from 'lucide-react'
+import { CalendarDaysIcon, InfoIcon, LockIcon } from 'lucide-react'
 
 import { SearchableSelect } from '@/components/ui/searchable-select'
+import { cn } from '@/lib/utils'
 import { setRecetaDelDia } from '../actions'
-import { DOW_LABELS, type RecetaDelDiaAsignacion } from '../constants'
+import { DOW_LABELS, semanaLabel, type RecetaSemana } from '../constants'
 
 type Props = {
-  asignaciones: Array<{ dow: number; asignacion: RecetaDelDiaAsignacion | null }>
+  semanas: RecetaSemana[]
   productos: Array<{ id: string; name: string; concepto_name: string | null }>
 }
 
@@ -17,14 +18,23 @@ type Props = {
 // mantenemos el DOW original (0=domingo, 1=lunes, ...) al guardar.
 const DOW_ORDER: number[] = [1, 2, 3, 4, 5, 6, 0]
 
-export function RecetaDelDiaClient({ asignaciones, productos }: Props) {
+// Rango de fechas legible de la semana (lun–dom) a partir del week_start.
+function rangoSemana(weekStart: string): string {
+  const [y, m, d] = weekStart.split('-').map(Number)
+  const lun = new Date(y!, m! - 1, d!)
+  const dom = new Date(y!, m! - 1, d! + 6)
+  const fmt = (dt: Date) => `${dt.getDate()}/${dt.getMonth() + 1}`
+  return `${fmt(lun)} – ${fmt(dom)}`
+}
+
+export function RecetaDelDiaClient({ semanas, productos }: Props) {
   const [pending, startTransition] = useTransition()
-  const [savingDow, setSavingDow] = useState<number | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  // Arranca en la semana en curso (offset 0).
+  const [activeOffset, setActiveOffset] = useState<number>(0)
 
-  const byDow = new Map(asignaciones.map((a) => [a.dow, a.asignacion]))
+  const activa = semanas.find((s) => s.offset === activeOffset) ?? semanas[0]
 
-  // Opciones del SearchableSelect: mostramos "Concepto — variante" cuando aplica
-  // para que Caro sepa que esta eligiendo una variante especifica del concepto.
   const options = productos.map((p) => ({
     value: p.id,
     label: p.concepto_name && p.concepto_name.toLowerCase() !== p.name.toLowerCase()
@@ -32,11 +42,12 @@ export function RecetaDelDiaClient({ asignaciones, productos }: Props) {
       : p.name,
   }))
 
-  function handleChange(dow: number, producto_id: string | null) {
-    setSavingDow(dow)
+  function handleChange(week_start: string, dow: number, producto_id: string | null) {
+    const key = `${week_start}|${dow}`
+    setSavingKey(key)
     startTransition(async () => {
-      const result = await setRecetaDelDia(dow, producto_id)
-      setSavingDow(null)
+      const result = await setRecetaDelDia(week_start, dow, producto_id)
+      setSavingKey(null)
       if (result.error) {
         toast.error(result.error)
       } else {
@@ -49,6 +60,9 @@ export function RecetaDelDiaClient({ asignaciones, productos }: Props) {
     })
   }
 
+  if (!activa) return null
+  const readOnly = !activa.editable
+
   return (
     <div className="space-y-4">
       {/* Info banner */}
@@ -56,22 +70,55 @@ export function RecetaDelDiaClient({ asignaciones, productos }: Props) {
         <div className="flex items-start gap-2 text-sm text-primary">
           <InfoIcon className="size-4 shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium">Receta del día por día de la semana</p>
+            <p className="font-medium">Menú de la semana</p>
             <p className="mt-1 text-xs text-primary/80">
-              Cuando Bistrosoft envía un item tipo <em>&quot;Sugerencia del día&quot;</em>
-              {' '}o <em>&quot;Menú del día&quot;</em>, el sistema lo mapea al producto
-              asignado al día correspondiente. Si el producto tiene variantes
-              (canal / formato), se elige la variante que corresponda al ticket automáticamente.
+              Cada semana tiene su propio menú por día. Editás la semana actual y la próxima;
+              las 2 pasadas quedan de solo lectura. La semana &quot;actual&quot; se actualiza sola cada lunes.
+              Cuando Bistrosoft envía un item <em>&quot;Sugerencia del día&quot;</em> o <em>&quot;Menú del día&quot;</em>,
+              se mapea al producto asignado a esa semana y día.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Grilla de dias */}
+      {/* Selector de semana */}
+      <div className="flex flex-wrap gap-1.5">
+        {semanas.map((s) => {
+          const active = s.offset === activeOffset
+          return (
+            <button
+              key={s.week_start}
+              type="button"
+              onClick={() => setActiveOffset(s.offset)}
+              className={cn(
+                'rounded-lg border px-3 py-1.5 text-sm transition-colors',
+                active
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'bg-background hover:bg-muted text-foreground',
+              )}
+            >
+              <span className="font-medium">{semanaLabel(s.offset)}</span>
+              <span className={cn('ml-1.5 text-xs', active ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                {rangoSemana(s.week_start)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {readOnly && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <LockIcon className="size-3" />
+          Semana pasada — solo lectura.
+        </p>
+      )}
+
+      {/* Grilla de dias de la semana activa */}
       <div className="rounded-xl border bg-card divide-y">
         {DOW_ORDER.map((dow) => {
-          const asignacion = byDow.get(dow) ?? null
-          const isSaving = savingDow === dow && pending
+          const asignacion = activa.dias.find((d) => d.dow === dow)?.asignacion ?? null
+          const key = `${activa.week_start}|${dow}`
+          const isSaving = savingKey === key && pending
           return (
             <div
               key={dow}
@@ -82,21 +129,31 @@ export function RecetaDelDiaClient({ asignaciones, productos }: Props) {
                 <span className="font-medium">{DOW_LABELS[dow]}</span>
               </div>
               <div className="min-w-0">
-                <SearchableSelect
-                  options={options}
-                  value={asignacion?.producto_id ?? ''}
-                  onValueChange={(v) => handleChange(dow, v || null)}
-                  placeholder="Sin asignar — clic para elegir producto..."
-                  triggerClassName="h-9 text-sm w-full"
-                />
+                {readOnly ? (
+                  <span className="text-sm text-muted-foreground">
+                    {asignacion
+                      ? (asignacion.concepto_name && asignacion.concepto_name.toLowerCase() !== asignacion.producto_name.toLowerCase()
+                          ? `${asignacion.concepto_name} — ${asignacion.producto_name}`
+                          : asignacion.producto_name)
+                      : <span className="italic text-muted-foreground/50">Sin asignar</span>}
+                  </span>
+                ) : (
+                  <SearchableSelect
+                    options={options}
+                    value={asignacion?.producto_id ?? ''}
+                    onValueChange={(v) => handleChange(activa.week_start, dow, v || null)}
+                    placeholder="Sin asignar — clic para elegir producto..."
+                    triggerClassName="h-9 text-sm w-full"
+                  />
+                )}
               </div>
               <div className="text-xs text-right">
                 {isSaving ? (
                   <span className="text-muted-foreground italic">Guardando...</span>
-                ) : asignacion ? (
+                ) : !readOnly && asignacion ? (
                   <button
                     type="button"
-                    onClick={() => handleChange(dow, null)}
+                    onClick={() => handleChange(activa.week_start, dow, null)}
                     className="text-muted-foreground hover:text-destructive"
                     disabled={pending}
                   >

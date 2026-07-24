@@ -1,13 +1,14 @@
-import { getRecetaDelDia } from '@/features/catalog/receta-del-dia/queries'
+import { getRecetaDelDiaSemanas } from '@/features/catalog/receta-del-dia/queries'
 import { RecetaDelDiaClient } from '@/features/catalog/receta-del-dia/components/receta-del-dia-client'
 import { getConceptos, getProductos } from '@/features/catalog/productos/queries'
 import { PageHeader } from '@/components/shared/page-header'
 
 export const metadata = { title: 'Receta del día — MAGNOLIA FOOD' }
+export const dynamic = 'force-dynamic'
 
 export default async function RecetaDelDiaPage() {
-  const [asignaciones, productos, conceptos] = await Promise.all([
-    getRecetaDelDia(),
+  const [semanas, productos, conceptos] = await Promise.all([
+    getRecetaDelDiaSemanas(),
     getProductos(),
     getConceptos(),
   ])
@@ -33,7 +34,7 @@ export default async function RecetaDelDiaPage() {
         }
         description="Asigná qué producto se cocina como sugerencia o menú del día en cada día de la semana."
       />
-      <RecetaDelDiaClient asignaciones={asignaciones} productos={productosOptions} />
+      <RecetaDelDiaClient semanas={semanas} productos={productosOptions} />
     </div>
   )
 }

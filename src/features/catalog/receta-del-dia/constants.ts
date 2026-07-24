@@ -13,3 +13,26 @@ export type RecetaDelDiaAsignacion = {
   concepto_id: string | null
   concepto_name: string | null
 }
+
+// Una semana del menú. `offset` es relativo a la semana en curso:
+// -2 y -1 = las dos semanas pasadas (solo lectura), 0 = semana actual,
+// 1 = próxima semana. Solo la actual y la próxima son editables.
+export type RecetaSemana = {
+  week_start: string   // lunes de la semana, 'YYYY-MM-DD'
+  offset: number       // -2 | -1 | 0 | 1
+  editable: boolean
+  dias: Array<{ dow: number; asignacion: RecetaDelDiaAsignacion | null }>
+}
+
+// Los 4 offsets que se muestran, de más viejo a más nuevo.
+export const SEMANA_OFFSETS = [-2, -1, 0, 1] as const
+
+export function semanaLabel(offset: number): string {
+  switch (offset) {
+    case -2: return 'Hace 2 semanas'
+    case -1: return 'Semana pasada'
+    case 0: return 'Esta semana'
+    case 1: return 'Próxima semana'
+    default: return ''
+  }
+}

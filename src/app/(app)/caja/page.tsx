@@ -2,6 +2,7 @@ import { getCajaMovimientos } from '@/features/cashflow/queries'
 import { getBistroCajaMovimientos } from '@/features/cashflow/bistro-caja-queries'
 import { getCajaCategorias, getCajaMayorSummary, getUltimoCierreCaja } from '@/features/cashflow/caja-mayor-queries'
 import { getCuentaDigitalSummary } from '@/features/cashflow/cuenta-digital-queries'
+import { getFondoEmergenciaSummary } from '@/features/cashflow/fondo-emergencia-queries'
 import { getMonthlyVentasSummary } from '@/features/cierres/queries'
 import { getCostoProcesadorDigital } from '@/features/config/queries'
 import { CajaClient } from '@/features/cashflow/components/caja-client'
@@ -19,7 +20,7 @@ export default async function CajaPage({ searchParams }: Props) {
   // dashboard. Eso refleja el dinero que efectivamente queda disponible.
   const costoProcesadorPct = await getCostoProcesadorDigital()
 
-  const [movimientos, ventasSummary, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital, categorias] = await Promise.all([
+  const [movimientos, ventasSummary, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital, categorias, fondoEmergencia] = await Promise.all([
     getCajaMovimientos(month),
     getMonthlyVentasSummary(month),
     getBistroCajaMovimientos(month),
@@ -27,6 +28,7 @@ export default async function CajaPage({ searchParams }: Props) {
     getUltimoCierreCaja(),
     getCuentaDigitalSummary(month, costoProcesadorPct),
     getCajaCategorias(),
+    getFondoEmergenciaSummary(month),
   ])
 
   return (
@@ -50,6 +52,7 @@ export default async function CajaPage({ searchParams }: Props) {
         ultimoCierre={ultimoCierre}
         cuentaDigital={cuentaDigital}
         cajaCategorias={categorias}
+        fondoEmergencia={fondoEmergencia}
       />
     </div>
   )

@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { PlusIcon, MinusIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon, ListIcon } from 'lucide-react'
+import {
+  PlusIcon, MinusIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon, ListIcon, ShieldIcon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -13,24 +15,25 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { crearCajaCategoria } from '../caja-mayor-actions'
 import {
-  registrarEgresoCajaMayor,
-  registrarIngresoCajaMayor,
-  deleteCajaMayorMovimiento,
-  crearCajaCategoria,
-} from '../caja-mayor-actions'
-import type { CajaMayorMovimiento, CajaMayorSummary } from '../caja-mayor-queries'
-import { DerivarFondoButton } from './fondo-emergencia-card'
+  registrarIngresoFondo,
+  registrarEgresoFondo,
+  deleteFondoMovimiento,
+} from '../fondo-emergencia-actions'
+import type { FondoEmergenciaMovimiento, FondoEmergenciaSummary } from '../fondo-emergencia-queries'
 
-type Props = { summary: CajaMayorSummary; month: string; categorias: string[] }
+type Origen = FondoEmergenciaMovimiento['origen']
 
-const ORIGEN_LABEL: Record<CajaMayorMovimiento['origen'], string> = {
-  externo: 'externo',
-  caja_efectivo: 'caja efectivo',
-  cuenta_digital: 'cuenta digital',
+const ORIGEN_LABEL: Record<Origen, string> = {
+  externo: 'aporte externo',
+  caja_efectivo: 'caja mayor',
+  cuenta_digital: 'medios digitales',
 }
 
-export function CajaMayorCard({ summary, categorias }: Props) {
+type Props = { summary: FondoEmergenciaSummary; categorias: string[] }
+
+export function FondoEmergenciaCard({ summary, categorias }: Props) {
   const [ingresoOpen, setIngresoOpen] = useState(false)
   const [egresoOpen, setEgresoOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -45,12 +48,15 @@ export function CajaMayorCard({ summary, categorias }: Props) {
     <div className="rounded-xl border bg-card p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Caja mayor</p>
+          <p className="flex items-center gap-1 text-[10px] text-muted-foreground uppercase tracking-wide">
+            <ShieldIcon className="size-3 text-amber-600" />
+            Fondo de emergencia
+          </p>
           <p className={cn('mt-0.5 text-xl font-semibold tabular-nums', saldoTone)}>
             {formatCurrency(summary.saldo)}
           </p>
           <p className="text-[10px] text-muted-foreground mt-0.5">
-            tesorería fuera del POS
+            reserva para imprevistos
           </p>
         </div>
         <div className="flex gap-1 shrink-0">
@@ -68,29 +74,41 @@ export function CajaMayorCard({ summary, categorias }: Props) {
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="flex justify-between gap-3 text-[11px] text-muted-foreground">
-          <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
-          <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
-        </div>
-        <DerivarFondoButton origen="caja_efectivo" />
+      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+        <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
+        <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
       </div>
 
-      <IngresoDialog open={ingresoOpen} onOpenChange={setIngresoOpen} />
-      <EgresoDialog open={egresoOpen} onOpenChange={setEgresoOpen} categorias={categorias} />
+      <IngresoFondoDialog open={ingresoOpen} onOpenChange={setIngresoOpen} />
+      <EgresoFondoDialog open={egresoOpen} onOpenChange={setEgresoOpen} categorias={categorias} />
       <DetalleDialog open={detailOpen} onOpenChange={setDetailOpen} summary={summary} />
     </div>
   )
 }
 
+// Boton reutilizable para "Derivar a fondo" desde otra cuenta (Caja Mayor /
+// Medios Digitales). Crea un ingreso al fondo con el origen fijo de esa cuenta.
+export function DerivarFondoButton({ origen, label }: { origen: Exclude<Origen, 'externo'>; label?: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setOpen(true)}>
+        <ShieldIcon className="size-3 mr-0.5 text-amber-600" />
+        {label ?? 'A fondo'}
+      </Button>
+      <IngresoFondoDialog open={open} onOpenChange={setOpen} origenFijo={origen} />
+    </>
+  )
+}
+
 function DetalleDialog({
   open, onOpenChange, summary,
-}: { open: boolean; onOpenChange: (v: boolean) => void; summary: CajaMayorSummary }) {
+}: { open: boolean; onOpenChange: (v: boolean) => void; summary: FondoEmergenciaSummary }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Detalle · Caja Mayor del mes</DialogTitle>
+          <DialogTitle>Detalle · Fondo de emergencia del mes</DialogTitle>
         </DialogHeader>
         {summary.movimientosMes.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">Sin movimientos en este mes.</p>
@@ -106,7 +124,7 @@ function DetalleDialog({
   )
 }
 
-function MovimientoRow({ m }: { m: CajaMayorMovimiento }) {
+function MovimientoRow({ m }: { m: FondoEmergenciaMovimiento }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   return (
@@ -133,7 +151,6 @@ function MovimientoRow({ m }: { m: CajaMayorMovimiento }) {
               {m.tipo === 'ingreso' && m.origen !== 'externo' && (
                 <span className="ml-1 text-sky-700">· desde {ORIGEN_LABEL[m.origen]}</span>
               )}
-              {m.source === 'bistro' && <span className="ml-1 text-sky-700">· auto Bistro</span>}
             </p>
           </div>
         </div>
@@ -144,18 +161,16 @@ function MovimientoRow({ m }: { m: CajaMayorMovimiento }) {
           )}>
             {m.tipo === 'ingreso' ? '+' : '−'} {formatCurrency(m.monto)}
           </span>
-          {m.source === 'manual' && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-6 text-muted-foreground hover:text-destructive"
-              onClick={() => setDeleteOpen(true)}
-              title="Borrar movimiento"
-            >
-              <TrashIcon className="size-3" />
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 text-muted-foreground hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+            title="Borrar movimiento"
+          >
+            <TrashIcon className="size-3" />
+          </Button>
         </div>
       </div>
       <DeleteMovimientoDialog open={deleteOpen} onOpenChange={setDeleteOpen} m={m} />
@@ -163,18 +178,15 @@ function MovimientoRow({ m }: { m: CajaMayorMovimiento }) {
   )
 }
 
-// Dialog explicito de borrado que muestra el EFECTO de la operacion sobre las
-// otras cuentas para que el user no tenga que adivinar. Ej: si borro un
-// ingreso con origen=cuenta_digital, aviso que la plata "vuelve" a digital.
 function DeleteMovimientoDialog({
   open, onOpenChange, m,
-}: { open: boolean; onOpenChange: (v: boolean) => void; m: CajaMayorMovimiento }) {
+}: { open: boolean; onOpenChange: (v: boolean) => void; m: FondoEmergenciaMovimiento }) {
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
 
   async function handleDelete() {
     setDeleting(true)
-    const res = await deleteCajaMayorMovimiento(m.id)
+    const res = await deleteFondoMovimiento(m.id)
     setDeleting(false)
     if (res.error) { toast.error(res.error); return }
     toast.success('Movimiento borrado')
@@ -182,14 +194,12 @@ function DeleteMovimientoDialog({
     router.refresh()
   }
 
-  const efectoCajaMayor = m.tipo === 'ingreso'
-    ? `Caja mayor: − ${formatCurrency(m.monto)}`
-    : `Caja mayor: + ${formatCurrency(m.monto)}`
+  const efectoFondo = m.tipo === 'ingreso'
+    ? `Fondo: − ${formatCurrency(m.monto)}`
+    : `Fondo: + ${formatCurrency(m.monto)}`
 
   const efectoOrigen = m.tipo === 'ingreso' && m.origen !== 'externo'
-    ? m.origen === 'caja_efectivo'
-      ? `Caja efectivo: + ${formatCurrency(m.monto)} (vuelve la plata)`
-      : `Cuenta digital: + ${formatCurrency(m.monto)} (vuelve la plata)`
+    ? `${ORIGEN_LABEL[m.origen] === 'caja mayor' ? 'Caja mayor' : 'Medios digitales'}: + ${formatCurrency(m.monto)} (vuelve la plata)`
     : null
 
   return (
@@ -208,11 +218,11 @@ function DeleteMovimientoDialog({
           </div>
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Efecto</p>
-            <p className="text-xs">{efectoCajaMayor}</p>
+            <p className="text-xs">{efectoFondo}</p>
             {efectoOrigen && <p className="text-xs">{efectoOrigen}</p>}
             {!efectoOrigen && m.tipo === 'ingreso' && (
               <p className="text-xs text-muted-foreground">
-                (no afecta otras cuentas — fue un ingreso externo)
+                (no afecta otras cuentas — fue un aporte externo)
               </p>
             )}
           </div>
@@ -230,15 +240,101 @@ function DeleteMovimientoDialog({
   )
 }
 
-function EgresoDialog({
-  open,
-  onOpenChange,
-  categorias,
-}: {
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  categorias: string[]
-}) {
+function IngresoFondoDialog({
+  open, onOpenChange, origenFijo,
+}: { open: boolean; onOpenChange: (v: boolean) => void; origenFijo?: Exclude<Origen, 'externo'> }) {
+  const router = useRouter()
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
+  const [monto, setMonto] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [origen, setOrigen] = useState<Origen>(origenFijo ?? 'externo')
+  const [saving, setSaving] = useState(false)
+
+  function reset() {
+    setFecha(new Date().toISOString().slice(0, 10))
+    setMonto('')
+    setDescripcion('')
+    setOrigen(origenFijo ?? 'externo')
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const m = parseFloat(monto)
+    if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
+    setSaving(true)
+    const res = await registrarIngresoFondo({
+      fecha,
+      monto: m,
+      descripcion: descripcion.trim() || null,
+      origen,
+    })
+    setSaving(false)
+    if (res.error) { toast.error(res.error); return }
+    toast.success('Ingreso al fondo registrado')
+    reset()
+    onOpenChange(false)
+    router.refresh()
+  }
+
+  const title = origenFijo ? 'Derivar a fondo de emergencia' : 'Registrar ingreso al fondo'
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {!origenFijo && (
+            <div className="space-y-1">
+              <Label htmlFor="fe-in-origen">De dónde sale el dinero</Label>
+              <select
+                id="fe-in-origen"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                value={origen}
+                onChange={(e) => setOrigen(e.target.value as Origen)}
+              >
+                <option value="externo">Externo (aporte, ahorro, etc.)</option>
+                <option value="caja_efectivo">Caja Mayor</option>
+                <option value="cuenta_digital">Medios Digitales</option>
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                {origen === 'externo' && 'No descuenta de otra cuenta — entra desde afuera.'}
+                {origen === 'caja_efectivo' && 'Se descuenta del saldo de Caja Mayor.'}
+                {origen === 'cuenta_digital' && 'Se descuenta del saldo de Medios Digitales.'}
+              </p>
+            </div>
+          )}
+          {origenFijo && (
+            <p className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
+              Se descuenta de {origenFijo === 'caja_efectivo' ? 'Caja Mayor' : 'Medios Digitales'} y suma al fondo.
+            </p>
+          )}
+          <div className="space-y-1">
+            <Label htmlFor="fe-in-fecha">Fecha</Label>
+            <Input id="fe-in-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="fe-in-monto">Monto</Label>
+            <Input id="fe-in-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="fe-in-desc">Descripción (opcional)</Label>
+            <Textarea id="fe-in-desc" placeholder="Ej: reserva del mes" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : origenFijo ? 'Derivar' : 'Registrar ingreso'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EgresoFondoDialog({
+  open, onOpenChange, categorias,
+}: { open: boolean; onOpenChange: (v: boolean) => void; categorias: string[] }) {
   const router = useRouter()
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState('')
@@ -247,8 +343,6 @@ function EgresoDialog({
   const [addingCategoria, setAddingCategoria] = useState(false)
   const [newCategoria, setNewCategoria] = useState('')
   const [savingCategoria, setSavingCategoria] = useState(false)
-  // Categorias locales: parte del listado que viene desde el server + las que
-  // Caro cree in-place en esta sesion. Se re-syncea al recargar la pagina.
   const [localCategorias, setLocalCategorias] = useState(categorias)
   const [saving, setSaving] = useState(false)
 
@@ -284,7 +378,7 @@ function EgresoDialog({
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
     setSaving(true)
-    const res = await registrarEgresoCajaMayor({
+    const res = await registrarEgresoFondo({
       fecha,
       monto: m,
       descripcion: descripcion.trim() || null,
@@ -292,7 +386,7 @@ function EgresoDialog({
     })
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
-    toast.success('Egreso registrado')
+    toast.success('Egreso del fondo registrado')
     reset()
     onOpenChange(false)
     router.refresh()
@@ -302,20 +396,20 @@ function EgresoDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Registrar egreso de Caja Mayor</DialogTitle>
+          <DialogTitle>Registrar egreso del fondo</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1">
-            <Label htmlFor="cm-eg-fecha">Fecha</Label>
-            <Input id="cm-eg-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
+            <Label htmlFor="fe-eg-fecha">Fecha</Label>
+            <Input id="fe-eg-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="cm-eg-monto">Monto</Label>
-            <Input id="cm-eg-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
+            <Label htmlFor="fe-eg-monto">Monto</Label>
+            <Input id="fe-eg-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
           </div>
           <div className="space-y-1">
             <div className="flex items-baseline justify-between">
-              <Label htmlFor="cm-eg-cat">Categoría (opcional)</Label>
+              <Label htmlFor="fe-eg-cat">Categoría (opcional)</Label>
               {!addingCategoria && (
                 <button
                   type="button"
@@ -330,7 +424,7 @@ function EgresoDialog({
               <div className="flex gap-1">
                 <Input
                   autoFocus
-                  placeholder="Nombre de la categoría"
+                  placeholder="Ej: Mejora en maquinaria"
                   value={newCategoria}
                   onChange={(e) => setNewCategoria(e.target.value)}
                   onKeyDown={(e) => {
@@ -357,7 +451,7 @@ function EgresoDialog({
               </div>
             ) : (
               <select
-                id="cm-eg-cat"
+                id="fe-eg-cat"
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value)}
                 className="h-9 w-full rounded-md border bg-background px-3 text-sm"
@@ -370,93 +464,12 @@ function EgresoDialog({
             )}
           </div>
           <div className="space-y-1">
-            <Label htmlFor="cm-eg-desc">Descripción (opcional)</Label>
-            <Textarea id="cm-eg-desc" placeholder="Ej: pago alquiler junio" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
+            <Label htmlFor="fe-eg-desc">Descripción (opcional)</Label>
+            <Textarea id="fe-eg-desc" placeholder="Ej: reparación heladera" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Registrar egreso'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const router = useRouter()
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
-  const [monto, setMonto] = useState('')
-  const [descripcion, setDescripcion] = useState('')
-  const [origen, setOrigen] = useState<'externo' | 'caja_efectivo' | 'cuenta_digital'>('caja_efectivo')
-  const [saving, setSaving] = useState(false)
-
-  function reset() {
-    setFecha(new Date().toISOString().slice(0, 10))
-    setMonto('')
-    setDescripcion('')
-    setOrigen('caja_efectivo')
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const m = parseFloat(monto)
-    if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
-    setSaving(true)
-    const res = await registrarIngresoCajaMayor({
-      fecha,
-      monto: m,
-      descripcion: descripcion.trim() || null,
-      origen,
-    })
-    setSaving(false)
-    if (res.error) { toast.error(res.error); return }
-    toast.success('Ingreso registrado')
-    reset()
-    onOpenChange(false)
-    router.refresh()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Registrar ingreso a Caja Mayor</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="cm-in-origen">De dónde sale el dinero</Label>
-            <select
-              id="cm-in-origen"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-              value={origen}
-              onChange={(e) => setOrigen(e.target.value as typeof origen)}
-            >
-              <option value="caja_efectivo">Caja efectivo (Bistro)</option>
-              <option value="cuenta_digital">Cuenta digital</option>
-              <option value="externo">Externo (aporte, préstamo, etc.)</option>
-            </select>
-            <p className="text-[11px] text-muted-foreground">
-              {origen === 'caja_efectivo' && 'No descuenta de la caja efectivo — los retiros por cierre del POS ya se registran automáticamente vía Bistro.'}
-              {origen === 'cuenta_digital' && 'Se descuenta del saldo de cuenta digital.'}
-              {origen === 'externo' && 'No descuenta de otra cuenta — entra desde afuera.'}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="cm-in-fecha">Fecha</Label>
-            <Input id="cm-in-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="cm-in-monto">Monto</Label>
-            <Input id="cm-in-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="cm-in-desc">Descripción (opcional)</Label>
-            <Textarea id="cm-in-desc" placeholder="Ej: cierre de caja del 24/06" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Registrar ingreso'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -8,7 +8,9 @@ export type CajaMayorMovimiento = {
   monto: number
   descripcion: string | null
   categoria: string | null
-  source: 'manual' | 'bistro'
+  // 'traspaso_fondo' = egreso sintetizado: plata que se derivo al fondo de
+  // emergencia. Vive en fondo_emergencia_movimientos, no se borra desde aca.
+  source: 'manual' | 'bistro' | 'traspaso_fondo'
   bistro_tx_id: string | null
   origen: 'externo' | 'caja_efectivo' | 'cuenta_digital'
   created_at: string
@@ -30,7 +32,9 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
 
   // Saldo acumulado: todos los movimientos hasta el fin del mes (no solo del mes)
   // para reflejar el saldo real al cierre del mes que se esta viendo.
-  const [allRes, mesRes] = await Promise.all([
+  // Ademas restamos los traspasos a fondo de emergencia que salieron de caja
+  // mayor (fondo_emergencia_movimientos ingreso, origen='caja_efectivo').
+  const [allRes, mesRes, fondoAllRes, fondoMesRes] = await Promise.all([
     supabase
       .from('caja_mayor_movimientos')
       .select('tipo, monto')
@@ -44,16 +48,36 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
       .lt('fecha', nextMonth)
       .order('fecha', { ascending: false })
       .order('created_at', { ascending: false }),
+    supabase
+      .from('fondo_emergencia_movimientos')
+      .select('monto')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('origen', 'caja_efectivo')
+      .lt('fecha', nextMonth),
+    supabase
+      .from('fondo_emergencia_movimientos')
+      .select('id, fecha, monto, descripcion, categoria, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'ingreso')
+      .eq('origen', 'caja_efectivo')
+      .gte('fecha', from)
+      .lt('fecha', nextMonth)
+      .order('fecha', { ascending: false }),
   ])
 
   if (allRes.error) throw new Error(allRes.error.message)
   if (mesRes.error) throw new Error(mesRes.error.message)
+  if (fondoAllRes.error) throw new Error(fondoAllRes.error.message)
+  if (fondoMesRes.error) throw new Error(fondoMesRes.error.message)
 
   let saldo = 0
   for (const m of allRes.data ?? []) {
     const monto = Number(m.monto) || 0
     saldo += m.tipo === 'ingreso' ? monto : -monto
   }
+  // Los traspasos a fondo salen de caja mayor -> restan al saldo.
+  for (const f of fondoAllRes.data ?? []) saldo -= Number(f.monto) || 0
 
   let ingresosMes = 0
   let egresosMes = 0
@@ -75,6 +99,24 @@ export async function getCajaMayorSummary(month: string): Promise<CajaMayorSumma
       created_at: m.created_at,
     })
   }
+  // Traspasos a fondo de emergencia como egresos sintetizados (no borrables aca).
+  for (const f of fondoMesRes.data ?? []) {
+    const monto = Number(f.monto) || 0
+    egresosMes += monto
+    movimientosMes.push({
+      id: `fondo-${f.id}`,
+      fecha: f.fecha,
+      tipo: 'egreso',
+      monto,
+      descripcion: f.descripcion ?? 'Derivado a fondo de emergencia',
+      categoria: f.categoria ?? 'Fondo de emergencia',
+      source: 'traspaso_fondo',
+      bistro_tx_id: null,
+      origen: 'externo',
+      created_at: f.created_at,
+    })
+  }
+  movimientosMes.sort((a, b) => b.fecha.localeCompare(a.fecha))
 
   return { saldo, ingresosMes, egresosMes, movimientosMes }
 }

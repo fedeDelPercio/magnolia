@@ -29,11 +29,13 @@ import { EgresoDialog } from './egreso-dialog'
 import { BistroCajaCard } from './bistro-caja-card'
 import { CajaMayorCard } from './caja-mayor-card'
 import { CuentaDigitalCard } from './cuenta-digital-card'
+import { FondoEmergenciaCard } from './fondo-emergencia-card'
 import { UltimoCierreTile } from './ultimo-cierre-tile'
 import type { CajaMovimiento } from '../queries'
 import type { BistroCajaSummary } from '../bistro-caja-queries'
 import type { CajaMayorSummary, UltimoCierre } from '../caja-mayor-queries'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
+import type { FondoEmergenciaSummary } from '../fondo-emergencia-queries'
 import type { MonthlyVentasSummary } from '@/features/cierres/queries'
 import { METODO_LABELS } from '@/features/suppliers/schemas'
 
@@ -80,6 +82,7 @@ type Props = {
   ultimoCierre?: UltimoCierre
   cuentaDigital?: CuentaDigitalSummary
   cajaCategorias?: string[]
+  fondoEmergencia?: FondoEmergenciaSummary
 }
 
 const BUCKET_FILTERS: { key: CajaMovimiento['bucket']; label: string; chip: string }[] = [
@@ -90,7 +93,7 @@ const BUCKET_FILTERS: { key: CajaMovimiento['bucket']; label: string; chip: stri
 ]
 const ALL_CAT = '__all__'
 
-export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorPct = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital, cajaCategorias = [] }: Props) {
+export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorPct = 0, bistroCaja, cajaMayor, ultimoCierre, cuentaDigital, cajaCategorias = [], fondoEmergencia }: Props) {
   const router = useRouter()
   const [egresoOpen, setEgresoOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -237,12 +240,13 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
         </div>
       </div>
 
-      {/* Cuentas: Ultimo cierre + Caja Mayor + Cuenta Digital */}
-      {(ultimoCierre !== undefined || cajaMayor || cuentaDigital) && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* Cuentas: Ultimo cierre + Cuenta Digital + Caja Mayor + Fondo emergencia */}
+      {(ultimoCierre !== undefined || cajaMayor || cuentaDigital || fondoEmergencia) && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {ultimoCierre !== undefined && <UltimoCierreTile ultimo={ultimoCierre} />}
           {cuentaDigital && <CuentaDigitalCard summary={cuentaDigital} />}
           {cajaMayor && <CajaMayorCard summary={cajaMayor} month={month} categorias={cajaCategorias} />}
+          {fondoEmergencia && <FondoEmergenciaCard summary={fondoEmergencia} categorias={cajaCategorias} />}
         </div>
       )}
 
