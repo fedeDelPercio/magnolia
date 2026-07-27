@@ -68,6 +68,9 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   // Las secundarias solo se ceran una vez (idempotente igual, pero evita
   // reescrituras en cada tecla).
   const consolidatedRef = useRef(false)
+  // El stock del grupo se carga en la primaria; si el usuario lo edita queda
+  // "manual" y el arrastre automático deja de pisarlo.
+  const stockManualRef = useRef(primary.stock_anterior_manual)
 
   // Ventas: suma de todos los canales, solo lectura.
   const ventasSum = all.reduce((s, m) => s + (m.ventas || 0), 0)
@@ -86,6 +89,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
       // Primaria: lleva todos los ajustes + sus propias ventas (canal base).
       await saveMovimiento(primary.id, {
         stock_anterior: updated.stock_anterior,
+        stock_anterior_manual: stockManualRef.current,
         produccion: updated.produccion,
         ventas: primary.ventas,
         desperdicio: updated.desperdicio,
@@ -122,6 +126,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   function handleChange(field: keyof LocalState, raw: string) {
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
     const value = isNaN(parsed) ? 0 : Math.max(0, parsed)
+    if (field === 'stock_anterior') stockManualRef.current = true
     const updated = { ...local, [field]: value }
     setLocal(updated)
     schedulesSave(updated)

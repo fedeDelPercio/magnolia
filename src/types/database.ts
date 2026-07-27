@@ -1650,6 +1650,7 @@ export type Database = {
           produccion: number
           producto_id: string
           stock_anterior: number
+          stock_anterior_manual: boolean
           stock_calculado: number | null
           updated_at: string
           ventas: number
@@ -1665,6 +1666,7 @@ export type Database = {
           produccion?: number
           producto_id: string
           stock_anterior?: number
+          stock_anterior_manual?: boolean
           stock_calculado?: number | null
           updated_at?: string
           ventas?: number
@@ -1680,6 +1682,7 @@ export type Database = {
           produccion?: number
           producto_id?: string
           stock_anterior?: number
+          stock_anterior_manual?: boolean
           stock_calculado?: number | null
           updated_at?: string
           ventas?: number
@@ -2757,6 +2760,7 @@ export type Database = {
       cerrar_dia: { Args: { p_dia_id: string }; Returns: undefined }
       current_tenant_ids: { Args: never; Returns: string[] }
       resembrar_stock_inicial: { Args: { p_dia_id: string }; Returns: undefined }
+      sync_stock_inicial: { Args: { p_dia_id: string }; Returns: number }
       match_insumos_by_name: {
         Args: {
           p_limit?: number

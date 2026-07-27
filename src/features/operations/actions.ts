@@ -36,6 +36,7 @@ export async function saveMovimiento(
   id: string,
   fields: {
     stock_anterior?: number
+    stock_anterior_manual?: boolean
     produccion?: number
     ventas?: number
     desperdicio?: number

@@ -65,11 +65,12 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
 
   if (error || !data) return null
 
-  // Si el día está abierto, sincronizamos: agregamos movimientos para
-  // productos activos que se crearon después de abrir el día.
-  // Para esos movimientos nuevos, heredamos stock_anterior del último día
-  // previo (sin exigir que esté cerrado — en la práctica quedan abiertos):
-  // el conteo físico si se cargó, o el teórico en vivo si no.
+  // Si el día está abierto: (1) agregamos movimientos para productos activos
+  // creados después de abrir el día; (2) arrastramos automáticamente el
+  // stock_anterior desde el día previo en las filas NO editadas a mano
+  // (conteo físico, o teórico en vivo si no se contó; cortado en 0). Así el
+  // stock inicial siempre refleja lo que quedó ayer sin tener que cerrar el día.
+  // Los días cerrados son inmutables.
   if (data.status === 'abierto') {
     const existingProductIds = new Set(
       (data.movimientos_diarios as unknown as Array<{ producto_id: string }>).map((m) => m.producto_id),
@@ -83,50 +84,27 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
 
     const missing = (activeProducts ?? []).filter((p) => !existingProductIds.has(p.id))
 
+    let changed = false
+
     if (missing.length > 0) {
-      // Buscamos el último día anterior (cualquier estado) para heredar stock
-      const { data: prevDia } = await supabase
-        .from('dias_operativos')
-        .select('id')
-        .eq('tenant_id', data.tenant_id)
-        .lt('fecha', data.fecha)
-        .order('fecha', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      // Mapa producto_id → stock final del día anterior (conteo físico si se
-      // cargó, o teórico en vivo: stock_ant + prod - ventas - desperd - almuerzo)
-      const prevStock = new Map<string, number>()
-      if (prevDia) {
-        const { data: prevMovs } = await supabase
-          .from('movimientos_diarios')
-          .select('producto_id, conteo_fisico, stock_anterior, produccion, ventas, desperdicio, almuerzo')
-          .eq('dia_id', prevDia.id)
-          .in(
-            'producto_id',
-            missing.map((p) => p.id),
-          )
-        for (const m of prevMovs ?? []) {
-          const teorico =
-            (m.stock_anterior ?? 0) + (m.produccion ?? 0) - (m.ventas ?? 0) - (m.desperdicio ?? 0) - (m.almuerzo ?? 0)
-          // El stock físico no puede ser negativo (ventas sin producción/stock
-          // darían teórico < 0); cortamos en 0.
-          prevStock.set(m.producto_id, Math.max(0, m.conteo_fisico ?? teorico))
-        }
-      }
-
+      // Los insertamos en 0; sync_stock_inicial les deriva el stock del día previo.
       await supabase.from('movimientos_diarios').insert(
         missing.map((p) => ({
           dia_id: diaId,
           producto_id: p.id,
-          stock_anterior: prevStock.get(p.id) ?? 0,
           produccion: 0,
           ventas: 0,
           desperdicio: 0,
           almuerzo: 0,
         })),
       )
+      changed = true
+    }
 
+    const { data: synced } = await supabase.rpc('sync_stock_inicial', { p_dia_id: diaId })
+    if ((synced ?? 0) > 0) changed = true
+
+    if (changed) {
       const { data: refreshed } = await supabase
         .from('dias_operativos')
         .select(`

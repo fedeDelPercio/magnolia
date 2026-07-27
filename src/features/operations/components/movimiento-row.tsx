@@ -41,6 +41,9 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
   })
   const [saving, setSaving] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Una vez que el usuario edita el stock anterior, queda "manual" para este día
+  // y el arrastre automático deja de pisarlo.
+  const stockManualRef = useRef(mov.stock_anterior_manual)
 
   const stockTeorico =
     local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
@@ -54,6 +57,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
         setSaving(true)
         await saveMovimiento(mov.id, {
           stock_anterior: updated.stock_anterior,
+          stock_anterior_manual: stockManualRef.current,
           produccion: updated.produccion,
           ventas: updated.ventas,
           desperdicio: updated.desperdicio,
@@ -69,6 +73,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
   function handleChange(field: keyof LocalState, raw: string) {
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
     const value = isNaN(parsed) ? 0 : Math.max(0, parsed)
+    if (field === 'stock_anterior') stockManualRef.current = true
     const updated = { ...local, [field]: value }
     setLocal(updated)
     schedulesSave(updated)
