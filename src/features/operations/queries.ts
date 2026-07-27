@@ -109,7 +109,9 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
         for (const m of prevMovs ?? []) {
           const teorico =
             (m.stock_anterior ?? 0) + (m.produccion ?? 0) - (m.ventas ?? 0) - (m.desperdicio ?? 0) - (m.almuerzo ?? 0)
-          prevStock.set(m.producto_id, m.conteo_fisico ?? teorico)
+          // El stock físico no puede ser negativo (ventas sin producción/stock
+          // darían teórico < 0); cortamos en 0.
+          prevStock.set(m.producto_id, Math.max(0, m.conteo_fisico ?? teorico))
         }
       }
 

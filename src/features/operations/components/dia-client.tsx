@@ -105,12 +105,14 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     setLoading(true)
     startTransition(async () => {
       const result = await traerStockDiaAnterior(dia.id)
-      setLoading(false)
       if (result.error) {
+        setLoading(false)
         toast.error(result.error)
       } else {
-        toast.success('Stock anterior traído del día previo')
-        router.refresh()
+        // Recarga dura: las filas inicializan su estado local desde los props y
+        // no se re-sincronizan con un router.refresh(), así que sin esto el
+        // stock nuevo no se vería reflejado en los inputs.
+        window.location.reload()
       }
     })
   }
