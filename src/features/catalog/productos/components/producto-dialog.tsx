@@ -393,11 +393,11 @@ export function ProductoDialog({
   const showTabs = enabled.delivery || enabled.menu
   const currentVariantId = inactiveVariants[activeVariant]?.producto_id ?? input?.productoBaseId ?? null
 
-  // Cuando delivery esta activo, "Base" se llama "Base - Mostrador" para que
-  // quede clara la contraposicion con delivery en todos lados donde aparezca
-  // el label (tab, precio, historial).
+  // Cuando delivery esta activo, "Base" se llama "Salón" para que quede clara
+  // la contraposicion con Barra en todos lados donde aparezca el label (tab,
+  // precio, historial). La base corresponde al canal salon del POS.
   function variantLabel(key: VariantKey): string {
-    if (key === 'base' && enabled.delivery) return 'Base - Mostrador'
+    if (key === 'base' && enabled.delivery) return 'Salón'
     return VARIANT_LABELS[key]
   }
 
@@ -638,15 +638,15 @@ export function ProductoDialog({
                   </label>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Barra comparte los ingredientes de Mostrador (solo cambian los descartables);
+                  Barra comparte los ingredientes de Salón (solo cambian los descartables);
                   podés setearle un precio propio. El Menú puede tener ingredientes distintos.
                   Usá el switch de arriba para editar cada una.
                 </p>
               </div>
 
               {/* Tab switch — solo si hay variantes activas. Cuando delivery
-                  esta tildado, el tab base se llama "Base - Mostrador" para
-                  dejar clara la contraposicion salon/mostrador vs delivery. */}
+                  esta tildado, el tab base se llama "Salón" para dejar clara
+                  la contraposicion salon vs barra/delivery. */}
               {showTabs && (
                 <div className="sticky top-0 z-10 -mx-1 rounded-xl border bg-card/95 p-1 backdrop-blur-sm">
                   <div className="flex gap-1">
@@ -825,7 +825,7 @@ export function ProductoDialog({
                 ) : activeVariant === 'delivery' ? (
                   <div className="rounded-md border border-dashed bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
                     La variante <span className="font-medium text-foreground">Barra</span> usa
-                    siempre los mismos ingredientes que <span className="font-medium text-foreground">Mostrador</span>.
+                    siempre los mismos ingredientes que <span className="font-medium text-foreground">Salón</span>.
                     Solo cambian los descartables (abajo). Para editar los ingredientes, cambiá a la
                     pestaña <span className="font-medium text-foreground">{variantLabel('base')}</span>.
                   </div>
