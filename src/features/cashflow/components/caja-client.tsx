@@ -31,14 +31,22 @@ import { CajaMayorCard } from './caja-mayor-card'
 import { CuentaDigitalCard } from './cuenta-digital-card'
 import { FondoEmergenciaCard } from './fondo-emergencia-card'
 import { UltimoCierreTile } from './ultimo-cierre-tile'
-import type { CajaMovimiento } from '../queries'
+import type { CajaMovimiento, CuentaCaja } from '../queries'
 import type { BistroCajaSummary } from '../bistro-caja-queries'
 import type { CajaMayorSummary, UltimoCierre } from '../caja-mayor-queries'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
 import type { FondoEmergenciaSummary } from '../fondo-emergencia-queries'
 import type { MonthlyVentasSummary } from '@/features/cierres/queries'
 import { METODO_LABELS } from '@/features/suppliers/schemas'
-import { AJUSTE_CATEGORIA } from '../constants'
+
+// Nombre corto y tono de cada cuenta para los chips y filtros de la grilla.
+const CUENTA_META: Record<CuentaCaja, { label: string; chip: string }> = {
+  efectivo: { label: 'Efectivo', chip: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  digital: { label: 'Digitales', chip: 'border-sky-200 bg-sky-50 text-sky-700' },
+  caja_mayor: { label: 'Caja mayor', chip: 'border-violet-200 bg-violet-50 text-violet-700' },
+  fondo: { label: 'Fondo', chip: 'border-amber-200 bg-amber-50 text-amber-800' },
+}
+const CUENTAS: CuentaCaja[] = ['efectivo', 'digital', 'caja_mayor', 'fondo']
 
 // Tono visual por método: cheque destaca en amber porque no es flujo realizado todavía.
 const METODO_TONE: Record<string, string> = {
@@ -132,6 +140,7 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
   // Resultado) para que esos sigan siendo la foto mensual estable — los filtros
   // son para navegar dentro del mes, no para redefinirlo.
   const [bucketFilter, setBucketFilter] = useState<Set<CajaMovimiento['bucket']>>(new Set())
+  const [cuentaFilter, setCuentaFilter] = useState<Set<CuentaCaja>>(new Set())
   const [categoriaFilter, setCategoriaFilter] = useState<string>(ALL_CAT)
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo] = useState<string>('')
@@ -146,15 +155,23 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
   const movimientosFiltrados = useMemo(() => {
     return movimientos.filter((m) => {
       if (bucketFilter.size > 0 && !bucketFilter.has(m.bucket)) return false
+      // Filtro por cuenta: matchea si la plata sale de O entra a alguna de las
+      // cuentas seleccionadas (un traspaso digital -> caja mayor aparece en ambas).
+      if (cuentaFilter.size > 0) {
+        const toca =
+          (m.cuenta_origen && cuentaFilter.has(m.cuenta_origen)) ||
+          (m.cuenta_destino && cuentaFilter.has(m.cuenta_destino))
+        if (!toca) return false
+      }
       if (categoriaFilter !== ALL_CAT && m.categoria !== categoriaFilter) return false
       if (dateFrom && m.fecha < dateFrom) return false
       if (dateTo && m.fecha > dateTo) return false
       return true
     })
-  }, [movimientos, bucketFilter, categoriaFilter, dateFrom, dateTo])
+  }, [movimientos, bucketFilter, cuentaFilter, categoriaFilter, dateFrom, dateTo])
 
   const hasFilters =
-    bucketFilter.size > 0 || categoriaFilter !== ALL_CAT || dateFrom !== '' || dateTo !== ''
+    bucketFilter.size > 0 || cuentaFilter.size > 0 || categoriaFilter !== ALL_CAT || dateFrom !== '' || dateTo !== ''
 
   function toggleBucket(key: CajaMovimiento['bucket']) {
     setBucketFilter((prev) => {
@@ -165,8 +182,18 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
     })
   }
 
+  function toggleCuenta(key: CuentaCaja) {
+    setCuentaFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   function clearFilters() {
     setBucketFilter(new Set())
+    setCuentaFilter(new Set())
     setCategoriaFilter(ALL_CAT)
     setDateFrom('')
     setDateTo('')
@@ -176,18 +203,18 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
   // y ganancia dueños (que sale del sistema). Los traspasos POS -> caja fuerte
   // se listan como informativos pero no afectan totales — cambian de bolsillo,
   // no hay perdida ni entrada de dinero.
-  // Los 'Ajuste de caja' corrigen el saldo de una cuenta (conteo real vs.
-  // sistema) pero no son plata que entro o salio en el mes — excluirlos de los
-  // totales para que una correccion grande no distorsione el Resultado.
+  // counts_in_totals excluye ajustes de caja, traspasos y los movimientos de
+  // caja mayor / fondo que se listan solo por visibilidad — sin esto una
+  // correccion de saldo grande distorsionaria el Resultado del mes.
   const ingresosMovimientos = movimientos
-    .filter((m) => m.bucket === 'ingreso' && m.categoria !== AJUSTE_CATEGORIA)
+    .filter((m) => m.bucket === 'ingreso' && m.counts_in_totals)
     .reduce((s, m) => s + m.monto, 0)
 
   const ventasTotal = ventasSummary?.total ?? 0
   const totalIngresos = ingresosMovimientos + ventasTotal
 
   const totalEgresos = movimientos
-    .filter((m) => (m.bucket === 'egreso' || m.bucket === 'ganancia_duenos') && m.categoria !== AJUSTE_CATEGORIA)
+    .filter((m) => (m.bucket === 'egreso' || m.bucket === 'ganancia_duenos') && m.counts_in_totals)
     .reduce((s, m) => s + m.monto, 0)
 
   const saldo = totalIngresos - totalEgresos
@@ -331,6 +358,31 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
           )}
         </div>
 
+        {/* Filtro por cuenta afectada (un traspaso matchea sus dos cuentas) */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Cuenta</span>
+          {CUENTAS.map((c) => {
+            const active = cuentaFilter.has(c)
+            const meta = CUENTA_META[c]
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => toggleCuenta(c)}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors',
+                  active
+                    ? meta.chip + ' ring-2 ring-offset-1 ring-current/20'
+                    : 'border-gray-200 bg-white text-muted-foreground hover:bg-gray-50',
+                )}
+                aria-pressed={active}
+              >
+                {meta.label}
+              </button>
+            )
+          })}
+        </div>
+
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <label className="text-xs text-muted-foreground shrink-0">Categoría</label>
@@ -423,6 +475,23 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* Chip de cuenta afectada. Traspaso = "de → a"; si no, la
+                      cuenta de la que sale (egreso) o a la que entra (ingreso). */}
+                  {(m.cuenta_origen || m.cuenta_destino) && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'hidden sm:inline-flex',
+                        m.cuenta_origen && m.cuenta_destino
+                          ? 'border-slate-200 bg-slate-50 text-slate-600'
+                          : CUENTA_META[(m.cuenta_origen ?? m.cuenta_destino)!].chip,
+                      )}
+                    >
+                      {m.cuenta_origen && m.cuenta_destino
+                        ? `${CUENTA_META[m.cuenta_origen].label} → ${CUENTA_META[m.cuenta_destino].label}`
+                        : CUENTA_META[(m.cuenta_origen ?? m.cuenta_destino)!].label}
+                    </Badge>
+                  )}
                   {m.metodo && (
                     <Badge
                       variant="outline"
