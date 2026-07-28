@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
-import { FONDO_EMERGENCIA_CATEGORIA } from './constants'
+import { AJUSTE_CATEGORIA, FONDO_EMERGENCIA_CATEGORIA } from './constants'
 
 const baseSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha invalida'),
@@ -18,6 +18,10 @@ const egresoSchema = baseSchema.extend({
 })
 const ingresoSchema = baseSchema.extend({
   origen: z.enum(['externo', 'caja_efectivo', 'cuenta_digital']),
+  // Marca opcional para ingresos que son correccion de saldo ('Ajuste de
+  // caja'). Van con origen='externo' (no descuentan de otra cuenta) y la
+  // categoria queda en la fila para el detalle y para excluirlos de metricas.
+  categoria: z.string().trim().max(80).nullable().optional(),
 })
 
 export type EgresoInput = z.infer<typeof egresoSchema>
@@ -122,6 +126,7 @@ export async function registrarIngresoCajaMayor(input: IngresoInput): Promise<{ 
     tipo: 'ingreso',
     monto: parsed.data.monto,
     descripcion: parsed.data.descripcion ?? null,
+    categoria: parsed.data.categoria ?? null,
     source: 'manual',
     origen: parsed.data.origen,
     created_by: user?.id ?? null,
@@ -203,7 +208,10 @@ export async function registrarEgresoDigital(input: EgresoDigitalInput): Promise
 
 // Registra un ingreso a cuenta digital que NO viene del POS (ej. una
 // transferencia recibida externa, devolucion, adelanto). Categoria
-// 'Ingreso digital' para que la query lo sume al saldo.
+// 'Ingreso digital' para que la query lo sume al saldo. Whitelist estricta:
+// la unica otra categoria valida es 'Ajuste de caja' — cualquier otra
+// desapareceria silenciosamente del saldo digital (la query filtra por
+// categoria) y el ingreso "se perderia".
 export async function registrarIngresoDigital(input: EgresoDigitalInput): Promise<{ error?: string }> {
   const parsed = egresoDigitalSchema.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Datos invalidos' }
@@ -217,7 +225,7 @@ export async function registrarIngresoDigital(input: EgresoDigitalInput): Promis
     tipo: 'ingreso',
     monto: parsed.data.monto,
     descripcion: parsed.data.descripcion ?? null,
-    categoria: 'Ingreso digital',
+    categoria: parsed.data.categoria === AJUSTE_CATEGORIA ? AJUSTE_CATEGORIA : 'Ingreso digital',
   })
 
   if (error) return { error: error.message }

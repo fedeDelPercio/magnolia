@@ -1,6 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { fetchAllPaged } from '@/lib/supabase/paginate'
 import { getActiveTenantId } from '@/lib/tenant/server'
+import { AJUSTE_CATEGORIA } from './constants'
+
+// Categorias de caja_movimientos tipo=ingreso que suman al saldo digital.
+// 'Ingreso digital' = plata que entro de afuera; 'Ajuste de caja' = correccion
+// de saldo cargada desde la card.
+const CATEGORIAS_INGRESO_DIGITAL = ['Ingreso digital', AJUSTE_CATEGORIA]
 
 // Mismos tipos digitales que ya considera el resto del sistema
 const DIGITAL_METHODS = new Set([
@@ -135,14 +141,14 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
       .select('monto')
       .eq('tenant_id', tenantId)
       .eq('tipo', 'ingreso')
-      .eq('categoria', 'Ingreso digital')
+      .in('categoria', CATEGORIAS_INGRESO_DIGITAL)
       .lt('fecha', nextMonth),
     supabase
       .from('caja_movimientos')
       .select('id, fecha, monto, descripcion, ref_kind')
       .eq('tenant_id', tenantId)
       .eq('tipo', 'ingreso')
-      .eq('categoria', 'Ingreso digital')
+      .in('categoria', CATEGORIAS_INGRESO_DIGITAL)
       .gte('fecha', from)
       .lt('fecha', nextMonth)
       .order('fecha', { ascending: false }),
@@ -192,6 +198,7 @@ export async function getCuentaDigitalSummary(month: string, costoProcesadorPct:
     'Egreso digital',
     'Pago a empleados',
     'Pago a proveedores',
+    AJUSTE_CATEGORIA,
   ])
 
   function isEgresoDigital(r: { id: string; ref_kind: string | null; ref_id: string | null; categoria: string }): boolean {

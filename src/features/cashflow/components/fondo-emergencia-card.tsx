@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { crearCajaCategoria } from '../caja-mayor-actions'
+import { AJUSTE_CATEGORIA } from '../constants'
 import {
   registrarIngresoFondo,
   registrarEgresoFondo,
@@ -232,7 +233,9 @@ function IngresoFondoDialog({
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
-  const [origen, setOrigen] = useState<Origen>(origenFijo ?? 'externo')
+  // 'ajuste' es una opcion solo de UI: se persiste como origen='externo' +
+  // categoria='Ajuste de caja' (el CHECK de la DB solo admite 3 origenes).
+  const [origen, setOrigen] = useState<Origen | 'ajuste'>(origenFijo ?? 'externo')
   const [saving, setSaving] = useState(false)
 
   function reset() {
@@ -247,15 +250,17 @@ function IngresoFondoDialog({
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
     setSaving(true)
+    const esAjuste = origen === 'ajuste'
     const res = await registrarIngresoFondo({
       fecha,
       monto: m,
-      descripcion: descripcion.trim() || null,
-      origen,
+      descripcion: descripcion.trim() || (esAjuste ? AJUSTE_CATEGORIA : null),
+      origen: esAjuste ? 'externo' : origen,
+      categoria: esAjuste ? AJUSTE_CATEGORIA : null,
     })
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
-    toast.success('Ingreso al fondo registrado')
+    toast.success(esAjuste ? 'Ajuste registrado' : 'Ingreso al fondo registrado')
     reset()
     onOpenChange(false)
     router.refresh()
@@ -277,16 +282,18 @@ function IngresoFondoDialog({
                 id="fe-in-origen"
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
                 value={origen}
-                onChange={(e) => setOrigen(e.target.value as Origen)}
+                onChange={(e) => setOrigen(e.target.value as Origen | 'ajuste')}
               >
                 <option value="externo">Externo (aporte, ahorro, etc.)</option>
                 <option value="caja_efectivo">Caja Mayor</option>
                 <option value="cuenta_digital">Medios Digitales</option>
+                <option value="ajuste">Ajuste de caja (corrección de saldo)</option>
               </select>
               <p className="text-[11px] text-muted-foreground">
                 {origen === 'externo' && 'No descuenta de otra cuenta — entra desde afuera.'}
                 {origen === 'caja_efectivo' && 'Se descuenta del saldo de Caja Mayor.'}
                 {origen === 'cuenta_digital' && 'Se descuenta del saldo de Medios Digitales.'}
+                {origen === 'ajuste' && 'Corrige el saldo del fondo — no descuenta de otra cuenta ni cuenta como ingreso real.'}
               </p>
             </div>
           )}
@@ -442,10 +449,16 @@ function EgresoFondoDialog({
                 className="h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
                 <option value="">— Sin categoría —</option>
-                {localCategorias.map((c) => (
+                <option value={AJUSTE_CATEGORIA}>Ajuste de caja (corrección de saldo)</option>
+                {localCategorias.filter((c) => c !== AJUSTE_CATEGORIA).map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
+            )}
+            {!addingCategoria && categoria === AJUSTE_CATEGORIA && (
+              <p className="text-[11px] text-sky-700">
+                Corrige el saldo del fondo — no cuenta como gasto real.
+              </p>
             )}
           </div>
           <div className="space-y-1">

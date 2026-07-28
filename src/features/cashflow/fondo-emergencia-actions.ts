@@ -18,6 +18,9 @@ const baseSchema = z.object({
 //  - 'cuenta_digital' = derivado desde Medios Digitales (le baja el saldo)
 const ingresoSchema = baseSchema.extend({
   origen: z.enum(['externo', 'caja_efectivo', 'cuenta_digital']),
+  // 'Ajuste de caja' viaja aca cuando el ingreso es una correccion de saldo
+  // (va con origen='externo' — no descuenta de otra cuenta).
+  categoria: z.string().trim().max(80).nullable().optional(),
 })
 // Egreso del fondo: salida simple con categoria editable (reusa caja_categorias).
 const egresoSchema = baseSchema.extend({
@@ -43,6 +46,7 @@ export async function registrarIngresoFondo(input: IngresoFondoInput): Promise<{
     tipo: 'ingreso',
     monto: parsed.data.monto,
     descripcion: parsed.data.descripcion ?? null,
+    categoria: parsed.data.categoria ?? null,
     origen: parsed.data.origen,
     source: 'manual',
     created_by: user?.id ?? null,

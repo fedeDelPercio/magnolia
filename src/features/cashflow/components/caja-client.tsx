@@ -38,6 +38,7 @@ import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
 import type { FondoEmergenciaSummary } from '../fondo-emergencia-queries'
 import type { MonthlyVentasSummary } from '@/features/cierres/queries'
 import { METODO_LABELS } from '@/features/suppliers/schemas'
+import { AJUSTE_CATEGORIA } from '../constants'
 
 // Tono visual por método: cheque destaca en amber porque no es flujo realizado todavía.
 const METODO_TONE: Record<string, string> = {
@@ -175,15 +176,18 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
   // y ganancia dueños (que sale del sistema). Los traspasos POS -> caja fuerte
   // se listan como informativos pero no afectan totales — cambian de bolsillo,
   // no hay perdida ni entrada de dinero.
+  // Los 'Ajuste de caja' corrigen el saldo de una cuenta (conteo real vs.
+  // sistema) pero no son plata que entro o salio en el mes — excluirlos de los
+  // totales para que una correccion grande no distorsione el Resultado.
   const ingresosMovimientos = movimientos
-    .filter((m) => m.bucket === 'ingreso')
+    .filter((m) => m.bucket === 'ingreso' && m.categoria !== AJUSTE_CATEGORIA)
     .reduce((s, m) => s + m.monto, 0)
 
   const ventasTotal = ventasSummary?.total ?? 0
   const totalIngresos = ingresosMovimientos + ventasTotal
 
   const totalEgresos = movimientos
-    .filter((m) => m.bucket === 'egreso' || m.bucket === 'ganancia_duenos')
+    .filter((m) => (m.bucket === 'egreso' || m.bucket === 'ganancia_duenos') && m.categoria !== AJUSTE_CATEGORIA)
     .reduce((s, m) => s + m.monto, 0)
 
   const saldo = totalIngresos - totalEgresos

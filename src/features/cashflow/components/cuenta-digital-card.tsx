@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { registrarEgresoDigital, registrarIngresoDigital, eliminarMovimientoDigital } from '../caja-mayor-actions'
 import type { CuentaDigitalSummary } from '../cuenta-digital-queries'
-import { FONDO_EMERGENCIA_CATEGORIA } from '../constants'
+import { AJUSTE_CATEGORIA, FONDO_EMERGENCIA_CATEGORIA } from '../constants'
 
 type Props = { summary: CuentaDigitalSummary }
 
@@ -174,16 +174,25 @@ const EGRESO_CATEGORIAS = [
   { value: 'Pago a empleados', label: 'Pago a empleados' },
   { value: 'Pago a proveedores', label: 'Pago a proveedores' },
   { value: FONDO_EMERGENCIA_CATEGORIA, label: 'Fondo de emergencia (deriva al fondo)' },
+  { value: AJUSTE_CATEGORIA, label: 'Ajuste de caja (corrección de saldo)' },
+] as const
+
+// El ingreso tiene solo dos categorías: plata que entró de verdad (default) o
+// una corrección de saldo.
+const INGRESO_CATEGORIAS = [
+  { value: 'Ingreso digital', label: 'Ingreso digital (default)' },
+  { value: AJUSTE_CATEGORIA, label: 'Ajuste de caja (corrección de saldo)' },
 ] as const
 
 function MovimientoDigitalDialog({
   tipo, open, onOpenChange,
 }: { tipo: 'ingreso' | 'egreso'; open: boolean; onOpenChange: (v: boolean) => void }) {
   const router = useRouter()
+  const defaultCategoria = tipo === 'ingreso' ? 'Ingreso digital' : 'Egreso digital'
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
-  const [categoria, setCategoria] = useState<string>('Egreso digital')
+  const [categoria, setCategoria] = useState<string>(defaultCategoria)
 
   const label = tipo === 'ingreso' ? 'ingreso' : 'egreso'
   const placeholder = tipo === 'ingreso'
@@ -194,7 +203,7 @@ function MovimientoDigitalDialog({
     setFecha(new Date().toISOString().slice(0, 10))
     setMonto('')
     setDescripcion('')
-    setCategoria('Egreso digital')
+    setCategoria(defaultCategoria)
   }
 
   async function submitPayload(payload: {
@@ -203,7 +212,7 @@ function MovimientoDigitalDialog({
     try {
       const res = await runWithResilience(
         () => tipo === 'ingreso'
-          ? registrarIngresoDigital({ fecha: payload.fecha, monto: payload.monto, descripcion: payload.descripcion })
+          ? registrarIngresoDigital(payload)
           : registrarEgresoDigital(payload),
         {
           onRetrying: () => toast.loading('Sin señal — reintentando...', { id: toastId }),
@@ -225,7 +234,7 @@ function MovimientoDigitalDialog({
     e.preventDefault()
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
-    const descripcionFinal = descripcion.trim() || (tipo === 'ingreso' ? 'Ingreso digital' : categoria)
+    const descripcionFinal = descripcion.trim() || categoria
     const payload = { fecha, monto: m, descripcion: descripcionFinal, categoria }
     // Cerramos el modal al toque y disparamos la request en background con
     // retry automatico en fallos de red. El toast id se comparte entre
@@ -253,31 +262,34 @@ function MovimientoDigitalDialog({
             <Label htmlFor="dig-monto">Monto</Label>
             <Input id="dig-monto" type="number" min="0" step="0.01" placeholder="50000" value={monto} onChange={(e) => setMonto(e.target.value)} required />
           </div>
-          {tipo === 'egreso' && (
-            <div className="space-y-1">
-              <Label htmlFor="dig-cat">Categoría</Label>
-              <select
-                id="dig-cat"
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
-                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
-              >
-                {EGRESO_CATEGORIAS.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
-              </select>
-              {categoria === 'Pago a empleados' && (
-                <p className="text-[11px] text-emerald-700">
-                  Se suma al labor cost del dashboard.
-                </p>
-              )}
-              {categoria === FONDO_EMERGENCIA_CATEGORIA && (
-                <p className="text-[11px] text-amber-700">
-                  La plata se deriva al fondo de emergencia (sale de esta cuenta).
-                </p>
-              )}
-            </div>
-          )}
+          <div className="space-y-1">
+            <Label htmlFor="dig-cat">Categoría</Label>
+            <select
+              id="dig-cat"
+              value={categoria}
+              onChange={(e) => setCategoria(e.target.value)}
+              className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+            >
+              {(tipo === 'ingreso' ? INGRESO_CATEGORIAS : EGRESO_CATEGORIAS).map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            {categoria === 'Pago a empleados' && (
+              <p className="text-[11px] text-emerald-700">
+                Se suma al labor cost del dashboard.
+              </p>
+            )}
+            {categoria === FONDO_EMERGENCIA_CATEGORIA && (
+              <p className="text-[11px] text-amber-700">
+                La plata se deriva al fondo de emergencia (sale de esta cuenta).
+              </p>
+            )}
+            {categoria === AJUSTE_CATEGORIA && (
+              <p className="text-[11px] text-sky-700">
+                Corrige el saldo de la cuenta — no cuenta como {tipo === 'ingreso' ? 'ingreso' : 'gasto'} real del mes.
+              </p>
+            )}
+          </div>
           <div className="space-y-1">
             <Label htmlFor="dig-desc">Descripción (opcional)</Label>
             <Textarea id="dig-desc" placeholder={placeholder} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} />

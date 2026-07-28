@@ -110,7 +110,7 @@ export async function getCajaMovimientos(month: string): Promise<CajaMovimiento[
     // egresos comunes registrados desde EgresoDialog en /caja (categorias
     // libres del user, sin ref_kind).
     const CATEGORIAS_ELIMINABLES = new Set([
-      'Egreso digital', 'Ingreso digital', 'Pago a empleados',
+      'Egreso digital', 'Ingreso digital', 'Pago a empleados', 'Ajuste de caja',
     ])
     const eliminable = !m.ref_kind && (
       CATEGORIAS_ELIMINABLES.has(m.categoria) ||

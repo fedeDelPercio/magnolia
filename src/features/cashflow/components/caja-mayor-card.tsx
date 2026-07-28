@@ -20,7 +20,7 @@ import {
   crearCajaCategoria,
 } from '../caja-mayor-actions'
 import type { CajaMayorMovimiento, CajaMayorSummary } from '../caja-mayor-queries'
-import { FONDO_EMERGENCIA_CATEGORIA } from '../constants'
+import { AJUSTE_CATEGORIA, FONDO_EMERGENCIA_CATEGORIA } from '../constants'
 
 type Props = { summary: CajaMayorSummary; month: string; categorias: string[] }
 
@@ -361,8 +361,9 @@ function EgresoDialog({
               >
                 <option value="">— Sin categoría —</option>
                 <option value={FONDO_EMERGENCIA_CATEGORIA}>Fondo de emergencia (deriva al fondo)</option>
+                <option value={AJUSTE_CATEGORIA}>Ajuste de caja (corrección de saldo)</option>
                 {localCategorias
-                  .filter((c) => c !== FONDO_EMERGENCIA_CATEGORIA)
+                  .filter((c) => c !== FONDO_EMERGENCIA_CATEGORIA && c !== AJUSTE_CATEGORIA)
                   .map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
@@ -371,6 +372,11 @@ function EgresoDialog({
             {!addingCategoria && categoria === FONDO_EMERGENCIA_CATEGORIA && (
               <p className="text-[11px] text-amber-700">
                 La plata se deriva al fondo de emergencia (sale de Caja Mayor).
+              </p>
+            )}
+            {!addingCategoria && categoria === AJUSTE_CATEGORIA && (
+              <p className="text-[11px] text-sky-700">
+                Corrige el saldo de Caja Mayor — no cuenta como gasto real.
               </p>
             )}
           </div>
@@ -393,7 +399,9 @@ function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
-  const [origen, setOrigen] = useState<'externo' | 'caja_efectivo' | 'cuenta_digital'>('caja_efectivo')
+  // 'ajuste' es una opcion solo de UI: se persiste como origen='externo' +
+  // categoria='Ajuste de caja' (el CHECK de la DB solo admite 3 origenes).
+  const [origen, setOrigen] = useState<'externo' | 'caja_efectivo' | 'cuenta_digital' | 'ajuste'>('caja_efectivo')
   const [saving, setSaving] = useState(false)
 
   function reset() {
@@ -408,15 +416,17 @@ function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     const m = parseFloat(monto)
     if (isNaN(m) || m <= 0) { toast.error('Monto inválido'); return }
     setSaving(true)
+    const esAjuste = origen === 'ajuste'
     const res = await registrarIngresoCajaMayor({
       fecha,
       monto: m,
-      descripcion: descripcion.trim() || null,
-      origen,
+      descripcion: descripcion.trim() || (esAjuste ? AJUSTE_CATEGORIA : null),
+      origen: esAjuste ? 'externo' : origen,
+      categoria: esAjuste ? AJUSTE_CATEGORIA : null,
     })
     setSaving(false)
     if (res.error) { toast.error(res.error); return }
-    toast.success('Ingreso registrado')
+    toast.success(esAjuste ? 'Ajuste registrado' : 'Ingreso registrado')
     reset()
     onOpenChange(false)
     router.refresh()
@@ -440,11 +450,13 @@ function IngresoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
               <option value="caja_efectivo">Caja efectivo (Bistro)</option>
               <option value="cuenta_digital">Cuenta digital</option>
               <option value="externo">Externo (aporte, préstamo, etc.)</option>
+              <option value="ajuste">Ajuste de caja (corrección de saldo)</option>
             </select>
             <p className="text-[11px] text-muted-foreground">
               {origen === 'caja_efectivo' && 'No descuenta de la caja efectivo — los retiros por cierre del POS ya se registran automáticamente vía Bistro.'}
               {origen === 'cuenta_digital' && 'Se descuenta del saldo de cuenta digital.'}
               {origen === 'externo' && 'No descuenta de otra cuenta — entra desde afuera.'}
+              {origen === 'ajuste' && 'Corrige el saldo de Caja Mayor — no descuenta de otra cuenta ni cuenta como ingreso real.'}
             </p>
           </div>
           <div className="space-y-1">
