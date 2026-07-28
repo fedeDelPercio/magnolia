@@ -50,7 +50,11 @@ await fromInput.fill(FROM)
 await toInput.fill(TO)
 console.log(`  · fechas: ${FROM} → ${TO}`)
 
-const syncBtn = page.getByRole('button', { name: /Sincronizar ahora/i })
+// OJO: en /config hay DOS botones parecidos — "Sincronizar ahora" es el de
+// snapshots de Google Maps; el de Bistro dice "Sincronizar" a secas. Con el
+// regex /Sincronizar ahora/i este script apretaba el de Google y el sync de
+// Bistro nunca corria (y encima "terminaba OK").
+const syncBtn = page.getByRole('button', { name: 'Sincronizar', exact: true })
 const btnVisible = await syncBtn.isVisible().catch(() => false)
 console.log(`  · botón "Sincronizar ahora" visible: ${btnVisible}`)
 await page.screenshot({ path: 'scripts/.shots/bistro-resync-before.png', fullPage: true })
