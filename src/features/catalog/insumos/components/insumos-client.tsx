@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { PlusIcon, MoreHorizontalIcon, SearchIcon, BoxIcon } from 'lucide-react'
 
@@ -24,7 +25,7 @@ import {
 
 import { formatCurrency } from '@/lib/format'
 import { UNIT_LABELS, type UnitKind } from '../schemas'
-import { toggleInsumoActive, deleteInsumo } from '../actions'
+import { toggleInsumoActive, deleteInsumo, getUltimaCompraDeInsumo } from '../actions'
 import { InsumoDialog } from './insumo-dialog'
 import type { InsumoWithProveedor } from '../queries'
 import type { Tables } from '@/types/database'
@@ -74,6 +75,7 @@ type DialogMode = 'view' | 'edit' | 'create'
 type KindFilter = 'todos' | 'ingrediente' | 'descartable'
 
 export function InsumosClient({ insumos, proveedores }: Props) {
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [kindFilter, setKindFilter] = useState<KindFilter>('todos')
   const [onlyTrackStock, setOnlyTrackStock] = useState(false)
@@ -108,6 +110,23 @@ export function InsumosClient({ insumos, proveedores }: Props) {
     setEditing(insumo)
     setMode('edit')
     setDialogOpen(true)
+  }
+
+  // Atajo "Corregir precio": salta a EDITAR la ultima compra que incluyo el
+  // insumo. Ahi se corrige cantidad o monto (o se revisa la equivalencia) y
+  // al guardar se recalculan current_price + historial por el flujo normal.
+  async function handleCorregirPrecio(insumo: InsumoWithProveedor) {
+    const toastId = toast.loading('Buscando la última compra...')
+    const res = await getUltimaCompraDeInsumo(insumo.id)
+    if (!res) {
+      toast.error(
+        `"${insumo.name}" no tiene compras registradas — el precio se edita desde "Editar".`,
+        { id: toastId },
+      )
+      return
+    }
+    toast.dismiss(toastId)
+    router.push(`/proveedores/${res.proveedorId}?editCompra=${res.compraId}`)
   }
 
   function handleToggleActive(insumo: InsumoWithProveedor) {
@@ -234,6 +253,9 @@ export function InsumosClient({ insumos, proveedores }: Props) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEdit(insumo)}>Editar</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleCorregirPrecio(insumo)}>
+                        Corregir precio (ir a la compra)
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleToggleActive(insumo)}>
                         {insumo.active ? 'Desactivar' : 'Activar'}
                       </DropdownMenuItem>
@@ -324,6 +346,9 @@ export function InsumosClient({ insumos, proveedores }: Props) {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openEdit(insumo)}>
                           Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleCorregirPrecio(insumo)}>
+                          Corregir precio (ir a la compra)
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleToggleActive(insumo)}>
                           {insumo.active ? 'Desactivar' : 'Activar'}

@@ -15,7 +15,9 @@ export const dynamic = 'force-dynamic'
 
 type Props = {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ from?: string; to?: string }>
+  // editCompra: deep-link desde "Corregir precio" en el catálogo de insumos —
+  // abre el dialog de edición de esa compra al montar.
+  searchParams: Promise<{ from?: string; to?: string; editCompra?: string }>
 }
 
 function defaultRange(): { from: string; to: string } {
@@ -88,6 +90,7 @@ export default async function ProveedorPage({ params, searchParams }: Props) {
         proveedoresList={proveedoresRes.data ?? []}
         from={from}
         to={to}
+        editCompraId={sp.editCompra}
       />
     </div>
   )

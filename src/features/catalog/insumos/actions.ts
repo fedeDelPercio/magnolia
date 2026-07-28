@@ -22,6 +22,28 @@ function mapError(msg: string): string {
   return msg
 }
 
+// Ultima compra que incluyo este insumo (por fecha). Se usa para el atajo
+// "Corregir precio" del catalogo: el precio actual del insumo lo fijo su
+// ultima compra, asi que corregir cantidad/monto ahi es la forma prolija de
+// arreglar un precio mal cargado (recalcula current_price e historial).
+export async function getUltimaCompraDeInsumo(
+  insumoId: string,
+): Promise<{ compraId: string; proveedorId: string } | null> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { data } = await supabase
+    .from('compras')
+    .select('id, proveedor_id, fecha, compra_items!inner(insumo_id)')
+    .eq('tenant_id', tenantId)
+    .eq('compra_items.insumo_id', insumoId)
+    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data) return null
+  return { compraId: data.id, proveedorId: data.proveedor_id }
+}
+
 // Cuando se activa control de stock, hay que sembrar un ajuste con la fecha
 // actual. Sin esto, la vista `insumo_stock` resta el consumo histórico desde
 // siempre y arroja stock negativo aunque el inicial sea positivo (porque

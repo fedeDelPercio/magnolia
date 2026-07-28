@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { ArrowLeftIcon, ChevronDownIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, PencilIcon, TrashIcon, CheckCircleIcon, MoreHorizontalIcon, AlertTriangleIcon, CameraIcon } from 'lucide-react'
@@ -45,6 +45,9 @@ type Props = {
   proveedoresList: Pick<Tables<'proveedores'>, 'id' | 'name'>[]
   from: string
   to: string
+  // Deep-link "Corregir precio" del catálogo: abre el dialog de edición de
+  // esta compra al montar (y limpia el query param).
+  editCompraId?: string
 }
 
 type InsumoHistory = {
@@ -209,11 +212,28 @@ function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boo
   )
 }
 
-export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedoresList, from, to }: Props) {
+export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedoresList, from, to, editCompraId }: Props) {
   const router = useRouter()
   const [compraOpen, setCompraOpen] = useState(false)
   const [comprobanteOpen, setComprobanteOpen] = useState(false)
   const [editingCompra, setEditingCompra] = useState<CompraWithItems | null>(null)
+
+  // Deep-link desde "Corregir precio" en el catálogo de insumos: abrir el
+  // dialog de edición de la compra pedida y limpiar el param para que un
+  // refresh no lo reabra.
+  useEffect(() => {
+    if (!editCompraId) return
+    const compra = compras.find((c) => c.id === editCompraId)
+    if (compra) {
+      setEditingCompra(compra)
+      setCompraOpen(true)
+    } else {
+      toast.error('No se encontró la compra a editar')
+    }
+    router.replace(`/proveedores/${proveedor.id}`, { scroll: false })
+    // Solo al montar / cambiar el param — compras es estable en ese momento.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editCompraId])
   const [pagoOpen, setPagoOpen] = useState(false)
   const [pagoDefaultMonto, setPagoDefaultMonto] = useState<number | undefined>(undefined)
   const [pagoCompraId, setPagoCompraId] = useState<string | undefined>(undefined)
