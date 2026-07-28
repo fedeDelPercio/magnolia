@@ -37,9 +37,14 @@ function currentProvider(): Provider {
 
 const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
-export type ExtractOptions<T extends z.ZodType> = {
-  fileBytes: Buffer
+// Un archivo adjunto a la llamada: PDF o imagen.
+export type FilePart = {
+  bytes: Buffer
   mimeType: string                  // 'application/pdf' | 'image/jpeg' | 'image/png' | ...
+}
+
+export type ExtractFilesOptions<T extends z.ZodType> = {
+  files: FilePart[]
   systemPrompt: string
   userPrompt: string
   schema: T
@@ -50,24 +55,42 @@ export type ExtractOptions<T extends z.ZodType> = {
   schemaName: string
 }
 
+export type ExtractOptions<T extends z.ZodType> = Omit<ExtractFilesOptions<T>, 'files'> & {
+  fileBytes: Buffer
+  mimeType: string
+}
+
 export type ExtractResult<T> = {
   data?: T
   error?: string
   rawResponse?: unknown
 }
 
+// Version single-file (la mayoria de los callers). Delegamos a la multi-file.
 export async function extractStructuredFromFile<T extends z.ZodType>(
   opts: ExtractOptions<T>,
+): Promise<ExtractResult<z.infer<T>>> {
+  const { fileBytes, mimeType, ...rest } = opts
+  return extractStructuredFromFiles({ ...rest, files: [{ bytes: fileBytes, mimeType }] })
+}
+
+// Version multi-file: manda varios adjuntos en un solo mensaje (ej. la vista
+// completa de un comprobante + recortes ampliados generados en image-prep).
+export async function extractStructuredFromFiles<T extends z.ZodType>(
+  opts: ExtractFilesOptions<T>,
 ): Promise<ExtractResult<z.infer<T>>> {
   const provider = currentProvider()
   const model = MODELS[provider][opts.modelTier]
 
-  const isPdf = opts.mimeType === 'application/pdf'
-  const isImage = IMAGE_MIMES.has(opts.mimeType)
-  if (opts.mimeType === 'image/heic' || opts.mimeType === 'image/heif') {
-    return { error: 'HEIC/HEIF no es soportado por el modelo. Convertí a JPG o PNG.' }
+  if (opts.files.length === 0) return { error: 'No hay archivos para procesar' }
+  for (const f of opts.files) {
+    if (f.mimeType === 'image/heic' || f.mimeType === 'image/heif') {
+      return { error: 'HEIC/HEIF no es soportado por el modelo. Convertí a JPG o PNG.' }
+    }
+    if (f.mimeType !== 'application/pdf' && !IMAGE_MIMES.has(f.mimeType)) {
+      return { error: `Tipo de archivo no soportado: ${f.mimeType}` }
+    }
   }
-  if (!isPdf && !isImage) return { error: `Tipo de archivo no soportado: ${opts.mimeType}` }
 
   try {
     if (provider === 'openrouter') return await extractViaOpenRouter(opts, model)
@@ -80,31 +103,28 @@ export async function extractStructuredFromFile<T extends z.ZodType>(
 // -------- Anthropic direct --------
 
 async function extractViaAnthropic<T extends z.ZodType>(
-  opts: ExtractOptions<T>,
+  opts: ExtractFilesOptions<T>,
   model: string,
 ): Promise<ExtractResult<z.infer<T>>> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return { error: 'ANTHROPIC_API_KEY no configurada' }
 
-  const base64 = opts.fileBytes.toString('base64')
   const client = new Anthropic({ apiKey })
 
-  const content = opts.mimeType === 'application/pdf'
-    ? [
-        { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64 } },
-        { type: 'text' as const, text: opts.userPrompt },
-      ]
-    : [
-        {
+  const fileBlocks = opts.files.map((f) => {
+    const base64 = f.bytes.toString('base64')
+    return f.mimeType === 'application/pdf'
+      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64 } }
+      : {
           type: 'image' as const,
           source: {
             type: 'base64' as const,
-            media_type: opts.mimeType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+            media_type: f.mimeType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
             data: base64,
           },
-        },
-        { type: 'text' as const, text: opts.userPrompt },
-      ]
+        }
+  })
+  const content = [...fileBlocks, { type: 'text' as const, text: opts.userPrompt }]
 
   const response = await client.messages.parse({
     model,
@@ -121,26 +141,21 @@ async function extractViaAnthropic<T extends z.ZodType>(
 // -------- OpenRouter (OpenAI-compat + extensiones) --------
 
 async function extractViaOpenRouter<T extends z.ZodType>(
-  opts: ExtractOptions<T>,
+  opts: ExtractFilesOptions<T>,
   model: string,
 ): Promise<ExtractResult<z.infer<T>>> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) return { error: 'OPENROUTER_API_KEY no configurada' }
 
-  const base64 = opts.fileBytes.toString('base64')
-  const dataUrl = `data:${opts.mimeType};base64,${base64}`
-
   // OpenRouter: content blocks son OpenAI-style (image_url) + una extension
   // propia para archivos (type: 'file' con file_data como data URL).
-  const content = opts.mimeType === 'application/pdf'
-    ? [
-        { type: 'file' as const, file: { filename: 'file.pdf', file_data: dataUrl } },
-        { type: 'text' as const, text: opts.userPrompt },
-      ]
-    : [
-        { type: 'image_url' as const, image_url: { url: dataUrl } },
-        { type: 'text' as const, text: opts.userPrompt },
-      ]
+  const fileBlocks = opts.files.map((f, i) => {
+    const dataUrl = `data:${f.mimeType};base64,${f.bytes.toString('base64')}`
+    return f.mimeType === 'application/pdf'
+      ? { type: 'file' as const, file: { filename: `file-${i}.pdf`, file_data: dataUrl } }
+      : { type: 'image_url' as const, image_url: { url: dataUrl } }
+  })
+  const content = [...fileBlocks, { type: 'text' as const, text: opts.userPrompt }]
 
   // Zod v4 tiene z.toJSONSchema built-in. OpenRouter espera JSON Schema
   // estandar bajo response_format.json_schema.schema (con strict:true fuerza
@@ -162,7 +177,7 @@ async function extractViaOpenRouter<T extends z.ZodType>(
       json_schema: { name: opts.schemaName, strict: true, schema: jsonSchema },
     },
   }
-  if (opts.mimeType === 'application/pdf') {
+  if (opts.files.some((f) => f.mimeType === 'application/pdf')) {
     // Fuerza a Claude a usar su PDF parsing nativo (sin OCR previo). Es lo
     // que queremos — Claude Sonnet/Opus leen PDFs directamente y no
     // queremos pagar tokens extra de un preprocesamiento OCR.

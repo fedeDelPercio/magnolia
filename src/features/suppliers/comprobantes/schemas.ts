@@ -14,7 +14,7 @@ export type ComprobanteItem = z.infer<typeof comprobanteItemSchema>
 
 export const comprobanteExtractSchema = z.object({
   fecha: z.string().nullable().describe('Fecha del comprobante en formato ISO YYYY-MM-DD si está visible, sino null'),
-  total_general: z.number().min(0).nullable().describe('Total general del comprobante si está visible'),
+  total_general: z.number().min(0).nullable().describe('Total FINAL a pagar del comprobante (con IVA, impuestos internos y percepciones incluidos) si está visible'),
   items: z.array(comprobanteItemSchema).describe('Líneas de detalle: cada producto con cantidad, unidad, precio'),
   observaciones: z.string().nullable().describe('Notas o información adicional relevante del comprobante'),
 })

@@ -103,6 +103,10 @@ export function ComprobanteUploadDialog({
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<LineDraft[]>([])
   const [observaciones, setObservaciones] = useState<string | null>(null)
+  // Total final que la IA leyo del papel (con impuestos). Se usa como sanity
+  // check contra el total calculado de los items — si difieren, algo se leyo
+  // mal (o falta cargar descuento/percepciones) y avisamos antes de registrar.
+  const [totalComprobante, setTotalComprobante] = useState<number | null>(null)
 
   // Insumos visibles para asignar (base + creados inline durante esta sesión)
   const [localInsumos, setLocalInsumos] = useState<InsumoOpt[]>(insumos)
@@ -157,6 +161,7 @@ export function ComprobanteUploadDialog({
     setNotes('')
     setLines([])
     setObservaciones(null)
+    setTotalComprobante(null)
     setLocalInsumos(insumos)
   }
 
@@ -236,6 +241,7 @@ export function ComprobanteUploadDialog({
     // compra queda con fecha errónea. Dejamos el default (hoy, seteado arriba);
     // la usuaria puede corregirla a mano en el input de fecha si hace falta.
     setObservaciones(result.observaciones ?? null)
+    setTotalComprobante(typeof result.total_general === 'number' && result.total_general > 0 ? result.total_general : null)
 
     setLines(
       result.items.map((it) => {
@@ -820,6 +826,31 @@ export function ComprobanteUploadDialog({
                 <span className="tabular-nums text-emerald-700">{formatCurrency(totalFinal)}</span>
               </div>
             </div>
+
+            {totalComprobante !== null && totalFinal > 0 && (() => {
+              const diffPct = Math.abs(totalFinal - totalComprobante) / totalComprobante
+              if (diffPct <= 0.02) {
+                return (
+                  <p className="flex items-center gap-1.5 text-xs text-emerald-700">
+                    <CheckCircleIcon className="size-3.5 shrink-0" />
+                    Coincide con el total del comprobante ({formatCurrency(totalComprobante)}).
+                  </p>
+                )
+              }
+              return (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                  <p className="flex items-center gap-1.5 font-medium">
+                    <AlertTriangleIcon className="size-3.5 shrink-0" />
+                    El total calculado no coincide con el del comprobante
+                  </p>
+                  <p className="mt-1">
+                    Calculado: <strong className="tabular-nums">{formatCurrency(totalFinal)}</strong> · En el comprobante:{' '}
+                    <strong className="tabular-nums">{formatCurrency(totalComprobante)}</strong>. Revisá cantidades, precios,
+                    descuento, IVA y percepciones (o ítems descartados) antes de registrar.
+                  </p>
+                </div>
+              )
+            })()}
           </div>
         )}
 
