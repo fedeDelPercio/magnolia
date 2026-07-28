@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -33,7 +34,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
 import { insumoSchema, UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
-import { createInsumo, updateInsumo, fetchInsumoHistory, fetchStockAjustes, registrarAjusteStock, saveDespiece, fetchDespiece } from '../actions'
+import { createInsumo, updateInsumo, fetchInsumoHistory, fetchStockAjustes, registrarAjusteStock, saveDespiece, fetchDespiece, getUltimaCompraDeInsumo } from '../actions'
 import type { InsumoWithProveedor, PriceHistoryEntry, StockAjusteEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { formatCurrency, formatDate } from '@/lib/format'
@@ -74,10 +75,28 @@ const DEFAULT_VALUES: InsumoFormValues = {
 }
 
 export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: Props) {
+  const router = useRouter()
   const form = useForm<InsumoFormValues>({
     resolver: zodResolver(insumoSchema) as Resolver<InsumoFormValues>,
     defaultValues: DEFAULT_VALUES,
   })
+
+  // Atajo "Corregir precio": cierra la ficha y salta a EDITAR la última compra
+  // que incluyó este insumo (la que fijó current_price). Ahí se corrige
+  // cantidad/monto y el guardado recalcula precio + historial + stock.
+  const [buscandoCompra, setBuscandoCompra] = useState(false)
+  async function handleCorregirPrecio() {
+    if (!insumo) return
+    setBuscandoCompra(true)
+    const res = await getUltimaCompraDeInsumo(insumo.id)
+    setBuscandoCompra(false)
+    if (!res) {
+      toast.error('Este insumo no tiene compras registradas — editá el precio desde esta ficha.')
+      return
+    }
+    onOpenChange(false)
+    router.push(`/proveedores/${res.proveedorId}?editCompra=${res.compraId}`)
+  }
 
   const [editing, setEditing] = useState(mode !== 'view')
 
@@ -571,16 +590,26 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                 })()}
               </div>
             ) : (
-              <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2">
                 <div>
                   <p className="text-xs text-muted-foreground">Precio actual</p>
                   <p className="mt-0.5 text-sm font-medium tabular-nums">
                     {formatCurrency(form.watch('current_price') || 0)} <span className="font-normal text-muted-foreground">/ {UNIT_LABELS[selectedUnit as UnitKind] ?? selectedUnit}</span>
                   </p>
+                  <p className="text-[11px] text-muted-foreground">Se actualiza al registrar compras</p>
                 </div>
-                <span className="text-[11px] text-muted-foreground text-right max-w-[180px]">
-                  Se actualiza al registrar compras
-                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 text-xs"
+                  disabled={buscandoCompra}
+                  onClick={handleCorregirPrecio}
+                  title="Abre la última compra que incluyó este insumo para corregir cantidad o monto"
+                >
+                  <PencilIcon className="size-3 mr-1" />
+                  {buscandoCompra ? 'Buscando...' : 'Corregir precio'}
+                </Button>
               </div>
             )}
 
