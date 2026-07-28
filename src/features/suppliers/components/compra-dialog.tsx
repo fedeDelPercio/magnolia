@@ -43,6 +43,11 @@ type LineItem = {
   qty: number
   unit: Tables<'insumos'>['unit']
   unit_price: number
+  // Inputs editables de la linea (cantidad en unidad BASE y precio total).
+  // Son la fuente al tipear; qty/unit_price se recalculan cuando ambos
+  // parsean > 0. Permiten estados intermedios ("100.", vacio) sin romper.
+  qtyInput: string
+  totalInput: string
   // Activa tracking del insumo + setea stock_inicial = qty al guardar la compra.
   // Solo aplica si el insumo NO tiene track_stock activo todavia.
   start_tracking?: boolean
@@ -122,6 +127,8 @@ export function CompraDialog({
             qty: ci.qty,
             unit: ci.unit as Tables<'insumos'>['unit'],
             unit_price: ci.unit_price,
+            qtyInput: String(ci.qty),
+            totalInput: String(Math.round(ci.qty * ci.unit_price * 100) / 100),
             iva_rate: ci.iva_rate !== null && ci.iva_rate !== undefined
               ? (Number(ci.iva_rate) as IvaRate)
               : null,
@@ -213,8 +220,29 @@ export function CompraDialog({
       qty: qtyBase,
       unit: insumo.unit,
       unit_price: total / qtyBase,
+      qtyInput: String(qtyBase),
+      totalInput: String(total),
       iva_rate: null, // por defecto usa el global
     }
+  }
+
+  // Edicion inline de una linea ya agregada: cantidad (en unidad base) y
+  // precio total. unit_price se deriva; con inputs invalidos se conserva el
+  // ultimo valor valido y el submit valida antes de guardar.
+  function updateItemInputs(idx: number, patch: { qtyInput?: string; totalInput?: string }) {
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it
+        const next = { ...it, ...patch }
+        const q = parseFloat(next.qtyInput)
+        const t = parseFloat(next.totalInput)
+        if (!isNaN(q) && q > 0 && !isNaN(t) && t > 0) {
+          next.qty = q
+          next.unit_price = t / q
+        }
+        return next
+      }),
+    )
   }
 
   // Cicla el IVA por linea entre las 3 alicuotas + "auto" (usa el global de la
@@ -312,6 +340,17 @@ export function CompraDialog({
     const allItems = pendingItem ? [...items, pendingItem] : items
     if (allItems.length === 0) {
       toast.error('Agregá al menos un ítem')
+      return
+    }
+    // Con la edicion inline puede quedar una linea con cantidad/precio vacios
+    // o en 0 — no guardamos valores invalidos ni el ultimo valido "fantasma".
+    const invalido = allItems.find((i) => {
+      const q = parseFloat(i.qtyInput)
+      const t = parseFloat(i.totalInput)
+      return isNaN(q) || q <= 0 || isNaN(t) || t <= 0
+    })
+    if (invalido) {
+      toast.error(`Revisá cantidad y precio de "${invalido.insumo_name}" — tienen que ser mayores a 0`)
       return
     }
     const mapped = allItems.map((i) => ({
@@ -413,15 +452,40 @@ export function CompraDialog({
                   const hasTracking = insumoData?.track_stock ?? false
                   return (
                     <div key={idx} className="px-3 py-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="font-medium">{item.insumo_name}</span>
-                          <span className="ml-2 text-muted-foreground">
-                            {item.qty} {UNIT_LABELS[item.unit]}
-                            <span className="ml-1 text-xs">({formatCurrency(item.unit_price)} / {UNIT_LABELS[item.unit]})</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{item.insumo_name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatCurrency(item.unit_price)} / {UNIT_LABELS[item.unit]}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="w-20">
+                            <label className="block text-[9px] text-muted-foreground leading-none mb-0.5">
+                              Cant. ({UNIT_LABELS[item.unit]})
+                            </label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.001"
+                              className="h-7 text-xs"
+                              value={item.qtyInput}
+                              onChange={(e) => updateItemInputs(idx, { qtyInput: e.target.value })}
+                            />
+                          </div>
+                          <div className="w-24">
+                            <label className="block text-[9px] text-muted-foreground leading-none mb-0.5">
+                              Precio total
+                            </label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-7 text-xs"
+                              value={item.totalInput}
+                              onChange={(e) => updateItemInputs(idx, { totalInput: e.target.value })}
+                            />
+                          </div>
                           <button
                             type="button"
                             onClick={() => cycleLineIva(idx)}
@@ -436,7 +500,6 @@ export function CompraDialog({
                               ? `IVA ${IVA_RATE_LABELS[ivaRate]} (auto)`
                               : `IVA ${IVA_RATE_LABELS[item.iva_rate]}`}
                           </button>
-                          <span className="tabular-nums">{formatCurrency(item.qty * item.unit_price)}</span>
                           <Button
                             type="button"
                             variant="ghost"
