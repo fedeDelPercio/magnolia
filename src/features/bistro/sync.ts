@@ -102,6 +102,19 @@ function fechaArgentina(d: Date): string {
   return d.toLocaleDateString('en-CA', { timeZone: AR_TZ })
 }
 
+// YYYY-MM-DD usando los componentes locales del server — igual que
+// formatDateForBistro en api-client. Para las fechas de rango (construidas a
+// medianoche local del server) esto refleja el dia que realmente se le pide a
+// Bistrosoft. OJO: fechaArgentina() aca seria un bug — en un server UTC
+// corre la fecha un dia para atras (medianoche UTC = 21hs del dia anterior
+// en AR), y los sync_runs quedaban logueados con rangos corridos.
+function fechaRangoLocal(d: Date): string {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 // Normaliza un nombre de producto para hacer matching relajado entre lo que
 // devuelve Bistrosoft y lo cargado en el catalogo. Objetivo: absorber las
 // diferencias mas comunes (plural/singular, abreviaturas, tildes, mayusculas)
@@ -730,8 +743,8 @@ export async function syncRange(
     .from('bistro_sync_runs')
     .insert({
       tenant_id: tenantId,
-      range_from: fechaArgentina(params.from),
-      range_to: fechaArgentina(params.to),
+      range_from: fechaRangoLocal(params.from),
+      range_to: fechaRangoLocal(params.to),
       shop_codes: params.shopCodes ?? null,
       status: 'running',
       triggered_by: userId,

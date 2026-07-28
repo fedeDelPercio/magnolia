@@ -2,9 +2,18 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { syncRange } from '@/features/bistro/sync'
 
-// Vercel cron: corre diariamente a las 6am Argentina (9 UTC). Sincroniza el
-// dia anterior (en hora Argentina) para todos los tenants con credenciales
+// Vercel cron: corre DOS veces por dia (ver vercel.json) — 23hs AR (2 UTC) y
+// 6am AR (9 UTC). Sincroniza para todos los tenants con credenciales
 // configuradas en bistro_credentials.
+//
+// Por que dos corridas: la API de Bistrosoft NO devuelve los tickets del dia
+// en curso — los publica recien despues del cierre de caja (madrugada). Lo
+// comprobamos en julio 2026: mientras el cron corrio solo a las 23hs
+// (24-27/7), el dia X venia vacio a las 23:00 del propio X y recien aparecia
+// en corridas posteriores; con la corrida de 6am el dia anterior entra
+// completo a la manana siguiente. La corrida de 23hs se mantiene igual:
+// captura dias atrasados antes y, si algun dia el cierre se hace temprano,
+// puede adelantar datos del mismo dia.
 //
 // Autenticacion: Vercel manda Authorization: Bearer <CRON_SECRET> cuando la
 // env var esta configurada. Sin ella el endpoint queda publico — siempre
@@ -16,12 +25,10 @@ export const dynamic = 'force-dynamic'
 const AR_TZ = 'America/Argentina/Buenos_Aires'
 
 // Por defecto el cron sincroniza los ULTIMOS 3 DIAS en AR, INCLUYENDO HOY
-// (hoy-3 .. hoy). El cron corre a las 23hs AR (ver vercel.json), cuando el dia
-// ya esta practicamente cerrado, asi que tomamos los datos del mismo dia.
-// Por que tambien dias hacia atras: Bistrosoft a veces publica los datos con
-// retraso de horas. Sincronizar una ventana corta hacia atras es idempotente
-// (upsert por ticket id) y auto-recupera dias que la API tenia vacios cuando
-// corrio el cron anterior.
+// (hoy-3 .. hoy). "Hoy" solo trae datos si Bistrosoft ya los publico (ver
+// arriba); los dias hacia atras son la red de seguridad: sincronizar una
+// ventana corta es idempotente (upsert por ticket id) y auto-recupera dias
+// que la API tenia vacios o incompletos cuando corrio el cron anterior.
 const CRON_DEFAULT_LOOKBACK_DAYS = 3
 
 // Devuelve { from, to } en hora Argentina cubriendo los ultimos N dias
