@@ -12,8 +12,9 @@ Reglas clave:
 - Montos: el formato argentino usa punto como separador de miles y coma como decimal ("$ 1.250,50" = 1250.50). Devolvé números puros sin signo $.
 - Items: cada línea de producto/insumo con su cantidad, unidad de medida y precio. Si la unidad no es explícita (ej. solo dice "10 huevos"), inferí unidad razonable ("u"); si dice "5 kg de azúcar" → unidad="kg".
 - nombre: el texto del producto TAL CUAL figura en el comprobante, sin agregarle nada (nada de sufijos tipo "(código 123)" ni el SKU) — se usa para matchear contra compras anteriores y tiene que ser estable entre facturas.
+- precio_total: el importe NETO que efectivamente se paga por esa línea — con el descuento/bonificación de la línea YA aplicado, pero SIN IVA ni otros impuestos. Si la factura tiene columnas tipo P.UNITARIO / PRECIO NETO / DESCUENTO / SUBTOTAL, usá la columna SUBTOTAL (la que viene después del descuento y ANTES del IVA), nunca el precio previo al descuento. Ojo: algunas facturas tienen una segunda columna SUBTOTAL al final con IVA/impuestos incluidos — esa NO. Si la factura no tiene descuentos por línea, el importe de la línea va tal cual.
 - Si la línea tiene cantidad y precio total pero NO precio unitario explícito, calculá precio_unitario = precio_total / cantidad y devolvelo.
-- Ignorá líneas que sean subtotales, IVA, descuentos generales, o totales — solo querés productos/insumos comprados.
+- Ignorá las FILAS de resumen del pie (subtotal general, IVA, percepciones, descuento global, total) — no son productos comprados.
 - Si un campo no aparece, usá null (texto) o no lo incluyas (números opcionales).
 - Si la imagen es ilegible o no es un comprobante, devolvé items vacío y aclará en observaciones.`
 
