@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { PencilIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, AlertTriangleIcon, BoxIcon, ClipboardCheckIcon, ChevronDownIcon, HistoryIcon } from 'lucide-react'
+import { PencilIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, AlertTriangleIcon, BoxIcon, ClipboardCheckIcon, ChevronDownIcon, HistoryIcon, ShoppingCartIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -34,8 +34,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
 import { insumoSchema, UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
-import { createInsumo, updateInsumo, fetchInsumoHistory, fetchStockAjustes, registrarAjusteStock, saveDespiece, fetchDespiece, getUltimaCompraDeInsumo } from '../actions'
-import type { InsumoWithProveedor, PriceHistoryEntry, StockAjusteEntry } from '../queries'
+import { createInsumo, updateInsumo, fetchInsumoHistory, fetchInsumoComprasQty, fetchStockAjustes, registrarAjusteStock, saveDespiece, fetchDespiece, getUltimaCompraDeInsumo } from '../actions'
+import type { InsumoWithProveedor, PriceHistoryEntry, CompraQtyEntry, StockAjusteEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { DespieceEditor, type DespieceRow } from './despiece-editor'
@@ -106,6 +106,8 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
   const [packTotal, setPackTotal] = useState('')
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [comprasQty, setComprasQty] = useState<CompraQtyEntry[]>([])
+  const [showComprasQty, setShowComprasQty] = useState(false)
   const [stockAjustes, setStockAjustes] = useState<StockAjusteEntry[]>([])
   const [showAjusteForm, setShowAjusteForm] = useState(false)
   const [ajusteStockReal, setAjusteStockReal] = useState('')
@@ -147,6 +149,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
       setIsDespieceParent(!!insumo.is_despiece_parent)
       Promise.all([
         fetchInsumoHistory(insumo.id).then(({ data }) => setPriceHistory(data)),
+        fetchInsumoComprasQty(insumo.id).then(({ data }) => setComprasQty(data)),
         fetchStockAjustes(insumo.id).then(({ data }) => setStockAjustes(data)),
         insumo.is_despiece_parent
           ? fetchDespiece(insumo.id).then(({ data }) =>
@@ -454,6 +457,65 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                             {changePct !== null ? (
                               <span className={`flex items-center gap-0.5 ${isLarge ? 'font-semibold text-red-600' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
                                 {isLarge && <AlertTriangleIcon className="size-3" />}
+                                {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
+                                {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Cantidad comprada por compra — para renegociar volumen con el
+            proveedor o detectar desvíos (se compró más/menos que lo habitual). */}
+        {!isCreate && insumo && (
+          <div className="rounded-xl border bg-card">
+            <button
+              type="button"
+              onClick={() => setShowComprasQty((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <ShoppingCartIcon className="size-4 text-muted-foreground" />
+                Cantidad comprada
+                {comprasQty.length > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-muted-foreground">
+                    {comprasQty.length}
+                  </span>
+                )}
+              </span>
+              <ChevronDownIcon className={`size-4 transition-transform ${showComprasQty ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showComprasQty && (
+              <div className="border-t">
+                {comprasQty.length === 0 ? (
+                  <p className="px-4 py-3 text-xs text-muted-foreground">Sin compras registradas</p>
+                ) : (
+                  <div className="divide-y text-sm">
+                    {comprasQty.map((entry, idx) => {
+                      const prev = comprasQty[idx + 1]
+                      const changePct = prev && prev.qty > 0 ? ((entry.qty - prev.qty) / prev.qty) * 100 : null
+                      return (
+                        <div key={entry.id} className="grid grid-cols-[1fr_auto_5.5rem] items-center gap-3 px-4 py-3">
+                          <div className="space-y-0.5">
+                            <p className="text-muted-foreground">{formatDate(entry.fecha)}</p>
+                            <p className="text-xs text-muted-foreground/80">{entry.proveedor_name ?? 'Sin proveedor'}</p>
+                          </div>
+                          <span className="tabular-nums font-medium text-right">
+                            {formatStockQty(entry.qty, insumo.unit as UnitKind)}
+                          </span>
+                          <div className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
+                            {changePct !== null ? (
+                              <span className="flex items-center gap-0.5 text-muted-foreground">
                                 {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
                                 {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
                               </span>

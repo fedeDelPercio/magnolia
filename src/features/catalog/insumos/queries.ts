@@ -63,6 +63,36 @@ export async function getInsumoHistory(insumoId: string): Promise<PriceHistoryEn
   return (data ?? []) as unknown as PriceHistoryEntry[]
 }
 
+// Cantidad comprada por compra para un insumo — se muestra en la ficha del
+// catálogo junto al historial de precios (renegociar volumen / detectar desvíos).
+export type CompraQtyEntry = {
+  id: string
+  qty: number
+  fecha: string
+  proveedor_name: string | null
+}
+
+export async function getInsumoComprasQty(insumoId: string): Promise<CompraQtyEntry[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('compra_items')
+    .select('id, qty, compras!inner(fecha, proveedores(name))')
+    .eq('insumo_id', insumoId)
+  if (error) throw error
+
+  type Row = { id: string; qty: number; compras: { fecha: string; proveedores: { name: string } | null } }
+  // Supabase no ordena el padre por columnas del embed — ordenamos acá.
+  return ((data ?? []) as unknown as Row[])
+    .map((r) => ({
+      id: r.id,
+      qty: r.qty,
+      fecha: r.compras.fecha,
+      proveedor_name: r.compras.proveedores?.name ?? null,
+    }))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
+    .slice(0, 30)
+}
+
 export type StockAjusteEntry = {
   id: string
   stock_teorico: number

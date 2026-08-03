@@ -13,6 +13,7 @@ import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared } from '../actions'
 import { CompraDialog } from './compra-dialog'
 import { PagoDialog } from './pago-dialog'
+import { ProveedorDialog } from './proveedor-dialog'
 import { ComprobanteUploadDialog } from './comprobante-upload-dialog'
 import { RangePicker } from '@/features/dashboard/components/range-picker'
 import {
@@ -53,7 +54,7 @@ type Props = {
 type InsumoHistory = {
   name: string
   unit: string
-  entries: { fecha: string; unit_price: number }[]
+  entries: { fecha: string; unit_price: number; qty: number }[]
 }
 
 // Formato DD-MM-YYYY con año completo, usado en tooltips/labels del chart de
@@ -64,7 +65,21 @@ function formatDateChart(dateStr: string): string {
   return `${d}-${m}-${y}`
 }
 
-function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_price: number }[]; unit: string }) {
+// Chart de línea genérico para series por fecha: lo usan Evolución de precios
+// (value = precio unitario) y Evolución de cantidad comprada (value = cantidad).
+function TrendLineChart({
+  entries,
+  formatShort,
+  formatTitle,
+  idPrefix,
+}: {
+  entries: { fecha: string; value: number }[]
+  // Etiqueta compacta arriba de cada punto (ej. "$ 1.234" o "12 kg").
+  formatShort: (val: number) => string
+  // Tooltip nativo del punto, con más detalle.
+  formatTitle: (val: number) => string
+  idPrefix: string
+}) {
   if (entries.length < 2) return null
 
   // viewBox amplio. preserveAspectRatio=none + w-full hace que escale full-width
@@ -75,9 +90,9 @@ function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_pric
   const innerW = width - padding.left - padding.right
   const innerH = height - padding.top - padding.bottom
 
-  const prices = entries.map((e) => e.unit_price)
-  const minP = Math.min(...prices)
-  const maxP = Math.max(...prices)
+  const values = entries.map((e) => e.value)
+  const minP = Math.min(...values)
+  const maxP = Math.max(...values)
   const range = maxP - minP || maxP || 1
   const yMin = minP - range * 0.15
   const yMax = maxP + range * 0.15
@@ -86,19 +101,16 @@ function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_pric
   const xStep = innerW / (entries.length - 1)
   const points = entries.map((e, i) => ({
     x: padding.left + i * xStep,
-    y: padding.top + innerH - ((e.unit_price - yMin) / yRange) * innerH,
+    y: padding.top + innerH - ((e.value - yMin) / yRange) * innerH,
     fecha: e.fecha,
-    price: e.unit_price,
+    value: e.value,
   }))
 
   const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ')
   const areaPath = `${linePath} L ${points[points.length - 1]!.x.toFixed(2)} ${(padding.top + innerH).toFixed(2)} L ${points[0]!.x.toFixed(2)} ${(padding.top + innerH).toFixed(2)} Z`
 
-  const compactCurrency = (val: number) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val)
-
   // ID único por gráfico (varios charts en la misma página) — derivado de la primera fecha + cantidad.
-  const gradientId = `priceArea-${entries[0]?.fecha}-${entries.length}`
+  const gradientId = `${idPrefix}-${entries[0]?.fecha}-${entries.length}`
 
   return (
     <div className="px-5 pt-3 pb-2">
@@ -130,11 +142,11 @@ function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_pric
         {points.map((p, i) => (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r="3" fill="var(--card)" stroke="currentColor" strokeWidth="1.5" />
-            <title>{`${formatDateChart(p.fecha)}: ${formatCurrency(p.price)}/${unit}`}</title>
+            <title>{`${formatDateChart(p.fecha)}: ${formatTitle(p.value)}`}</title>
           </g>
         ))}
 
-        {/* etiquetas de monto encima de cada punto */}
+        {/* etiquetas de valor encima de cada punto */}
         {points.map((p, i) => (
           <text
             key={`v-${i}`}
@@ -144,7 +156,7 @@ function PriceLineChart({ entries, unit }: { entries: { fecha: string; unit_pric
             className="fill-foreground"
             style={{ fontSize: 10, fontWeight: 500 }}
           >
-            {compactCurrency(p.price)}
+            {formatShort(p.value)}
           </text>
         ))}
 
@@ -180,12 +192,17 @@ function buildPriceHistory(compras: CompraWithItems[]): InsumoHistory[] {
       if (!map.has(key)) {
         map.set(key, { name: item.insumos.name, unit: item.insumos.unit, entries: [] })
       }
-      map.get(key)!.entries.push({ fecha: compra.fecha, unit_price: item.unit_price })
+      map.get(key)!.entries.push({ fecha: compra.fecha, unit_price: item.unit_price, qty: item.qty })
     }
   }
   return Array.from(map.values())
     .filter((h) => h.entries.length > 0)
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+// Cantidades con formato es-AR y la unidad del insumo ("12,5 kg", "30 u").
+function formatQty(val: number, unit: string): string {
+  return `${val.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unit}`
 }
 
 function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boolean }) {
@@ -240,6 +257,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   const [deletingCompraId, setDeletingCompraId] = useState<string | null>(null)
   const [expandedCompras, setExpandedCompras] = useState<Set<string>>(new Set())
   const [selectedInsumo, setSelectedInsumo] = useState<string | null>(null)
+  const [selectedInsumoQty, setSelectedInsumoQty] = useState<string | null>(null)
+  const [editProveedorOpen, setEditProveedorOpen] = useState(false)
 
   function toggleExpandedCompra(id: string) {
     setExpandedCompras((prev) => {
@@ -331,6 +350,11 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
               <MoreHorizontalIcon className="size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => setEditProveedorOpen(true)}>
+                <PencilIcon className="size-3.5 mr-2" />
+                Editar proveedor
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={handleDeleteProveedor}
@@ -656,7 +680,82 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
             </div>
             {entries.length >= 2 && (
               <div className="border-t">
-                <PriceLineChart entries={entries} unit={activeHistory.unit} />
+                <TrendLineChart
+                  entries={entries.map((e) => ({ fecha: e.fecha, value: e.unit_price }))}
+                  formatShort={(v) =>
+                    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v)
+                  }
+                  formatTitle={(v) => `${formatCurrency(v)}/${activeHistory.unit}`}
+                  idPrefix="priceArea"
+                />
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Evolución de cantidad comprada — mismo patrón que precios, pero con la
+          cantidad de cada compra. Sirve para renegociar volumen o detectar desvíos. */}
+      {priceHistory.length > 0 && (() => {
+        const activeHistory =
+          priceHistory.find((h) => h.name === selectedInsumoQty) ?? priceHistory[0]!
+        const entries = activeHistory.entries
+        const reversed = [...entries].reverse()
+        return (
+          <div className="rounded-xl border bg-card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
+              <div>
+                <h2 className="text-base font-semibold">Evolución de cantidad comprada</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Cuánto se le compró en cada compra del período</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="insumo-qty-select" className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Insumo
+                </label>
+                <select
+                  id="insumo-qty-select"
+                  value={activeHistory.name}
+                  onChange={(e) => setSelectedInsumoQty(e.target.value)}
+                  className="focus-ring rounded-md border bg-background px-2.5 py-1 text-sm tabular-nums"
+                >
+                  {priceHistory.map((h) => (
+                    <option key={h.name} value={h.name}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="border-t divide-y text-sm">
+              {reversed.map((entry, idx, arr) => {
+                const prev = arr[idx + 1]
+                const changePct = prev && prev.qty > 0 ? ((entry.qty - prev.qty) / prev.qty) * 100 : null
+                return (
+                  <div key={entry.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
+                    <span className="text-muted-foreground">{formatDate(entry.fecha)}</span>
+                    <span className="tabular-nums text-right">{formatQty(entry.qty, activeHistory.unit)}</span>
+                    <span className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
+                      {changePct !== null ? (
+                        <span className="flex items-center gap-0.5 text-muted-foreground">
+                          {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
+                          {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            {entries.length >= 2 && (
+              <div className="border-t">
+                <TrendLineChart
+                  entries={entries.map((e) => ({ fecha: e.fecha, value: e.qty }))}
+                  formatShort={(v) => formatQty(v, activeHistory.unit)}
+                  formatTitle={(v) => formatQty(v, activeHistory.unit)}
+                  idPrefix="qtyArea"
+                />
               </div>
             )}
           </div>
@@ -691,6 +790,14 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
         defaultMonto={pagoDefaultMonto}
         defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
+      />
+      {/* La vista saldos_proveedores expone los campos del perfil (incl.
+          ai_extraction_notes) justamente para poder abrir el dialog de edición
+          sin otra query — mismo cast que en proveedor-servicio-detail. */}
+      <ProveedorDialog
+        open={editProveedorOpen}
+        onOpenChange={setEditProveedorOpen}
+        proveedor={proveedor as unknown as Tables<'proveedores'>}
       />
     </div>
   )

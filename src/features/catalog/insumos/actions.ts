@@ -4,13 +4,24 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import type { InsumoFormValues } from './schemas'
-import { getInsumoHistory, getStockAjustes, type PriceHistoryEntry, type StockAjusteEntry } from './queries'
+import { getInsumoHistory, getInsumoComprasQty, getStockAjustes, type PriceHistoryEntry, type CompraQtyEntry, type StockAjusteEntry } from './queries'
 
 export async function fetchInsumoHistory(
   insumoId: string,
 ): Promise<{ data: PriceHistoryEntry[] }> {
   try {
     const data = await getInsumoHistory(insumoId)
+    return { data }
+  } catch {
+    return { data: [] }
+  }
+}
+
+export async function fetchInsumoComprasQty(
+  insumoId: string,
+): Promise<{ data: CompraQtyEntry[] }> {
+  try {
+    const data = await getInsumoComprasQty(insumoId)
     return { data }
   } catch {
     return { data: [] }

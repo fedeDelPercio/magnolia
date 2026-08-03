@@ -30,6 +30,7 @@ export type SaldoProveedor = {
   // 'efectivo' | 'transferencia' | 'cheque' | 'otro' | null. Precarga el
   // PagoDialog para ahorrar clicks; se puede overridear por pago.
   metodo_pago_default: string | null
+  ai_extraction_notes: string | null
 }
 
 export type ConceptoServicio = Tables<'proveedor_conceptos'>
