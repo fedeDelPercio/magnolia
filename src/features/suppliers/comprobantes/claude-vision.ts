@@ -112,13 +112,22 @@ export async function extractComprobante(
 Instrucciones ESPECÍFICAS de este proveedor — si contradicen alguna regla general, estas ganan:
 ${notes}`
     : SYSTEM_PROMPT
+  // Las notas van TAMBIÉN en el user prompt: pegadas a las imágenes pesan más
+  // que una regla general del system prompt que diga lo contrario. Sin esto,
+  // el modelo tiende a obedecer la heurística general de columnas.
+  const notesSuffix = notes
+    ? `
+
+IMPORTANTE — instrucciones específicas de ESTE proveedor, con prioridad absoluta sobre cualquier regla general:
+${notes}`
+    : ''
 
   const tiled = await prepareTiledImages(fileBytes, mimeType)
   if (tiled) {
     const result = await extractStructuredFromFiles({
       files: tiled.map((bytes) => ({ bytes, mimeType: 'image/jpeg' })),
       systemPrompt,
-      userPrompt: TILED_USER_PROMPT,
+      userPrompt: TILED_USER_PROMPT + notesSuffix,
       schema: comprobanteExtractSchema,
       modelTier: 'sonnet',
       maxTokens: 8000,
@@ -134,7 +143,7 @@ ${notes}`
     fileBytes,
     mimeType,
     systemPrompt,
-    userPrompt: USER_PROMPT,
+    userPrompt: USER_PROMPT + notesSuffix,
     schema: comprobanteExtractSchema,
     modelTier: 'sonnet',
     maxTokens: 8000,
