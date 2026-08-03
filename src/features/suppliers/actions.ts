@@ -35,6 +35,7 @@ export async function createProveedor(
     descuento_pct: values.descuento_pct ?? 0,
     payment_rule: values.payment_rule ?? null,
     metodo_pago_default: values.metodo_pago_default ?? null,
+    ai_extraction_notes: values.ai_extraction_notes?.trim() || null,
   })
 
   if (error) {
@@ -67,6 +68,7 @@ export async function updateProveedor(
       descuento_pct: values.descuento_pct ?? 0,
       payment_rule: values.payment_rule ?? null,
       metodo_pago_default: values.metodo_pago_default ?? null,
+      ai_extraction_notes: values.ai_extraction_notes?.trim() || null,
     })
     .eq('id', id)
 

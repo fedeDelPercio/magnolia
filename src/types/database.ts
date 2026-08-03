@@ -2181,6 +2181,7 @@ export type Database = {
       proveedores: {
         Row: {
           active: boolean
+          ai_extraction_notes: string | null
           contact_email: string | null
           contact_name: string | null
           contact_phone: string | null
@@ -2200,6 +2201,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          ai_extraction_notes?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
@@ -2219,6 +2221,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          ai_extraction_notes?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null

@@ -85,8 +85,13 @@ export async function parseUploadedComprobante(
     return { error: `DB: ${insertErr?.message ?? 'no row'}` }
   }
 
-  // 3) Llamar a la IA
-  const vision = await extractComprobante(buffer, mimeType)
+  // 3) Llamar a la IA (con las instrucciones especificas del proveedor, si tiene)
+  const { data: provRow } = await supabase
+    .from('proveedores')
+    .select('ai_extraction_notes')
+    .eq('id', proveedorId)
+    .single()
+  const vision = await extractComprobante(buffer, mimeType, provRow?.ai_extraction_notes)
   if (vision.error || !vision.extract) {
     await supabase
       .from('comprobante_uploads')

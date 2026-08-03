@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -47,6 +48,7 @@ const DEFAULT: ProveedorFormValues = {
   descuento_pct: 0,
   payment_rule: null,
   metodo_pago_default: null,
+  ai_extraction_notes: '',
 }
 
 // Sentinel para "sin default" en el Select (no admite value=""). El schema
@@ -89,6 +91,7 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
           descuento_pct: Number(proveedor.descuento_pct) || 0,
           payment_rule: (proveedor.payment_rule as PaymentRule | null) ?? null,
           metodo_pago_default: (proveedor.metodo_pago_default as PagoMetodo | null) ?? null,
+          ai_extraction_notes: proveedor.ai_extraction_notes ?? '',
         }
       : DEFAULT
     form.reset(initial)
@@ -446,6 +449,28 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
                 <FormItem>
                   <FormLabel>Notas (opcional)</FormLabel>
                   <FormControl><Input placeholder="Observaciones" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="ai_extraction_notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Instrucciones para la IA al escanear facturas (opcional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={3}
+                      placeholder="Ej: usá la columna SUBTOTAL de más a la derecha como precio de cada línea"
+                      {...field}
+                    />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Solo para proveedores con facturas complejas (columnas ambiguas, formatos raros).
+                    Estas reglas tienen prioridad sobre las generales al escanear comprobantes de este proveedor.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}

@@ -95,15 +95,29 @@ async function prepareTiledImages(fileBytes: Buffer, mimeType: string): Promise<
 // reescala todo a ~1568px y una factura entera a ese tamano pierde los
 // digitos. Ver @/lib/llm/image-prep para detalles. Si el preprocesado no
 // aplica o falla, va el archivo original como siempre.
+//
+// proveedorNotes: instrucciones especificas del proveedor (campo
+// ai_extraction_notes de su ficha). Se anexan al system prompt con prioridad
+// sobre las reglas generales — para facturas complejas donde la regla
+// generica elige mal (ej. FEMSA con dos columnas SUBTOTAL).
 export async function extractComprobante(
   fileBytes: Buffer,
   mimeType: string,
+  proveedorNotes?: string | null,
 ): Promise<VisionResult> {
+  const notes = proveedorNotes?.trim()
+  const systemPrompt = notes
+    ? `${SYSTEM_PROMPT}
+
+Instrucciones ESPECÍFICAS de este proveedor — si contradicen alguna regla general, estas ganan:
+${notes}`
+    : SYSTEM_PROMPT
+
   const tiled = await prepareTiledImages(fileBytes, mimeType)
   if (tiled) {
     const result = await extractStructuredFromFiles({
       files: tiled.map((bytes) => ({ bytes, mimeType: 'image/jpeg' })),
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
       userPrompt: TILED_USER_PROMPT,
       schema: comprobanteExtractSchema,
       modelTier: 'sonnet',
@@ -119,7 +133,7 @@ export async function extractComprobante(
   const result = await extractStructuredFromFile({
     fileBytes,
     mimeType,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt,
     userPrompt: USER_PROMPT,
     schema: comprobanteExtractSchema,
     modelTier: 'sonnet',

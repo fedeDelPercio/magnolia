@@ -67,6 +67,11 @@ export const proveedorSchema = z.object({
   // ahorrarle a la user tener que elegir cada vez el mismo. null = sin
   // default, el dialog cae al hardcoded 'transferencia'.
   metodo_pago_default: z.enum(PAGO_METODOS).nullable().optional(),
+  // Instrucciones especificas para la IA que escanea comprobantes de este
+  // proveedor (ej. "usa la columna SUBTOTAL de mas a la derecha"). Se inyectan
+  // al prompt con prioridad sobre las reglas generales. Solo hace falta en
+  // proveedores con facturas complejas.
+  ai_extraction_notes: z.string().max(2000, 'Máximo 2000 caracteres').optional(),
 })
 export type ProveedorFormValues = z.infer<typeof proveedorSchema>
 
