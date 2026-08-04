@@ -38,6 +38,7 @@ import { createInsumo, updateInsumo, fetchInsumoHistory, fetchInsumoComprasQty, 
 import type { InsumoWithProveedor, PriceHistoryEntry, CompraQtyEntry, StockAjusteEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { groupQtyByPeriod, QTY_GROUP_LABELS, type QtyGroupBy } from '@/lib/qty-buckets'
 import { DespieceEditor, type DespieceRow } from './despiece-editor'
 
 type Mode = 'view' | 'edit' | 'create'
@@ -108,6 +109,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
   const [showHistory, setShowHistory] = useState(false)
   const [comprasQty, setComprasQty] = useState<CompraQtyEntry[]>([])
   const [showComprasQty, setShowComprasQty] = useState(false)
+  const [comprasQtyGroupBy, setComprasQtyGroupBy] = useState<QtyGroupBy>('compra')
   const [stockAjustes, setStockAjustes] = useState<StockAjusteEntry[]>([])
   const [showAjusteForm, setShowAjusteForm] = useState(false)
   const [ajusteStockReal, setAjusteStockReal] = useState('')
@@ -499,35 +501,69 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
               <div className="border-t">
                 {comprasQty.length === 0 ? (
                   <p className="px-4 py-3 text-xs text-muted-foreground">Sin compras registradas</p>
-                ) : (
-                  <div className="divide-y text-sm">
-                    {comprasQty.map((entry, idx) => {
-                      const prev = comprasQty[idx + 1]
-                      const changePct = prev && prev.qty > 0 ? ((entry.qty - prev.qty) / prev.qty) * 100 : null
-                      return (
-                        <div key={entry.id} className="grid grid-cols-[1fr_auto_5.5rem] items-center gap-3 px-4 py-3">
-                          <div className="space-y-0.5">
-                            <p className="text-muted-foreground">{formatDate(entry.fecha)}</p>
-                            <p className="text-xs text-muted-foreground/80">{entry.proveedor_name ?? 'Sin proveedor'}</p>
-                          </div>
-                          <span className="tabular-nums font-medium text-right">
-                            {formatStockQty(entry.qty, insumo.unit as UnitKind)}
-                          </span>
-                          <div className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
-                            {changePct !== null ? (
-                              <span className="flex items-center gap-0.5 text-muted-foreground">
-                                {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
-                                {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                ) : (() => {
+                  // Por compra: una fila por compra (con proveedor). Agrupado:
+                  // suma por semana/mes, con cuántas compras la componen.
+                  const rows =
+                    comprasQtyGroupBy === 'compra'
+                      ? comprasQty.map((e) => ({
+                          key: e.id,
+                          label: formatDate(e.fecha),
+                          sub: e.proveedor_name ?? 'Sin proveedor',
+                          qty: e.qty,
+                        }))
+                      : [...groupQtyByPeriod(comprasQty, comprasQtyGroupBy)].reverse().map((b) => ({
+                          key: b.fecha,
+                          label: b.label,
+                          sub: `${b.compras} compra${b.compras !== 1 ? 's' : ''}`,
+                          qty: b.qty,
+                        }))
+                  return (
+                    <div>
+                      <div className="flex items-center gap-1 border-b px-4 py-2">
+                        {(Object.keys(QTY_GROUP_LABELS) as QtyGroupBy[]).map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => setComprasQtyGroupBy(g)}
+                            className={`rounded-md px-2 py-1 text-xs transition-colors ${
+                              comprasQtyGroupBy === g ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            {QTY_GROUP_LABELS[g]}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="divide-y text-sm">
+                        {rows.map((row, idx) => {
+                          const prev = rows[idx + 1]
+                          const changePct = prev && prev.qty > 0 ? ((row.qty - prev.qty) / prev.qty) * 100 : null
+                          return (
+                            <div key={row.key} className="grid grid-cols-[1fr_auto_5.5rem] items-center gap-3 px-4 py-3">
+                              <div className="space-y-0.5">
+                                <p className="text-muted-foreground">{row.label}</p>
+                                <p className="text-xs text-muted-foreground/80">{row.sub}</p>
+                              </div>
+                              <span className="tabular-nums font-medium text-right">
+                                {formatStockQty(row.qty, insumo.unit as UnitKind)}
                               </span>
-                            ) : (
-                              <span className="text-muted-foreground/40">—</span>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+                              <div className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
+                                {changePct !== null ? (
+                                  <span className="flex items-center gap-0.5 text-muted-foreground">
+                                    {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
+                                    {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground/40">—</span>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </div>

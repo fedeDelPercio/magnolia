@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
+import { groupQtyByPeriod, QTY_GROUP_LABELS, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
 import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared } from '../actions'
 import { CompraDialog } from './compra-dialog'
@@ -73,7 +74,8 @@ function TrendLineChart({
   formatTitle,
   idPrefix,
 }: {
-  entries: { fecha: string; value: number }[]
+  // label reemplaza a la fecha en eje X y tooltip (ej. "jul 26" para buckets mensuales).
+  entries: { fecha: string; value: number; label?: string | undefined }[]
   // Etiqueta compacta arriba de cada punto (ej. "$ 1.234" o "12 kg").
   formatShort: (val: number) => string
   // Tooltip nativo del punto, con más detalle.
@@ -102,7 +104,7 @@ function TrendLineChart({
   const points = entries.map((e, i) => ({
     x: padding.left + i * xStep,
     y: padding.top + innerH - ((e.value - yMin) / yRange) * innerH,
-    fecha: e.fecha,
+    axisLabel: e.label ?? formatDateChart(e.fecha),
     value: e.value,
   }))
 
@@ -142,7 +144,7 @@ function TrendLineChart({
         {points.map((p, i) => (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r="3" fill="var(--card)" stroke="currentColor" strokeWidth="1.5" />
-            <title>{`${formatDateChart(p.fecha)}: ${formatTitle(p.value)}`}</title>
+            <title>{`${p.axisLabel}: ${formatTitle(p.value)}`}</title>
           </g>
         ))}
 
@@ -174,7 +176,7 @@ function TrendLineChart({
               className="fill-muted-foreground"
               style={{ fontSize: 9 }}
             >
-              {formatDateChart(p.fecha)}
+              {p.axisLabel}
             </text>
           )
         })}
@@ -258,6 +260,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   const [expandedCompras, setExpandedCompras] = useState<Set<string>>(new Set())
   const [selectedInsumo, setSelectedInsumo] = useState<string | null>(null)
   const [selectedInsumoQty, setSelectedInsumoQty] = useState<string | null>(null)
+  const [qtyGroupBy, setQtyGroupBy] = useState<QtyGroupBy>('compra')
   const [editProveedorOpen, setEditProveedorOpen] = useState(false)
 
   function toggleExpandedCompra(id: string) {
@@ -695,20 +698,42 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
       })()}
 
       {/* Evolución de cantidad comprada — mismo patrón que precios, pero con la
-          cantidad de cada compra. Sirve para renegociar volumen o detectar desvíos. */}
+          cantidad de cada compra, agrupable por semana/mes (suma del período).
+          Sirve para renegociar volumen o detectar desvíos. */}
       {priceHistory.length > 0 && (() => {
         const activeHistory =
           priceHistory.find((h) => h.name === selectedInsumoQty) ?? priceHistory[0]!
-        const entries = activeHistory.entries
-        const reversed = [...entries].reverse()
+        const buckets: QtyBucket[] =
+          qtyGroupBy === 'compra'
+            ? activeHistory.entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), qty: e.qty, compras: 1 }))
+            : groupQtyByPeriod(activeHistory.entries, qtyGroupBy)
+        const reversed = [...buckets].reverse()
         return (
           <div className="rounded-xl border bg-card overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
               <div>
                 <h2 className="text-base font-semibold">Evolución de cantidad comprada</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Cuánto se le compró en cada compra del período</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {qtyGroupBy === 'compra'
+                    ? 'Cuánto se le compró en cada compra del período'
+                    : `Total comprado por ${qtyGroupBy === 'semana' ? 'semana' : 'mes'} en el período`}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center rounded-md border p-0.5 text-xs">
+                  {(Object.keys(QTY_GROUP_LABELS) as QtyGroupBy[]).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setQtyGroupBy(g)}
+                      className={`focus-ring rounded px-2 py-1 transition-colors ${
+                        qtyGroupBy === g ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {QTY_GROUP_LABELS[g]}
+                    </button>
+                  ))}
+                </div>
                 <label htmlFor="insumo-qty-select" className="text-xs uppercase tracking-wider text-muted-foreground">
                   Insumo
                 </label>
@@ -727,13 +752,18 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
               </div>
             </div>
             <div className="border-t divide-y text-sm">
-              {reversed.map((entry, idx, arr) => {
+              {reversed.map((bucket, idx, arr) => {
                 const prev = arr[idx + 1]
-                const changePct = prev && prev.qty > 0 ? ((entry.qty - prev.qty) / prev.qty) * 100 : null
+                const changePct = prev && prev.qty > 0 ? ((bucket.qty - prev.qty) / prev.qty) * 100 : null
                 return (
-                  <div key={entry.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
-                    <span className="text-muted-foreground">{formatDate(entry.fecha)}</span>
-                    <span className="tabular-nums text-right">{formatQty(entry.qty, activeHistory.unit)}</span>
+                  <div key={bucket.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
+                    <span className="text-muted-foreground">
+                      {bucket.label}
+                      {qtyGroupBy !== 'compra' && (
+                        <span className="text-xs text-muted-foreground/70"> · {bucket.compras} compra{bucket.compras !== 1 ? 's' : ''}</span>
+                      )}
+                    </span>
+                    <span className="tabular-nums text-right">{formatQty(bucket.qty, activeHistory.unit)}</span>
                     <span className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
                       {changePct !== null ? (
                         <span className="flex items-center gap-0.5 text-muted-foreground">
@@ -748,10 +778,10 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
                 )
               })}
             </div>
-            {entries.length >= 2 && (
+            {buckets.length >= 2 && (
               <div className="border-t">
                 <TrendLineChart
-                  entries={entries.map((e) => ({ fecha: e.fecha, value: e.qty }))}
+                  entries={buckets.map((b) => ({ fecha: b.fecha, value: b.qty, label: b.chartLabel }))}
                   formatShort={(v) => formatQty(v, activeHistory.unit)}
                   formatTitle={(v) => formatQty(v, activeHistory.unit)}
                   idPrefix="qtyArea"
