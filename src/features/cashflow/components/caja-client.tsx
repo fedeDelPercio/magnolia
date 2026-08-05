@@ -42,7 +42,7 @@ import { METODO_LABELS } from '@/features/suppliers/schemas'
 // Nombre corto y tono de cada cuenta para los chips y filtros de la grilla.
 const CUENTA_META: Record<CuentaCaja, { label: string; chip: string }> = {
   efectivo: { label: 'Efectivo', chip: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  digital: { label: 'Digitales', chip: 'border-sky-200 bg-sky-50 text-sky-700' },
+  digital: { label: 'Medios digitales', chip: 'border-sky-200 bg-sky-50 text-sky-700' },
   caja_mayor: { label: 'Caja mayor', chip: 'border-violet-200 bg-violet-50 text-violet-700' },
   fondo: { label: 'Fondo', chip: 'border-amber-200 bg-amber-50 text-amber-800' },
 }
@@ -94,11 +94,13 @@ type Props = {
   fondoEmergencia?: FondoEmergenciaSummary
 }
 
-const BUCKET_FILTERS: { key: CajaMovimiento['bucket']; label: string; chip: string }[] = [
-  { key: 'ingreso', label: 'Ingresos', chip: 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' },
-  { key: 'egreso', label: 'Egresos', chip: 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100' },
-  { key: 'traspaso', label: 'Traspasos', chip: 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100' },
-  { key: 'ganancia_duenos', label: 'Ganancia dueños', chip: 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100' },
+// Mismos íconos que usan las filas de la lista, para que el filtro se lea
+// como "lo que vas a ver abajo".
+const BUCKET_FILTERS: { key: CajaMovimiento['bucket']; label: string; chip: string; icon: React.ReactNode }[] = [
+  { key: 'ingreso', label: 'Ingresos', chip: 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100', icon: <ArrowUpIcon className="size-3" /> },
+  { key: 'egreso', label: 'Egresos', chip: 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100', icon: <ArrowDownIcon className="size-3" /> },
+  { key: 'traspaso', label: 'Traspasos', chip: 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100', icon: <ArrowLeftRightIcon className="size-3" /> },
+  { key: 'ganancia_duenos', label: 'Ganancia dueños', chip: 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100', icon: <PiggyBankIcon className="size-3" /> },
 ]
 const ALL_CAT = '__all__'
 
@@ -172,6 +174,64 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
 
   const hasFilters =
     bucketFilter.size > 0 || cuentaFilter.size > 0 || categoriaFilter !== ALL_CAT || dateFrom !== '' || dateTo !== ''
+
+  // Saldo de la cuenta DESPUÉS de cada movimiento, estilo resumen bancario.
+  // Solo para las cuentas con saldo acumulado real (medios digitales, caja
+  // mayor y fondo) — el efectivo se rinde por día y no tiene saldo corriente.
+  //
+  // Se camina la lista completa del mes de más nuevo a más viejo arrancando
+  // del saldo a fin de mes de cada cuenta. Para medios digitales se intercalan
+  // las ventas diarias (suman al saldo pero no son filas de esta lista;
+  // asumimos que entran al inicio del día).
+  const saldosPorMovimiento = useMemo(() => {
+    const result = new Map<string, { cuenta: CuentaCaja; saldo: number }[]>()
+
+    // Ventas digitales netas agregadas por día (vienen de la card de cuenta digital).
+    const ventasDigitalPorDia = new Map<string, number>()
+    for (const mv of cuentaDigital?.movimientosMes ?? []) {
+      if (mv.source === 'bistro_venta') ventasDigitalPorDia.set(mv.fecha, mv.monto)
+    }
+
+    const cuentasConSaldo: { key: CuentaCaja; saldoFinal: number | undefined; extraPorDia: Map<string, number> }[] = [
+      { key: 'digital', saldoFinal: cuentaDigital?.saldo, extraPorDia: ventasDigitalPorDia },
+      { key: 'caja_mayor', saldoFinal: cajaMayor?.saldo, extraPorDia: new Map() },
+      { key: 'fondo', saldoFinal: fondoEmergencia?.saldo, extraPorDia: new Map() },
+    ]
+
+    for (const { key, saldoFinal, extraPorDia } of cuentasConSaldo) {
+      if (saldoFinal === undefined) continue
+      // Eventos ascendentes por fecha: dentro de cada día, primero el extra
+      // (ventas del día) y después las filas en su orden cronológico.
+      const rowsAsc = [...movimientos].reverse()
+      const rowsPorFecha = new Map<string, typeof rowsAsc>()
+      for (const r of rowsAsc) {
+        if (!rowsPorFecha.has(r.fecha)) rowsPorFecha.set(r.fecha, [])
+        rowsPorFecha.get(r.fecha)!.push(r)
+      }
+      const fechas = Array.from(new Set([...extraPorDia.keys(), ...rowsPorFecha.keys()])).sort()
+      const events: { id: string | null; signed: number }[] = []
+      for (const f of fechas) {
+        const extra = extraPorDia.get(f)
+        if (extra) events.push({ id: null, signed: extra })
+        for (const r of rowsPorFecha.get(f) ?? []) {
+          const signed = r.cuenta_destino === key ? r.monto : r.cuenta_origen === key ? -r.monto : 0
+          if (signed !== 0) events.push({ id: r.id, signed })
+        }
+      }
+      // Caminata descendente: el saldo corriente arranca en el de fin de mes.
+      let running = saldoFinal
+      for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i]!
+        if (ev.id) {
+          const arr = result.get(ev.id) ?? []
+          arr.push({ cuenta: key, saldo: running })
+          result.set(ev.id, arr)
+        }
+        running -= ev.signed
+      }
+    }
+    return result
+  }, [movimientos, cuentaDigital, cajaMayor, fondoEmergencia])
 
   function toggleBucket(key: CajaMovimiento['bucket']) {
     setBucketFilter((prev) => {
@@ -324,43 +384,13 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
         </div>
       )}
 
-      {/* Filtros */}
-      <div className="rounded-xl border bg-card p-3 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {BUCKET_FILTERS.map((b) => {
-            const active = bucketFilter.has(b.key)
-            return (
-              <button
-                key={b.key}
-                type="button"
-                onClick={() => toggleBucket(b.key)}
-                className={cn(
-                  'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors',
-                  active
-                    ? b.chip.replace('hover:', '') + ' ring-2 ring-offset-1 ring-current/20'
-                    : 'border-gray-200 bg-white text-muted-foreground hover:bg-gray-50',
-                )}
-                aria-pressed={active}
-              >
-                {b.label}
-              </button>
-            )
-          })}
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="ml-auto inline-flex h-7 items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 text-xs text-muted-foreground hover:bg-gray-50"
-            >
-              <XIcon className="size-3" />
-              Limpiar
-            </button>
-          )}
-        </div>
-
+      {/* Filtros: primero la cuenta (es lo que más se usa), después el tipo de
+          movimiento con los mismos íconos de la lista, y al final categoría y
+          fechas como refinamiento secundario. */}
+      <div className="rounded-xl border bg-card p-3 space-y-2.5">
         {/* Filtro por cuenta afectada (un traspaso matchea sus dos cuentas) */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">Cuenta</span>
+          <span className="w-14 shrink-0 text-xs uppercase tracking-wider text-muted-foreground">Cuenta</span>
           {CUENTAS.map((c) => {
             const active = cuentaFilter.has(c)
             const meta = CUENTA_META[c]
@@ -381,19 +411,53 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
               </button>
             )
           })}
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="ml-auto inline-flex h-7 items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 text-xs text-muted-foreground hover:bg-gray-50"
+            >
+              <XIcon className="size-3" />
+              Limpiar
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-14 shrink-0 text-xs uppercase tracking-wider text-muted-foreground">Tipo</span>
+          {BUCKET_FILTERS.map((b) => {
+            const active = bucketFilter.has(b.key)
+            return (
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => toggleBucket(b.key)}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors',
+                  active
+                    ? b.chip.replace('hover:', '') + ' ring-2 ring-offset-1 ring-current/20'
+                    : 'border-gray-200 bg-white text-muted-foreground hover:bg-gray-50',
+                )}
+                aria-pressed={active}
+              >
+                {b.icon}
+                {b.label}
+              </button>
+            )
+          })}
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <label className="text-xs text-muted-foreground shrink-0">Categoría</label>
+          <div className="flex items-center gap-2 min-w-0">
+            <label className="w-14 shrink-0 text-xs uppercase tracking-wider text-muted-foreground">Filtrar</label>
             <Select value={categoriaFilter} onValueChange={(v) => setCategoriaFilter(v ?? ALL_CAT)}>
-              <SelectTrigger className="h-8 flex-1 min-w-0">
+              <SelectTrigger className="h-8 w-full min-w-0 sm:w-56">
                 <SelectValue>
-                  {(v: string | null) => (v === ALL_CAT || !v ? 'Todas' : v)}
+                  {(v: string | null) => (v === ALL_CAT || !v ? 'Todas las categorías' : v)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL_CAT} label="Todas">Todas</SelectItem>
+                <SelectItem value={ALL_CAT} label="Todas las categorías">Todas las categorías</SelectItem>
                 {categoriasDisponibles.map((c) => (
                   <SelectItem key={c} value={c} label={c}>
                     {c}
@@ -464,66 +528,81 @@ export function CajaClient({ movimientos, month, ventasSummary, costoProcesadorP
               },
             }
             const style = bucketStyle[m.bucket]
+            // El chip de método es redundante cuando repite lo que ya dice el
+            // chip de cuenta: "Efectivo + efectivo" o "Medios digitales +
+            // transferencia". Cheques y otros sí aportan info (vencimiento).
+            const metodoRedundante =
+              (m.metodo === 'efectivo' && m.cuenta_origen === 'efectivo') ||
+              (m.metodo === 'transferencia' && m.cuenta_origen === 'digital')
+            const saldos = saldosPorMovimiento.get(m.id)
             return (
-              <div key={m.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3">
+              <div key={m.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className={`rounded-full p-1 ${style.bg}`}>{style.icon}</div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium">{m.categoria}</p>
                     {m.descripcion && <p className="text-xs text-muted-foreground">{m.descripcion}</p>}
                     <p className="text-xs text-muted-foreground">{formatDate(m.fecha)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {/* Chip de cuenta afectada. Traspaso = "de → a"; si no, la
-                      cuenta de la que sale (egreso) o a la que entra (ingreso). */}
-                  {(m.cuenta_origen || m.cuenta_destino) && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'hidden sm:inline-flex',
-                        m.cuenta_origen && m.cuenta_destino
-                          ? 'border-slate-200 bg-slate-50 text-slate-600'
-                          : CUENTA_META[(m.cuenta_origen ?? m.cuenta_destino)!].chip,
-                      )}
-                    >
-                      {m.cuenta_origen && m.cuenta_destino
-                        ? `${CUENTA_META[m.cuenta_origen].label} → ${CUENTA_META[m.cuenta_destino].label}`
-                        : CUENTA_META[(m.cuenta_origen ?? m.cuenta_destino)!].label}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {/* Chip de cuenta afectada. Traspaso = "de → a"; si no, la
+                        cuenta de la que sale (egreso) o a la que entra (ingreso). */}
+                    {(m.cuenta_origen || m.cuenta_destino) && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          m.cuenta_origen && m.cuenta_destino
+                            ? 'border-slate-200 bg-slate-50 text-slate-600'
+                            : CUENTA_META[(m.cuenta_origen ?? m.cuenta_destino)!].chip,
+                        )}
+                      >
+                        {m.cuenta_origen && m.cuenta_destino
+                          ? `${CUENTA_META[m.cuenta_origen].label} → ${CUENTA_META[m.cuenta_destino].label}`
+                          : CUENTA_META[(m.cuenta_origen ?? m.cuenta_destino)!].label}
+                      </Badge>
+                    )}
+                    {m.metodo && !metodoRedundante && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'tabular-nums',
+                          m.metodo === 'cheque' && m.cleared_at
+                            ? METODO_TONE.efectivo
+                            : METODO_TONE[m.metodo] ?? METODO_TONE.otro,
+                        )}
+                      >
+                        {METODO_LABELS[m.metodo] ?? m.metodo}
+                        {m.metodo === 'cheque' && m.cleared_at
+                          ? ` · cobrado ${formatDateShort(m.cleared_at)}`
+                          : m.metodo === 'cheque' && m.due_date
+                            ? ` · vence ${formatDateShort(m.due_date)}`
+                            : null}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className={style.badge}>
+                      {style.sign} {formatCurrency(m.monto)}
                     </Badge>
-                  )}
-                  {m.metodo && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'tabular-nums',
-                        m.metodo === 'cheque' && m.cleared_at
-                          ? METODO_TONE.efectivo
-                          : METODO_TONE[m.metodo] ?? METODO_TONE.otro,
-                      )}
-                    >
-                      {METODO_LABELS[m.metodo] ?? m.metodo}
-                      {m.metodo === 'cheque' && m.cleared_at
-                        ? ` · cobrado ${formatDateShort(m.cleared_at)}`
-                        : m.metodo === 'cheque' && m.due_date
-                          ? ` · vence ${formatDateShort(m.due_date)}`
-                          : null}
-                    </Badge>
-                  )}
-                  <Badge variant="outline" className={style.badge}>
-                    {style.sign} {formatCurrency(m.monto)}
-                  </Badge>
-                  {m.eliminable && (
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(m)}
-                      disabled={deletingId === m.id && isDeleting}
-                      className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
-                      aria-label="Eliminar movimiento"
-                      title="Eliminar movimiento"
-                    >
-                      <Trash2Icon className="size-3.5" />
-                    </button>
+                    {m.eliminable && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(m)}
+                        disabled={deletingId === m.id && isDeleting}
+                        className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                        aria-label="Eliminar movimiento"
+                        title="Eliminar movimiento"
+                      >
+                        <Trash2Icon className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {/* Saldo resultante de la cuenta después del movimiento (solo
+                      cuentas con saldo corriente: digitales, caja mayor, fondo) */}
+                  {saldos && saldos.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground tabular-nums">
+                      Queda: {saldos.map((s) => `${CUENTA_META[s.cuenta].label} ${formatCurrency(s.saldo)}`).join(' · ')}
+                    </p>
                   )}
                 </div>
               </div>
