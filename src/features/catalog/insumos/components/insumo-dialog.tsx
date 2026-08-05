@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { PencilIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, AlertTriangleIcon, BoxIcon, ClipboardCheckIcon, ChevronDownIcon, HistoryIcon, ShoppingCartIcon } from 'lucide-react'
+import { PencilIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, AlertTriangleIcon, BoxIcon, ClipboardCheckIcon, ChevronDownIcon, HistoryIcon, ShoppingCartIcon, UtensilsIcon, ExternalLinkIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -34,8 +34,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 
 import { insumoSchema, UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoFormValues } from '../schemas'
-import { createInsumo, updateInsumo, fetchInsumoHistory, fetchInsumoComprasQty, fetchStockAjustes, registrarAjusteStock, saveDespiece, fetchDespiece, getUltimaCompraDeInsumo } from '../actions'
-import type { InsumoWithProveedor, PriceHistoryEntry, CompraQtyEntry, StockAjusteEntry } from '../queries'
+import { createInsumo, updateInsumo, fetchInsumoHistory, fetchInsumoComprasQty, fetchInsumoUsadoEn, fetchStockAjustes, registrarAjusteStock, saveDespiece, fetchDespiece, getUltimaCompraDeInsumo } from '../actions'
+import type { InsumoWithProveedor, PriceHistoryEntry, CompraQtyEntry, InsumoUsadoEn, StockAjusteEntry } from '../queries'
 import type { Tables } from '@/types/database'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { groupQtyByPeriod, QTY_GROUP_LABELS, type QtyGroupBy } from '@/lib/qty-buckets'
@@ -110,6 +110,8 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
   const [comprasQty, setComprasQty] = useState<CompraQtyEntry[]>([])
   const [showComprasQty, setShowComprasQty] = useState(false)
   const [comprasQtyGroupBy, setComprasQtyGroupBy] = useState<QtyGroupBy>('compra')
+  const [usadoEn, setUsadoEn] = useState<InsumoUsadoEn>({ productos: [], subRecetas: [] })
+  const [showUsadoEn, setShowUsadoEn] = useState(false)
   const [stockAjustes, setStockAjustes] = useState<StockAjusteEntry[]>([])
   const [showAjusteForm, setShowAjusteForm] = useState(false)
   const [ajusteStockReal, setAjusteStockReal] = useState('')
@@ -152,6 +154,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
       Promise.all([
         fetchInsumoHistory(insumo.id).then(({ data }) => setPriceHistory(data)),
         fetchInsumoComprasQty(insumo.id).then(({ data }) => setComprasQty(data)),
+        fetchInsumoUsadoEn(insumo.id).then(({ data }) => setUsadoEn(data)),
         fetchStockAjustes(insumo.id).then(({ data }) => setStockAjustes(data)),
         insumo.is_despiece_parent
           ? fetchDespiece(insumo.id).then(({ data }) =>
@@ -473,6 +476,109 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Usado en: productos que llevan este insumo (receta expandida o
+            descartable) con apertura del consumo de stock, + sub-recetas que
+            lo llevan directo. Sirve para detectar armados incompletos y ver
+            cómo se reparte el gasto de stock entre productos. */}
+        {!isCreate && insumo && (
+          <div className="rounded-xl border bg-card">
+            <button
+              type="button"
+              onClick={() => setShowUsadoEn((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <UtensilsIcon className="size-4 text-muted-foreground" />
+                Usado en
+                {(usadoEn.productos.length > 0 || usadoEn.subRecetas.length > 0) && (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-muted-foreground">
+                    {usadoEn.productos.length + usadoEn.subRecetas.length}
+                  </span>
+                )}
+              </span>
+              <ChevronDownIcon className={`size-4 transition-transform ${showUsadoEn ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showUsadoEn && (() => {
+              const totalConsumido = usadoEn.productos.reduce((s, p) => s + p.consumido, 0)
+              return (
+                <div className="border-t">
+                  {usadoEn.productos.length === 0 && usadoEn.subRecetas.length === 0 ? (
+                    <p className="px-4 py-3 text-xs text-muted-foreground">
+                      Ningún producto ni sub-receta usa este insumo — si debería estar en alguno, falta cargarlo en su receta.
+                    </p>
+                  ) : (
+                    <>
+                      {usadoEn.productos.length > 0 && (
+                        <div className="divide-y text-sm">
+                          {usadoEn.productos.map((p) => {
+                            const share = totalConsumido > 0 ? (p.consumido / totalConsumido) * 100 : null
+                            return (
+                              <div key={`${p.producto_id}-${p.via}`} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5">
+                                <div className="min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onOpenChange(false)
+                                      router.push(`/catalogo/productos?q=${encodeURIComponent(p.producto_name)}`)
+                                    }}
+                                    className="flex items-center gap-1 text-left font-medium hover:underline underline-offset-2"
+                                  >
+                                    <span className="truncate">{p.producto_name}</span>
+                                    <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
+                                  </button>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatStockQty(p.qty_por_unidad, insumo.unit as UnitKind)} por unidad
+                                    {p.via === 'descartable' && ' · como descartable'}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="tabular-nums font-medium">
+                                    {formatStockQty(p.consumido, insumo.unit as UnitKind)}
+                                  </p>
+                                  <p className="text-xs tabular-nums text-muted-foreground">
+                                    {share !== null && p.consumido > 0 ? `${share.toFixed(1)}% del consumo` : 'sin consumo'}
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {totalConsumido > 0 && (
+                            <p className="px-4 py-2 text-[11px] text-muted-foreground">
+                              Consumo desde el último control de stock, expandiendo sub-recetas.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {usadoEn.subRecetas.length > 0 && (
+                        <div className="border-t px-4 py-2.5">
+                          <p className="mb-1.5 text-xs font-medium text-muted-foreground">También en sub-recetas</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {usadoEn.subRecetas.map((r) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                onClick={() => {
+                                  onOpenChange(false)
+                                  router.push(`/catalogo/recetas?q=${encodeURIComponent(r.name)}`)
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2 py-0.5 text-xs hover:bg-muted"
+                              >
+                                {r.name}
+                                <ExternalLinkIcon className="size-2.5 text-muted-foreground" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 

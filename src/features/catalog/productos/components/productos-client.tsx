@@ -38,6 +38,8 @@ type Props = {
   recetasParaProductos: RecetaParaProducto[]
   descartablesParaProductos: DescartableParaProducto[]
   subRecetas: (Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'> & { total_cost?: number })[]
+  // Precarga del buscador (?q=) — la usan los links "Usado en" del catálogo.
+  initialSearch?: string
 }
 
 function MarginBadge({ margin, target }: { margin: number; target: number }) {
@@ -56,8 +58,8 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
 
 type DialogMode = 'view' | 'edit' | 'create'
 
-export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas }: Props) {
-  const [search, setSearch] = useState('')
+export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas, initialSearch }: Props) {
+  const [search, setSearch] = useState(initialSearch ?? '')
   const [onlySinReceta, setOnlySinReceta] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProductoCost | null>(null)

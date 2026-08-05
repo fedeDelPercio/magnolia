@@ -46,36 +46,35 @@ export function FondoEmergenciaCard({ summary, categorias }: Props) {
       : 'text-muted-foreground'
 
   return (
-    <div className="rounded-xl border bg-card p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="flex items-center gap-1 text-[10px] text-muted-foreground uppercase tracking-wide">
-            <ShieldIcon className="size-3 text-amber-600" />
-            Fondo de emergencia
-          </p>
-          <p className={cn('mt-0.5 text-xl font-semibold tabular-nums', saldoTone)}>
-            {formatCurrency(summary.saldo)}
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            reserva para imprevistos
-          </p>
-        </div>
+    // Layout normalizado entre las 4 cards de cuentas — ver cuenta-digital-card.
+    <div className="flex h-full flex-col rounded-xl border bg-card p-3">
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <p className="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground uppercase tracking-wide">
+          <ShieldIcon className="size-3 shrink-0 text-amber-600" />
+          <span className="truncate">Fondo de emergencia</span>
+        </p>
         <div className="flex gap-1 shrink-0">
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setDetailOpen(true)}>
             <ListIcon className="size-3" />
           </Button>
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setIngresoOpen(true)}>
-            <PlusIcon className="size-3 mr-0.5" />
+            <ArrowUpIcon className="size-3 mr-0.5 text-emerald-700" />
             In
           </Button>
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setEgresoOpen(true)}>
-            <MinusIcon className="size-3 mr-0.5" />
+            <ArrowDownIcon className="size-3 mr-0.5 text-red-600" />
             Eg
           </Button>
         </div>
       </div>
+      <p className={cn('mt-1 text-xl font-semibold tabular-nums', saldoTone)}>
+        {formatCurrency(summary.saldo)}
+      </p>
+      <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+        reserva para imprevistos
+      </p>
 
-      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+      <div className="mt-auto pt-2 flex justify-between text-[11px] text-muted-foreground">
         <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
         <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
       </div>

@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { PencilIcon } from 'lucide-react'
+import { PencilIcon, ChevronDownIcon, UtensilsIcon, ExternalLinkIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -33,7 +34,7 @@ import {
 import { Button } from '@/components/ui/button'
 
 import { recetaSchema, UNITS, UNIT_LABELS, type UnitKind, type RecetaFormValues } from '../schemas'
-import { createReceta, updateReceta } from '../actions'
+import { createReceta, updateReceta, fetchRecetaUsadaEn, type RecetaUsadaEn } from '../actions'
 import { IngredientesEditor, type IngredientesEditorHandle } from './ingredientes-editor'
 import type { RecetaWithIngredientes } from '../queries'
 import type { Tables } from '@/types/database'
@@ -59,6 +60,7 @@ const DEFAULT_VALUES: RecetaFormValues = {
 }
 
 export function RecetaDialog({ open, onOpenChange, receta, mode, insumos, recetas }: Props) {
+  const router = useRouter()
   const form = useForm<RecetaFormValues>({
     resolver: zodResolver(recetaSchema) as Resolver<RecetaFormValues>,
     defaultValues: DEFAULT_VALUES,
@@ -66,6 +68,13 @@ export function RecetaDialog({ open, onOpenChange, receta, mode, insumos, receta
 
   const [editing, setEditing] = useState(mode !== 'view')
   const editorRef = useRef<IngredientesEditorHandle>(null)
+  const [usadaEn, setUsadaEn] = useState<RecetaUsadaEn>([])
+  const [showUsadaEn, setShowUsadaEn] = useState(false)
+
+  useEffect(() => {
+    if (!open || !receta) { setUsadaEn([]); return }
+    fetchRecetaUsadaEn(receta.id).then(({ data }) => setUsadaEn(data))
+  }, [open, receta])
 
   useEffect(() => {
     if (!open) return
@@ -115,6 +124,74 @@ export function RecetaDialog({ open, onOpenChange, receta, mode, insumos, receta
             {isCreate ? 'Nueva receta' : readOnly ? receta?.name ?? 'Receta' : `Editar — ${receta?.name ?? ''}`}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Usada en: productos que contienen esta sub-receta (directa o
+            anidada), con cuánto consume cada uno (producción últimos 30 días).
+            Sirve para detectar productos donde debería estar y no está. */}
+        {!isCreate && receta && (
+          <div className="rounded-xl border bg-card">
+            <button
+              type="button"
+              onClick={() => setShowUsadaEn((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <UtensilsIcon className="size-4 text-muted-foreground" />
+                Usada en
+                {usadaEn.length > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-muted-foreground">
+                    {usadaEn.length}
+                  </span>
+                )}
+              </span>
+              <ChevronDownIcon className={`size-4 transition-transform ${showUsadaEn ? 'rotate-180' : ''}`} />
+            </button>
+            {showUsadaEn && (() => {
+              const totalConsumido = usadaEn.reduce((s, p) => s + p.consumido_30d, 0)
+              const unitLabel = UNIT_LABELS[receta.yield_unit as UnitKind] ?? receta.yield_unit
+              const fmt = (v: number) => `${v.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unitLabel}`
+              return (
+                <div className="border-t">
+                  {usadaEn.length === 0 ? (
+                    <p className="px-4 py-3 text-xs text-muted-foreground">
+                      Ningún producto usa esta sub-receta — si debería estar en alguno, falta agregarla a su receta.
+                    </p>
+                  ) : (
+                    <div className="divide-y text-sm">
+                      {usadaEn.map((p) => {
+                        const share = totalConsumido > 0 ? (p.consumido_30d / totalConsumido) * 100 : null
+                        return (
+                          <div key={p.producto_id} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5">
+                            <div className="min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onOpenChange(false)
+                                  router.push(`/catalogo/productos?q=${encodeURIComponent(p.producto_name)}`)
+                                }}
+                                className="flex items-center gap-1 text-left font-medium hover:underline underline-offset-2"
+                              >
+                                <span className="truncate">{p.producto_name}</span>
+                                <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
+                              </button>
+                              <p className="text-xs text-muted-foreground">{fmt(p.qty_por_unidad)} por unidad</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="tabular-nums font-medium">{fmt(p.consumido_30d)}</p>
+                              <p className="text-xs tabular-nums text-muted-foreground">
+                                {share !== null && p.consumido_30d > 0 ? `${share.toFixed(1)}% · últ. 30 días` : 'sin producción 30d'}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+        )}
 
         <Form {...form}>
           <form

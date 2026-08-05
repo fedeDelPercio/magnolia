@@ -33,12 +33,14 @@ import { matchesSearch } from '@/lib/text'
 type Props = {
   recetas: RecetaWithIngredientes[]
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
+  // Precarga del buscador (?q=) — la usan los links "Usado en" del catálogo.
+  initialSearch?: string
 }
 
 type DialogMode = 'view' | 'edit' | 'create'
 
-export function RecetasClient({ recetas, insumos }: Props) {
-  const [search, setSearch] = useState('')
+export function RecetasClient({ recetas, insumos, initialSearch }: Props) {
+  const [search, setSearch] = useState(initialSearch ?? '')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<RecetaWithIngredientes | null>(null)
   const [mode, setMode] = useState<DialogMode>('create')

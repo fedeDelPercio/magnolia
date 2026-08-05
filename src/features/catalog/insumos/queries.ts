@@ -93,6 +93,56 @@ export async function getInsumoComprasQty(insumoId: string): Promise<CompraQtyEn
     .slice(0, 30)
 }
 
+// "Usado en": productos que contienen el insumo (via receta expandida o como
+// descartable) con la apertura de consumo de stock, + sub-recetas que lo
+// llevan directo. Para detectar errores de armado ("la carne picada tendría
+// que estar también en las empanadas") y ver cómo se reparte el gasto.
+export type InsumoUsadoEn = {
+  productos: {
+    producto_id: string
+    producto_name: string
+    via: 'receta' | 'descartable'
+    qty_por_unidad: number
+    consumido: number
+  }[]
+  subRecetas: { id: string; name: string }[]
+}
+
+export async function getInsumoUsadoEn(insumoId: string): Promise<InsumoUsadoEn> {
+  const supabase = await createClient()
+  const [usoRes, directoRes, prodBackedRes] = await Promise.all([
+    supabase.rpc('insumo_usado_en', { p_insumo_id: insumoId }),
+    // Recetas que llevan el insumo DIRECTO — para separar las sub-recetas.
+    supabase
+      .from('receta_ingredientes')
+      .select('receta_id, recetas!receta_ingredientes_receta_id_fkey(id, name)')
+      .eq('kind', 'insumo')
+      .eq('insumo_id', insumoId),
+    supabase.from('productos').select('receta_id').not('receta_id', 'is', null),
+  ])
+  if (usoRes.error) throw usoRes.error
+
+  // Una receta que es backing 1:1 de un producto no es una "sub-receta" para
+  // el usuario (ya aparece como producto en la lista de arriba).
+  const backed = new Set((prodBackedRes.data ?? []).map((p) => p.receta_id))
+  const subRecetas = ((directoRes.data ?? []) as unknown as { receta_id: string; recetas: { id: string; name: string } | null }[])
+    .filter((r) => r.recetas && !backed.has(r.receta_id))
+    .map((r) => ({ id: r.recetas!.id, name: r.recetas!.name }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const productos = (usoRes.data ?? [])
+    .map((r) => ({
+      producto_id: r.producto_id,
+      producto_name: r.producto_name,
+      via: (r.via === 'descartable' ? 'descartable' : 'receta') as 'receta' | 'descartable',
+      qty_por_unidad: Number(r.qty_por_unidad) || 0,
+      consumido: Number(r.consumido) || 0,
+    }))
+    .sort((a, b) => b.consumido - a.consumido || a.producto_name.localeCompare(b.producto_name))
+
+  return { productos, subRecetas }
+}
+
 export type StockAjusteEntry = {
   id: string
   stock_teorico: number

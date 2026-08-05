@@ -2778,6 +2778,25 @@ export type Database = {
           unit: string
         }[]
       }
+      insumo_usado_en: {
+        Args: { p_insumo_id: string }
+        Returns: {
+          producto_id: string
+          producto_name: string
+          via: string
+          qty_por_unidad: number
+          consumido: number
+        }[]
+      }
+      receta_usada_en: {
+        Args: { p_receta_id: string }
+        Returns: {
+          producto_id: string
+          producto_name: string
+          qty_por_unidad: number
+          consumido_30d: number
+        }[]
+      }
       normalize_name: { Args: { p_name: string }; Returns: string }
       normalize_qty: {
         Args: { from_unit: string; qty: number; to_unit: string }

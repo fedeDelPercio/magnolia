@@ -11,6 +11,34 @@ function mapError(msg: string): string {
   return msg
 }
 
+// Productos que contienen esta receta como sub-receta (directa o anidada),
+// con cuánto de la receta consume cada uno (producción de los últimos 30 días).
+export type RecetaUsadaEn = {
+  producto_id: string
+  producto_name: string
+  qty_por_unidad: number
+  consumido_30d: number
+}[]
+
+export async function fetchRecetaUsadaEn(recetaId: string): Promise<{ data: RecetaUsadaEn }> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('receta_usada_en', { p_receta_id: recetaId })
+    if (error) throw error
+    const rows = (data ?? [])
+      .map((r) => ({
+        producto_id: r.producto_id,
+        producto_name: r.producto_name,
+        qty_por_unidad: Number(r.qty_por_unidad) || 0,
+        consumido_30d: Number(r.consumido_30d) || 0,
+      }))
+      .sort((a, b) => b.consumido_30d - a.consumido_30d || a.producto_name.localeCompare(b.producto_name))
+    return { data: rows }
+  } catch {
+    return { data: [] }
+  }
+}
+
 export async function createReceta(values: RecetaFormValues): Promise<{ error?: string }> {
   try {
     const supabase = await createClient()

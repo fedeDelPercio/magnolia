@@ -32,33 +32,34 @@ export function CuentaDigitalCard({ summary }: Props) {
       : 'text-muted-foreground'
 
   return (
-    <div className="rounded-xl border bg-card p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Dinero en cuenta digital</p>
-          <p className={cn('mt-0.5 text-xl font-semibold tabular-nums', saldoTone)}>
-            {formatCurrency(summary.saldo)}
-          </p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">
-            ventas netas (−{summary.costoProcesadorPct}% proc.) − transferencias
-          </p>
-        </div>
+    // Layout normalizado entre las 4 cards de cuentas: header de altura fija
+    // (título + botones), número grande siempre a la misma altura, subtítulo
+    // de una línea y footer ing/egr abajo.
+    <div className="flex h-full flex-col rounded-xl border bg-card p-3">
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <p className="truncate text-[10px] text-muted-foreground uppercase tracking-wide">Medios digitales</p>
         <div className="flex gap-1 shrink-0">
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setDetailOpen(true)}>
             <ListIcon className="size-3" />
           </Button>
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setIngresoOpen(true)}>
             <ArrowUpIcon className="size-3 mr-0.5 text-emerald-700" />
-            Ingreso
+            In
           </Button>
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setEgresoOpen(true)}>
             <ArrowDownIcon className="size-3 mr-0.5 text-red-600" />
-            Egreso
+            Eg
           </Button>
         </div>
       </div>
+      <p className={cn('mt-1 text-xl font-semibold tabular-nums', saldoTone)}>
+        {formatCurrency(summary.saldo)}
+      </p>
+      <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+        ventas netas (−{summary.costoProcesadorPct}% proc.) − transferencias
+      </p>
 
-      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+      <div className="mt-auto pt-2 flex justify-between text-[11px] text-muted-foreground">
         <span>+ {formatCurrency(summary.ingresosMes)} ing. mes</span>
         <span>− {formatCurrency(summary.egresosMes)} egr. mes</span>
       </div>
