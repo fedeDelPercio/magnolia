@@ -10,11 +10,12 @@ import { PageHeader } from '@/components/shared/page-header'
 
 export const metadata = { title: 'Productos — MAGNOLIA FOOD' }
 
-// q: precarga el buscador — lo usan los links "Usado en" de insumos/sub-recetas.
-type Props = { searchParams: Promise<{ q?: string }> }
+// q: precarga el buscador. open: abre la ficha de ese producto (id) en el tab
+// de su variante. Los usan los links "Usado en" de insumos/sub-recetas.
+type Props = { searchParams: Promise<{ q?: string; open?: string }> }
 
 export default async function ProductosPage({ searchParams }: Props) {
-  const { q } = await searchParams
+  const { q, open } = await searchParams
   const [productos, todosInsumos, recetasParaProductos, subRecetas, descartablesParaProductos] =
     await Promise.all([
       getProductos(),
@@ -41,6 +42,7 @@ export default async function ProductosPage({ searchParams }: Props) {
 
       <ProductosClient
         initialSearch={q}
+        openProductoId={open}
         productos={productos}
         insumos={insumos}
         insumosDescartables={insumosDescartables}

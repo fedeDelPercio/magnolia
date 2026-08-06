@@ -523,7 +523,7 @@ export function InsumoDialog({ open, onOpenChange, insumo, mode, proveedores }: 
                                     type="button"
                                     onClick={() => {
                                       onOpenChange(false)
-                                      router.push(`/catalogo/productos?q=${encodeURIComponent(p.producto_name)}`)
+                                      router.push(`/catalogo/productos?open=${p.producto_id}`)
                                     }}
                                     className="flex items-center gap-1 text-left font-medium hover:underline underline-offset-2"
                                   >

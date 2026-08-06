@@ -88,6 +88,9 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   input: ProductoDialogInput | null
+  // Tab de variante con el que abre el dialog (deep-link "Usado en" hacia una
+  // variante delivery/menu). Si esa variante no existe, cae al base.
+  initialVariant?: VariantKey | null
   mode: Mode
   insumos: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
   insumosDescartables: Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'current_price'>[]
@@ -119,6 +122,7 @@ export function ProductoDialog({
   open,
   onOpenChange,
   input,
+  initialVariant,
   mode,
   insumos,
   insumosDescartables,
@@ -219,12 +223,12 @@ export function ProductoDialog({
   useEffect(() => {
     if (!open) return
     setEditing(mode !== 'view')
-    setActiveVariant('base')
     setShowHistory(false)
     setQuickPriceOpen(false)
     setQuickPrice('')
 
     if (!input) {
+      setActiveVariant('base')
       form.reset(DEFAULT_VALUES)
       setInactiveVariants({})
       setEnabled({ delivery: false, menu: false })
@@ -232,20 +236,31 @@ export function ProductoDialog({
       return
     }
 
-    // Cargamos la variante base al form; las otras van a inactiveVariants.
+    // Variante con la que abre: base salvo deep-link a delivery/menu existente.
+    const start: VariantKey =
+      initialVariant && initialVariant !== 'base' && input[initialVariant] ? initialVariant : 'base'
+    const startData = start === 'base' ? input.base : input[start]!
+    setActiveVariant(start)
+
+    // Cargamos la variante inicial al form; las otras van a inactiveVariants.
     form.reset({
       name: input.name,
-      sale_price: input.base.sale_price,
-      receta_id: input.base.receta_id,
+      sale_price: startData.sale_price,
+      receta_id: startData.receta_id,
       target_margin_pct: input.target_margin_pct,
       is_dynamic: input.is_dynamic,
       yield_qty: input.yield_qty,
       yield_unit: input.yield_unit,
       es_reventa: input.es_reventa,
-      ingredientes: input.base.ingredientes,
-      descartables: input.base.descartables,
+      ingredientes: startData.ingredientes,
+      descartables: startData.descartables,
     })
+    // OJO: delivery/menu van SIEMPRE al mapa aunque sean la variante activa —
+    // el mapa además registra el producto_id de cada variante y el snapshot
+    // del tab activo lo lee de ahí. base solo cuando NO es la inicial (su id
+    // tiene el fallback de productoBaseId).
     const inactive: Partial<Record<VariantKey, VariantData>> = {}
+    if (start !== 'base') inactive.base = input.base
     if (input.delivery) inactive.delivery = input.delivery
     if (input.menu) inactive.menu = input.menu
     setInactiveVariants(inactive)
@@ -257,7 +272,7 @@ export function ProductoDialog({
       setPriceHistory([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, input, mode])
+  }, [open, input, mode, initialVariant])
 
   const readOnly = !editing
   const isCreate = mode === 'create'

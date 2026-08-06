@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { useEffect, useState, useMemo, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { PlusIcon, MoreHorizontalIcon, SearchIcon, ClipboardListIcon } from 'lucide-react'
 
@@ -28,7 +29,7 @@ import { ProductoDialog, type ProductoDialogInput } from './producto-dialog'
 import type { ProductoCost } from '../queries'
 import type { Tables } from '@/types/database'
 import type { RecetaParaProducto, DescartableParaProducto } from '../../recetas/queries'
-import type { VariantData } from '../schemas'
+import type { VariantData, VariantKey } from '../schemas'
 import { matchesSearch } from '@/lib/text'
 
 type Props = {
@@ -40,6 +41,9 @@ type Props = {
   subRecetas: (Pick<Tables<'recetas'>, 'id' | 'name' | 'yield_unit' | 'yield_qty'> & { total_cost?: number })[]
   // Precarga del buscador (?q=) — la usan los links "Usado en" del catálogo.
   initialSearch?: string
+  // Deep-link (?open=): abre la ficha de ese producto al montar, en el tab de
+  // la variante que corresponda (una variante delivery abre en su tab).
+  openProductoId?: string
 }
 
 function MarginBadge({ margin, target }: { margin: number; target: number }) {
@@ -58,13 +62,35 @@ function MarginBadge({ margin, target }: { margin: number; target: number }) {
 
 type DialogMode = 'view' | 'edit' | 'create'
 
-export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas, initialSearch }: Props) {
+export function ProductosClient({ productos, insumos, insumosDescartables, recetasParaProductos, descartablesParaProductos, subRecetas, initialSearch, openProductoId }: Props) {
+  const router = useRouter()
   const [search, setSearch] = useState(initialSearch ?? '')
   const [onlySinReceta, setOnlySinReceta] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProductoCost | null>(null)
   const [mode, setMode] = useState<DialogMode>('create')
+  const [initialVariant, setInitialVariant] = useState<VariantKey | null>(null)
   const [, startTransition] = useTransition()
+
+  // Deep-link desde "Usado en": abrir la ficha del producto pedido en el tab
+  // de su variante, y limpiar el param para que un refresh no lo reabra.
+  useEffect(() => {
+    if (!openProductoId) return
+    const target = productos.find((p) => p.id === openProductoId)
+    if (target) {
+      const variant: VariantKey =
+        target.formato === 'menu' ? 'menu' : target.canal === 'delivery' ? 'delivery' : 'base'
+      setInitialVariant(variant)
+      setEditing(target)
+      setMode('view')
+      setDialogOpen(true)
+    } else {
+      toast.error('No se encontró el producto')
+    }
+    router.replace('/catalogo/productos', { scroll: false })
+    // Solo al montar / cambiar el param — productos es estable en ese momento.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openProductoId])
 
   const recetaMap = useMemo(
     () => new Map(recetasParaProductos.map((r) => [r.id, r])),
@@ -165,18 +191,21 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
   }
 
   function openCreate() {
+    setInitialVariant(null)
     setEditing(null)
     setMode('create')
     setDialogOpen(true)
   }
 
   function openView(producto: ProductoCost) {
+    setInitialVariant(null)
     setEditing(producto)
     setMode('view')
     setDialogOpen(true)
   }
 
   function openEdit(producto: ProductoCost) {
+    setInitialVariant(null)
     setEditing(producto)
     setMode('edit')
     setDialogOpen(true)
@@ -389,6 +418,7 @@ export function ProductosClient({ productos, insumos, insumosDescartables, recet
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         input={dialogInput}
+        initialVariant={initialVariant}
         mode={mode}
         insumos={insumos}
         insumosDescartables={insumosDescartables}
