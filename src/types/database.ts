@@ -1654,6 +1654,7 @@ export type Database = {
           stock_calculado: number | null
           updated_at: string
           ventas: number
+          ventas_bistro: number
         }
         Insert: {
           almuerzo?: number
@@ -1670,6 +1671,7 @@ export type Database = {
           stock_calculado?: number | null
           updated_at?: string
           ventas?: number
+          ventas_bistro?: number
         }
         Update: {
           almuerzo?: number
@@ -1686,6 +1688,7 @@ export type Database = {
           stock_calculado?: number | null
           updated_at?: string
           ventas?: number
+          ventas_bistro?: number
         }
         Relationships: [
           {

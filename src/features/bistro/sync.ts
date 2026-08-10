@@ -687,21 +687,26 @@ async function consolidateCierreForDay(
     for (const [productoId, cantidad] of ventasPorProducto) {
       const { data: existing } = await client
         .from('movimientos_diarios')
-        .select('id')
+        .select('id, ventas, ventas_bistro')
         .eq('dia_id', diaId)
         .eq('producto_id', productoId)
         .maybeSingle()
 
       if (existing) {
+        // ventas es el TOTAL (bistro + ajuste manual por fuera del POS).
+        // Reemplazamos SOLO la parte bistro y conservamos la diferencia manual
+        // — sin esto, cada re-sync pisaba lo que la dueña cargó a mano.
+        const ajusteManual = (Number(existing.ventas) || 0) - (Number(existing.ventas_bistro) || 0)
         await client
           .from('movimientos_diarios')
-          .update({ ventas: cantidad })
+          .update({ ventas: cantidad + ajusteManual, ventas_bistro: cantidad })
           .eq('id', existing.id)
       } else {
         await client.from('movimientos_diarios').insert({
           dia_id: diaId,
           producto_id: productoId,
           ventas: cantidad,
+          ventas_bistro: cantidad,
         })
       }
     }

@@ -103,21 +103,43 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
         />
       </td>
       {(['produccion', 'ventas', 'desperdicio', 'almuerzo', 'conteo_fisico'] as const).map(
-        (field) => (
-          <td key={field} className="px-2 py-2 text-right">
-            <input
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              disabled={readonly}
-              className={inputCls}
-              value={numInput(local[field])}
-              placeholder="0"
-              onChange={(e) => handleChange(field, e.target.value)}
-            />
-          </td>
-        ),
+        (field) => {
+          // Ventas = total (Bistro + ventas por fuera del POS). Es editable:
+          // el sync solo reemplaza su parte y conserva la diferencia manual.
+          const ventasBistro = Number(mov.ventas_bistro) || 0
+          const showBistroHint = field === 'ventas' && ventasBistro > 0
+          const manualDiff = local.ventas - ventasBistro
+          return (
+            <td key={field} className="px-2 py-2 text-right align-top">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                disabled={readonly}
+                className={inputCls}
+                value={numInput(local[field])}
+                placeholder="0"
+                onChange={(e) => handleChange(field, e.target.value)}
+                title={
+                  field === 'ventas'
+                    ? `Bistro registró ${ventasBistro}. Si vendés por fuera del POS, editá el total — la diferencia se conserva aunque se re-sincronice.`
+                    : undefined
+                }
+              />
+              {showBistroHint && (
+                <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
+                  Bistro: {ventasBistro}
+                  {manualDiff !== 0 && (
+                    <span className={manualDiff > 0 ? ' text-blue-700' : ' text-red-600'}>
+                      {' '}{manualDiff > 0 ? '+' : ''}{manualDiff} a mano
+                    </span>
+                  )}
+                </p>
+              )}
+            </td>
+          )
+        },
       )}
       <td className="px-2 py-2 text-right tabular-nums text-sm">
         {Math.round(stockTeorico)}

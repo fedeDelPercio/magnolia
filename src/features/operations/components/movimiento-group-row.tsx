@@ -8,9 +8,11 @@ import type { MovimientoConProducto } from '../queries'
 // producto en una sola linea. La produccion y los ajustes (stock, desperdicio,
 // almuerzo, conteo) se cargan UNA vez y se guardan en la variante base
 // (Mostrador); las secundarias quedan en 0 para no duplicar el descuento de
-// ingredientes. Las ventas se muestran SUMADAS y son de solo lectura: vienen de
-// Bistrosoft por canal y se mantienen separadas por debajo para que los
-// descartables de cada canal (barra/salon) se descuenten bien.
+// ingredientes. Las ventas se muestran SUMADAS y son EDITABLES: la parte de
+// Bistrosoft viene por canal (y se mantiene separada por debajo para que los
+// descartables de cada canal se descuenten bien); si la dueña vende por fuera
+// del POS puede subir el total — la diferencia se guarda en la variante base y
+// el sync la conserva en cada corrida.
 
 type Props = {
   primary: MovimientoConProducto
@@ -22,6 +24,7 @@ type Props = {
 type LocalState = {
   stock_anterior: number
   produccion: number
+  ventas: number
   desperdicio: number
   almuerzo: number
   conteo_fisico: number
@@ -59,6 +62,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   const [local, setLocal] = useState<LocalState>({
     stock_anterior: sum('stock_anterior'),
     produccion: sum('produccion'),
+    ventas: sum('ventas'),
     desperdicio: sum('desperdicio'),
     almuerzo: sum('almuerzo'),
     conteo_fisico: all.reduce((s, m) => s + (m.conteo_fisico ?? 0), 0),
@@ -72,26 +76,31 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   // "manual" y el arrastre automático deja de pisarlo.
   const stockManualRef = useRef(primary.stock_anterior_manual)
 
-  // Ventas: suma de todos los canales, solo lectura.
-  const ventasSum = all.reduce((s, m) => s + (m.ventas || 0), 0)
+  // Parte Bistro de las ventas, por canal. El total editado se reparte:
+  // las secundarias conservan sus ventas (dato de Bistro del canal) y la
+  // diferencia va a la variante base.
+  const ventasBistroSum = all.reduce((s, m) => s + (Number(m.ventas_bistro) || 0), 0)
+  const ventasSecundarias = secondaries.reduce((s, m) => s + (m.ventas || 0), 0)
   const ventasBreakdown = all
-    .map((m) => `${canalLabel(m)}: ${m.ventas || 0}`)
+    .map((m) => `${canalLabel(m)}: ${Number(m.ventas_bistro) || 0}`)
     .join(' · ')
+  const ventasManualDiff = local.ventas - ventasBistroSum
 
   const stockTeorico =
-    local.stock_anterior + local.produccion - ventasSum - local.desperdicio - local.almuerzo
+    local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
   const diferencia = local.conteo_fisico - stockTeorico
 
   function schedulesSave(updated: LocalState) {
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       setSaving(true)
-      // Primaria: lleva todos los ajustes + sus propias ventas (canal base).
+      // Primaria: lleva todos los ajustes + sus ventas = total editado menos
+      // lo que quedó en las secundarias (así el grupo suma exactamente el total).
       await saveMovimiento(primary.id, {
         stock_anterior: updated.stock_anterior,
         stock_anterior_manual: stockManualRef.current,
         produccion: updated.produccion,
-        ventas: primary.ventas,
+        ventas: Math.max(0, updated.ventas - ventasSecundarias),
         desperdicio: updated.desperdicio,
         almuerzo: updated.almuerzo,
         conteo_fisico: updated.conteo_fisico,
@@ -176,19 +185,32 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
           />
         </td>
       ))}
-      {/* Ventas: suma de canales, solo lectura (viene de Bistrosoft por canal).
-          Se muestra como input deshabilitado para que el recuadro quede igual
-          que el resto de las columnas. */}
-      <td className="px-2 py-2 text-right">
+      {/* Ventas: total del grupo, EDITABLE. La parte Bistro por canal se
+          muestra abajo; la diferencia manual (ventas por fuera del POS) se
+          guarda en la variante base y sobrevive a los re-sync. */}
+      <td className="px-2 py-2 text-right align-top">
         <input
-          type="text"
+          type="number"
+          min="0"
+          step="1"
           inputMode="numeric"
-          disabled
-          readOnly
+          disabled={readonly}
           className={inputCls}
-          value={ventasSum}
-          title={`Ventas por canal (viene de Bistrosoft) — ${ventasBreakdown}`}
+          value={numInput(local.ventas)}
+          placeholder="0"
+          onChange={(e) => handleChange('ventas', e.target.value)}
+          title={`Bistro por canal — ${ventasBreakdown}. Si vendés por fuera del POS, editá el total: la diferencia se conserva aunque se re-sincronice.`}
         />
+        {ventasBistroSum > 0 && (
+          <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
+            Bistro: {ventasBistroSum}
+            {ventasManualDiff !== 0 && (
+              <span className={ventasManualDiff > 0 ? ' text-blue-700' : ' text-red-600'}>
+                {' '}{ventasManualDiff > 0 ? '+' : ''}{ventasManualDiff} a mano
+              </span>
+            )}
+          </p>
+        )}
       </td>
       {(['desperdicio', 'almuerzo', 'conteo_fisico'] as const).map((field) => (
         <td key={field} className="px-2 py-2 text-right">
