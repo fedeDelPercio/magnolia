@@ -11,7 +11,7 @@ type Props = {
     points: MenuEngineeringPoint[]
     thresholdCantidad: number
     thresholdMargen: number
-    sinReceta: number
+    sinCostoConfiable: number
   }
 }
 
@@ -28,7 +28,7 @@ const CUADRANTE_INFO = {
 type HoveredPoint = { p: MenuEngineeringPoint; cx: number; cy: number }
 
 export function MenuEngineeringMatrix({ data }: Props) {
-  const { points, thresholdCantidad, thresholdMargen, sinReceta } = data
+  const { points, thresholdCantidad, thresholdMargen, sinCostoConfiable } = data
   const [hovered, setHovered] = useState<HoveredPoint | null>(null)
 
   if (points.length === 0) {
@@ -99,7 +99,7 @@ export function MenuEngineeringMatrix({ data }: Props) {
         eyebrow="Menu Engineering"
         action={<MenuEngineeringHelp />}
         trail={`Popularidad × rentabilidad · ${points.length} productos analizados${
-          sinReceta > 0 ? ` · ${sinReceta} sin receta quedan afuera` : ''
+          sinCostoConfiable > 0 ? ` · ${sinCostoConfiable} sin costo confiable quedan afuera` : ''
         }`}
       >
         <span className="italic">Qué</span> hacer con cada producto

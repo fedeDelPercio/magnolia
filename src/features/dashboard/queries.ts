@@ -692,14 +692,17 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
   points: MenuEngineeringPoint[]
   thresholdCantidad: number
   thresholdMargen: number
-  // Productos vendidos en el período pero sin costo de receta calculable:
-  // quedan fuera del gráfico y lo decimos en el subtítulo (nada de caps mudos).
-  sinReceta: number
+  // Productos vendidos en el período pero sin costo de receta CONFIABLE: sin
+  // receta cargada, o con líneas en unidades incompatibles (el costo da ruido,
+  // ej. Limonada con agua "500 ml" de un insumo en "u" costaba $376k). Quedan
+  // fuera del gráfico y lo decimos en el subtítulo (nada de caps mudos);
+  // vuelven solos cuando se corrige la receta.
+  sinCostoConfiable: number
 }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
-  const [productosRes, costsRes] = await Promise.all([
+  const [productosRes, costsRes, rotasRes] = await Promise.all([
     supabase
       .from('cierre_caja_productos_active')
       .select('producto_id, cantidad, monto_total')
@@ -710,10 +713,14 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
       .from('product_costs')
       .select('id, name, total_cost')
       .eq('tenant_id', tenantId),
+    supabase.rpc('productos_unidades_rotas', { p_tenant_id: tenantId }),
   ])
 
   if (productosRes.error) throw new Error(productosRes.error.message)
   if (costsRes.error) throw new Error(costsRes.error.message)
+  if (rotasRes.error) throw new Error(rotasRes.error.message)
+
+  const recetasRotas = new Set((rotasRes.data ?? []).map((r) => r.producto_id))
 
   const costsMap = new Map(
     (costsRes.data ?? []).map((c) => [c.id, { name: c.name, cost: Number(c.total_cost) || 0 }]),
@@ -736,12 +743,12 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
     agg.set(row.producto_id, cur)
   }
 
-  let sinReceta = 0
+  let sinCostoConfiable = 0
   const arr: Omit<MenuEngineeringPoint, 'cuadrante'>[] = []
   for (const p of agg.values()) {
     if (p.cantidad <= 0) continue
-    if (p.cost <= 0) {
-      sinReceta++
+    if (p.cost <= 0 || recetasRotas.has(p.id)) {
+      sinCostoConfiable++
       continue
     }
     const precioReal = p.monto / p.cantidad
@@ -754,7 +761,7 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
       margen_unitario: precioReal - p.cost,
     })
   }
-  if (arr.length === 0) return { points: [], thresholdCantidad: 0, thresholdMargen: 0, sinReceta }
+  if (arr.length === 0) return { points: [], thresholdCantidad: 0, thresholdMargen: 0, sinCostoConfiable }
 
   // Visual 50/50: threshold = mitad del rango visible. Garantiza que el cuadrante
   // donde cae el punto coincida con el cuadrante coloreado donde lo dibujamos.
@@ -775,7 +782,7 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
     return { ...p, cuadrante }
   })
 
-  return { points, thresholdCantidad, thresholdMargen, sinReceta }
+  return { points, thresholdCantidad, thresholdMargen, sinCostoConfiable }
 }
 
 export type InsumoGasto = {

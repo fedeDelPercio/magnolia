@@ -2800,6 +2800,11 @@ export type Database = {
           consumido_30d: number
         }[]
       }
+      receta_unidades_ok: { Args: { p_receta_id: string }; Returns: boolean }
+      productos_unidades_rotas: {
+        Args: { p_tenant_id: string }
+        Returns: { producto_id: string }[]
+      }
       normalize_name: { Args: { p_name: string }; Returns: string }
       normalize_qty: {
         Args: { from_unit: string; qty: number; to_unit: string }
