@@ -150,11 +150,10 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
 
   // Costo variable de la linea, tanto para insumos como sub-recetas. Espeja
   // la logica de recipe_cost() en Postgres:
-  //   insumo:     qty × factor(unit_conversion) × current_price
-  //   sub-receta: qty × (total_cost / yield_qty)
-  // Nota: para sub-recetas el SQL NO convierte unidades — si consumis "150 g"
-  // de una receta con yield en "porcion", multiplica igual y da ruido. Ese
-  // caso se detecta con unitsCompatible y marcamos warning.
+  //   insumo:     normalize(qty → unidad del insumo) × current_price
+  //   sub-receta: normalize(qty → unidad del yield) × (total_cost / yield_qty)
+  // Unidades de familias distintas (ej. 'g' vs 'porcion') no se convierten:
+  // se detectan con unitsCompatible y marcamos warning.
   function getLineCost(field: IngredienteFormValues): number | null {
     if (field.kind === 'insumo') {
       const insumo = insumos.find((i) => i.id === field.insumo_id)
@@ -165,7 +164,12 @@ export function IngredientesEditor({ insumos, recetas, currentRecetaId, readOnly
     const receta = recetas.find((r) => r.id === field.sub_receta_id)
     if (!receta || receta.total_cost == null || !receta.yield_qty) return null
     const costPerYieldUnit = Number(receta.total_cost) / Number(receta.yield_qty)
-    return Number(field.qty) * costPerYieldUnit
+    const qtyInYieldUnit = normalizeQty(
+      Number(field.qty),
+      field.unit,
+      receta.yield_unit ?? field.unit,
+    )
+    return qtyInYieldUnit * costPerYieldUnit
   }
 
   // Devuelve true si la unidad consumida es compatible con la unidad del

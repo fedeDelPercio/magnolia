@@ -424,23 +424,31 @@ async function upsertVariantProducto(
   variant: VariantData,
   conceptoId: string | null,
   currentUserId: string | null,
+  usedRecetaIds: Set<string>,
 ): Promise<{ id: string; oldPrice: number | null; error?: string }> {
   const canal = VARIANT_TO_CANAL[key]
   const formato = VARIANT_TO_FORMATO[key]
   const productoName = variantProductoName(baseName, key)
 
-  // Resolver receta_id: crear una nueva si no viene, o actualizar la existente.
-  // Fallback por nombre si un save previo dejo una receta huerfana con ese name
-  // (unique(tenant_id, name)) para no chocar en el retry.
-  let recetaId = variant.receta_id
-  if (!recetaId) {
-    const { data: existingReceta } = await supabase
-      .from('recetas')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('name', productoName)
-      .maybeSingle()
-    if (existingReceta) recetaId = existingReceta.id
+  // Resolver receta_id. CLAVE: cada variante necesita una receta EXCLUSIVA.
+  // Si dos variantes comparten receta, cada save borra y reinserta los
+  // ingredientes de la misma fila y la última variante pisa a las anteriores
+  // (así se perdían las ediciones de la clienta sin ningún error visible).
+  // usedRecetaIds trae las recetas ya tomadas por variantes previas de este
+  // save; nunca se reutilizan — si la receta de la variante ya está tomada,
+  // se le crea una propia. Prioridad: receta que ya se llama como el producto
+  // (evita chocar con unique(tenant_id, name) al renombrar) > la receta actual
+  // de la variante > crear una nueva.
+  let recetaId: string | null = null
+  const { data: byNameReceta } = await supabase
+    .from('recetas')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('name', productoName)
+    .maybeSingle()
+  if (byNameReceta && !usedRecetaIds.has(byNameReceta.id)) recetaId = byNameReceta.id
+  if (!recetaId && variant.receta_id && !usedRecetaIds.has(variant.receta_id)) {
+    recetaId = variant.receta_id
   }
   if (recetaId) {
     const { error: recetaErr } = await supabase
@@ -471,6 +479,7 @@ async function upsertVariantProducto(
     if (recetaErr) return { id: '', oldPrice: null, error: recetaErr.message }
     recetaId = nueva.id
   }
+  usedRecetaIds.add(recetaId)
 
   if (variant.ingredientes.length > 0) {
     const { error: ingErr } = await supabase.from('receta_ingredientes').insert(
@@ -635,6 +644,10 @@ export async function saveProductoConVariantes(
       ...values.base,
       producto_id: productoBaseId ?? values.base.producto_id ?? null,
     }
+    // Recetas ya tomadas por variantes de ESTE save: garantiza que cada
+    // variante escriba en una receta exclusiva (ver upsertVariantProducto).
+    const usedRecetaIds = new Set<string>()
+
     const baseRes = await upsertVariantProducto(
       supabase,
       tenantId,
@@ -644,6 +657,7 @@ export async function saveProductoConVariantes(
       baseInput,
       conceptoId,
       user?.id ?? null,
+      usedRecetaIds,
     )
     if (baseRes.error) return { error: baseRes.error }
     if (baseRes.oldPrice !== values.base.sale_price) {
@@ -672,6 +686,7 @@ export async function saveProductoConVariantes(
           variant,
           conceptoId,
           user?.id ?? null,
+          usedRecetaIds,
         )
         if (res.error) return { error: res.error }
         if (res.oldPrice !== variant.sale_price) {
