@@ -186,31 +186,34 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
         </td>
       ))}
       {/* Ventas: total del grupo, EDITABLE. La parte Bistro por canal se
-          muestra abajo; la diferencia manual (ventas por fuera del POS) se
-          guarda en la variante base y sobrevive a los re-sync. */}
-      <td className="px-2 py-2 text-right align-top">
-        <input
-          type="number"
-          min="0"
-          step="1"
-          inputMode="numeric"
-          disabled={readonly}
-          className={inputCls}
-          value={numInput(local.ventas)}
-          placeholder="0"
-          onChange={(e) => handleChange('ventas', e.target.value)}
-          title={`Bistro por canal — ${ventasBreakdown}. Si vendés por fuera del POS, editá el total: la diferencia se conserva aunque se re-sincronice.`}
-        />
-        {ventasBistroSum > 0 && (
-          <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
-            Bistro: {ventasBistroSum}
-            {ventasManualDiff !== 0 && (
-              <span className={ventasManualDiff > 0 ? ' text-blue-700' : ' text-red-600'}>
-                {' '}{ventasManualDiff > 0 ? '+' : ''}{ventasManualDiff} a mano
-              </span>
-            )}
-          </p>
-        )}
+          muestra abajo (absoluta, para no desalinear la celda); la diferencia
+          manual (ventas por fuera del POS) se guarda en la variante base y
+          sobrevive a los re-sync. */}
+      <td className="px-2 py-2 text-right">
+        <div className="relative inline-block">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            inputMode="numeric"
+            disabled={readonly}
+            className={inputCls}
+            value={numInput(local.ventas)}
+            placeholder="0"
+            onChange={(e) => handleChange('ventas', e.target.value)}
+            title={`Bistro por canal — ${ventasBreakdown}. Si vendés por fuera del POS, editá el total: la diferencia se conserva aunque se re-sincronice.`}
+          />
+          {ventasBistroSum > 0 && (
+            <p className="pointer-events-none absolute right-0 top-full whitespace-nowrap text-[10px] leading-none tabular-nums text-muted-foreground">
+              Bistro: {ventasBistroSum}
+              {ventasManualDiff !== 0 && (
+                <span className={ventasManualDiff > 0 ? ' text-blue-700' : ' text-red-600'}>
+                  {' '}{ventasManualDiff > 0 ? '+' : ''}{ventasManualDiff} a mano
+                </span>
+              )}
+            </p>
+          )}
+        </div>
       </td>
       {(['desperdicio', 'almuerzo', 'conteo_fisico'] as const).map((field) => (
         <td key={field} className="px-2 py-2 text-right">

@@ -109,34 +109,38 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
           const ventasBistro = Number(mov.ventas_bistro) || 0
           const showBistroHint = field === 'ventas' && ventasBistro > 0
           const manualDiff = local.ventas - ventasBistro
+          // El hint "Bistro: N" va en posición absoluta para que la celda mida
+          // igual que las demás y los inputs queden siempre centrados en altura.
           return (
-            <td key={field} className="px-2 py-2 text-right align-top">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                disabled={readonly}
-                className={inputCls}
-                value={numInput(local[field])}
-                placeholder="0"
-                onChange={(e) => handleChange(field, e.target.value)}
-                title={
-                  field === 'ventas'
-                    ? `Bistro registró ${ventasBistro}. Si vendés por fuera del POS, editá el total — la diferencia se conserva aunque se re-sincronice.`
-                    : undefined
-                }
-              />
-              {showBistroHint && (
-                <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
-                  Bistro: {ventasBistro}
-                  {manualDiff !== 0 && (
-                    <span className={manualDiff > 0 ? ' text-blue-700' : ' text-red-600'}>
-                      {' '}{manualDiff > 0 ? '+' : ''}{manualDiff} a mano
-                    </span>
-                  )}
-                </p>
-              )}
+            <td key={field} className="px-2 py-2 text-right">
+              <div className="relative inline-block">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  disabled={readonly}
+                  className={inputCls}
+                  value={numInput(local[field])}
+                  placeholder="0"
+                  onChange={(e) => handleChange(field, e.target.value)}
+                  title={
+                    field === 'ventas'
+                      ? `Bistro registró ${ventasBistro}. Si vendés por fuera del POS, editá el total — la diferencia se conserva aunque se re-sincronice.`
+                      : undefined
+                  }
+                />
+                {showBistroHint && (
+                  <p className="pointer-events-none absolute right-0 top-full whitespace-nowrap text-[10px] leading-none tabular-nums text-muted-foreground">
+                    Bistro: {ventasBistro}
+                    {manualDiff !== 0 && (
+                      <span className={manualDiff > 0 ? ' text-blue-700' : ' text-red-600'}>
+                        {' '}{manualDiff > 0 ? '+' : ''}{manualDiff} a mano
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
             </td>
           )
         },
