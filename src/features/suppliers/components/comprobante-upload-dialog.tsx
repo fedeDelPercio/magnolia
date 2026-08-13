@@ -768,6 +768,10 @@ export function ComprobanteUploadDialog({
                             </div>
                           )}
                           {insumo && qtyBase > 0 && total > 0 && (() => {
+                            // Precio final por unidad: neto con descuento + IVA de la
+                            // línea (o el global si la línea no tiene uno propio).
+                            const ivaEff = line.ivaRate === null ? ivaRate : line.ivaRate
+                            const conIvaMul = (1 - descuentoPct / 100) * (1 + ivaEff / 100)
                             const hijos = line.assignedInsumoId ? despieces[line.assignedInsumoId] : null
                             if (hijos && hijos.length > 0) {
                               const sumQty = hijos.reduce((s, h) => s + h.qty_por_unidad, 0)
@@ -775,12 +779,18 @@ export function ComprobanteUploadDialog({
                               return (
                                 <p className="col-span-12 text-[10px] text-emerald-700">
                                   Va a sumar stock a: {hijos.map((h) => `${(qty * h.qty_por_unidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${h.hijo_name}`).join(' · ')} · {formatCurrency(unitPriceHijo)} por unidad hija
+                                  {conIvaMul !== 1 && ` (${formatCurrency(unitPriceHijo * conIvaMul)} c/IVA)`}
                                 </p>
                               )
                             }
                             return (
                               <p className="col-span-12 text-[10px] text-muted-foreground">
                                 = {qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {baseLabel} · {formatCurrency(unitPriceBase)} / {baseLabel}
+                                {conIvaMul !== 1 && (
+                                  <span className="text-foreground/70">
+                                    {' '}· {formatCurrency(unitPriceBase * conIvaMul)} / {baseLabel} c/IVA
+                                  </span>
+                                )}
                               </p>
                             )
                           })()}
@@ -828,8 +838,11 @@ export function ComprobanteUploadDialog({
             </div>
 
             {totalComprobante !== null && totalFinal > 0 && (() => {
-              const diffPct = Math.abs(totalFinal - totalComprobante) / totalComprobante
-              if (diffPct <= 0.02) {
+              // Solo cuenta como "coincide" una diferencia de redondeo (hasta
+              // $5 por como cada factura redondea el IVA línea a línea). Antes
+              // se toleraba 2% y daba el check con $1.700 de diferencia.
+              const diff = totalFinal - totalComprobante
+              if (Math.abs(diff) <= 5) {
                 return (
                   <p className="flex items-center gap-1.5 text-xs text-emerald-700">
                     <CheckCircleIcon className="size-3.5 shrink-0" />
@@ -845,8 +858,9 @@ export function ComprobanteUploadDialog({
                   </p>
                   <p className="mt-1">
                     Calculado: <strong className="tabular-nums">{formatCurrency(totalFinal)}</strong> · En el comprobante:{' '}
-                    <strong className="tabular-nums">{formatCurrency(totalComprobante)}</strong>. Revisá cantidades, precios,
-                    descuento, IVA y percepciones (o ítems descartados) antes de registrar.
+                    <strong className="tabular-nums">{formatCurrency(totalComprobante)}</strong> · Diferencia:{' '}
+                    <strong className="tabular-nums">{diff > 0 ? '+' : ''}{formatCurrency(diff)}</strong>. Revisá cantidades,
+                    precios, descuento, IVA y percepciones (o ítems descartados) antes de registrar.
                   </p>
                 </div>
               )
