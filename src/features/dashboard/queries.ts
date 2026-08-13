@@ -679,6 +679,10 @@ export type MenuEngineeringPoint = {
   id: string
   name: string
   cantidad: number
+  // Precio promedio realmente cobrado en el período (monto / cantidad del POS).
+  // No usamos el sale_price de la ficha: la mitad del catálogo no lo tiene
+  // cargado y metía márgenes de -$costo que rompían la escala del gráfico.
+  precio_real: number
   margen_unitario: number
   monto: number
   cuadrante: 'estrella' | 'caballito' | 'acertijo' | 'perro'
@@ -688,6 +692,9 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
   points: MenuEngineeringPoint[]
   thresholdCantidad: number
   thresholdMargen: number
+  // Productos vendidos en el período pero sin costo de receta calculable:
+  // quedan fuera del gráfico y lo decimos en el subtítulo (nada de caps mudos).
+  sinReceta: number
 }> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -701,7 +708,7 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
       .lt('cierre_fecha_local', to),
     supabase
       .from('product_costs')
-      .select('id, name, sale_price, total_cost')
+      .select('id, name, total_cost')
       .eq('tenant_id', tenantId),
   ])
 
@@ -709,16 +716,10 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
   if (costsRes.error) throw new Error(costsRes.error.message)
 
   const costsMap = new Map(
-    (costsRes.data ?? []).map((c) => [
-      c.id,
-      {
-        name: c.name,
-        margen: (Number(c.sale_price) || 0) - (Number(c.total_cost) || 0),
-      },
-    ]),
+    (costsRes.data ?? []).map((c) => [c.id, { name: c.name, cost: Number(c.total_cost) || 0 }]),
   )
 
-  const agg = new Map<string, { id: string; name: string; cantidad: number; margen_unitario: number; monto: number }>()
+  const agg = new Map<string, { id: string; name: string; cantidad: number; monto: number; cost: number }>()
   for (const row of productosRes.data ?? []) {
     if (!row.producto_id) continue
     const info = costsMap.get(row.producto_id)
@@ -727,16 +728,33 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
       id: row.producto_id,
       name: info.name!,
       cantidad: 0,
-      margen_unitario: info.margen,
       monto: 0,
+      cost: info.cost,
     }
     cur.cantidad += Number(row.cantidad) || 0
     cur.monto += Number(row.monto_total) || 0
     agg.set(row.producto_id, cur)
   }
 
-  const arr = Array.from(agg.values()).filter((p) => p.cantidad > 0 && p.margen_unitario !== 0)
-  if (arr.length === 0) return { points: [], thresholdCantidad: 0, thresholdMargen: 0 }
+  let sinReceta = 0
+  const arr: Omit<MenuEngineeringPoint, 'cuadrante'>[] = []
+  for (const p of agg.values()) {
+    if (p.cantidad <= 0) continue
+    if (p.cost <= 0) {
+      sinReceta++
+      continue
+    }
+    const precioReal = p.monto / p.cantidad
+    arr.push({
+      id: p.id,
+      name: p.name,
+      cantidad: p.cantidad,
+      monto: p.monto,
+      precio_real: precioReal,
+      margen_unitario: precioReal - p.cost,
+    })
+  }
+  if (arr.length === 0) return { points: [], thresholdCantidad: 0, thresholdMargen: 0, sinReceta }
 
   // Visual 50/50: threshold = mitad del rango visible. Garantiza que el cuadrante
   // donde cae el punto coincida con el cuadrante coloreado donde lo dibujamos.
@@ -757,7 +775,7 @@ export async function getMenuEngineering(from: string, to: string): Promise<{
     return { ...p, cuadrante }
   })
 
-  return { points, thresholdCantidad, thresholdMargen }
+  return { points, thresholdCantidad, thresholdMargen, sinReceta }
 }
 
 export type InsumoGasto = {

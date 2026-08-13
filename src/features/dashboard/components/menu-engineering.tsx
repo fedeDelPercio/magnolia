@@ -7,7 +7,12 @@ import { SectionHeader } from '@/components/shared/section-header'
 import type { MenuEngineeringPoint } from '../queries'
 
 type Props = {
-  data: { points: MenuEngineeringPoint[]; thresholdCantidad: number; thresholdMargen: number }
+  data: {
+    points: MenuEngineeringPoint[]
+    thresholdCantidad: number
+    thresholdMargen: number
+    sinReceta: number
+  }
 }
 
 // Orden de las claves = orden de la leyenda inferior. Sigue la lectura por
@@ -23,7 +28,7 @@ const CUADRANTE_INFO = {
 type HoveredPoint = { p: MenuEngineeringPoint; cx: number; cy: number }
 
 export function MenuEngineeringMatrix({ data }: Props) {
-  const { points, thresholdCantidad, thresholdMargen } = data
+  const { points, thresholdCantidad, thresholdMargen, sinReceta } = data
   const [hovered, setHovered] = useState<HoveredPoint | null>(null)
 
   if (points.length === 0) {
@@ -93,7 +98,9 @@ export function MenuEngineeringMatrix({ data }: Props) {
       <SectionHeader
         eyebrow="Menu Engineering"
         action={<MenuEngineeringHelp />}
-        trail={`Popularidad × rentabilidad · ${points.length} productos analizados`}
+        trail={`Popularidad × rentabilidad · ${points.length} productos analizados${
+          sinReceta > 0 ? ` · ${sinReceta} sin receta quedan afuera` : ''
+        }`}
       >
         <span className="italic">Qué</span> hacer con cada producto
       </SectionHeader>
@@ -240,7 +247,7 @@ export function MenuEngineeringMatrix({ data }: Props) {
             const { p, cx, cy } = hovered
             const info = CUADRANTE_INFO[p.cuadrante]
             const line1 = p.name
-            const line2 = `${Math.round(p.cantidad)} u × ${formatCurrency(p.margen_unitario)} = ${formatCurrency(p.monto)}`
+            const line2 = `${Math.round(p.cantidad)} u · cobrado ${formatCurrency(p.precio_real)} · margen ${formatCurrency(p.margen_unitario)}/u`
             const charW = 6.4
             const boxW = Math.max(line1.length, line2.length) * charW + 22
             const boxH = 54
