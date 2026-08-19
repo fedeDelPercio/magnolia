@@ -1,5 +1,6 @@
-import { getDiasMes } from '@/features/operations/queries'
+import { getDiasMes, getDiferenciasMes } from '@/features/operations/queries'
 import { OperacionCalendar } from '@/features/operations/components/operacion-calendar'
+import { DiferenciasMesResumen } from '@/features/operations/components/diferencias-mes'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import { PageHeader } from '@/components/shared/page-header'
@@ -38,7 +39,13 @@ export default async function OperacionPage({ searchParams }: Props) {
     }
   }
 
-  const dias = await getDiasMes(month)
+  const [dias, diferencias] = await Promise.all([getDiasMes(month), getDiferenciasMes(month)])
+
+  const MESES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ]
+  const monthLabel = `${MESES[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}`
 
   return (
     <div className="space-y-6">
@@ -52,6 +59,7 @@ export default async function OperacionPage({ searchParams }: Props) {
         size="md"
       />
       <OperacionCalendar dias={dias} month={month} today={today} />
+      <DiferenciasMesResumen data={diferencias} monthLabel={monthLabel} />
     </div>
   )
 }
