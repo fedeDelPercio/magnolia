@@ -159,7 +159,7 @@ export function DiferenciasMesResumen({ data, monthLabel }: Props) {
               <thead>
                 <tr className="border-b text-[10px] uppercase tracking-wider text-muted-foreground">
                   <th className="py-2 pl-4 pr-2 font-medium">Producto</th>
-                  <th className="px-2 py-2 text-right font-medium" title="Días del mes con conteo cargado para este producto">Días</th>
+                  <th className="px-2 py-2 text-right font-medium" title="Días del mes con conteo cargado para este producto">Días de conteo</th>
                   <th className="px-2 py-2 text-right font-medium" title="Suma de los días donde se contó menos que el teórico">Faltante</th>
                   <th className="px-2 py-2 text-right font-medium" title="Suma de los días donde se contó más que el teórico">Sobrante</th>
                   <th className="px-2 py-2 text-right font-medium">Neto</th>
