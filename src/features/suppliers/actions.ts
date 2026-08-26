@@ -482,9 +482,19 @@ export async function createPago(
   if (error) return { error: error.message }
 
   if (compraId) {
+    // El estado depende de cuánto se cubrió: sumamos TODOS los pagos linkeados
+    // a la compra (incluido el recién insertado) contra el total. Antes se
+    // marcaba 'pagada' siempre y un pago parcial figuraba como pago completo.
+    const [{ data: compra }, { data: pagosCompra }] = await Promise.all([
+      supabase.from('compras').select('total').eq('id', compraId).single(),
+      supabase.from('pagos_proveedor').select('monto').eq('compra_id', compraId),
+    ])
+    const totalPagado = (pagosCompra ?? []).reduce((s, p) => s + Number(p.monto), 0)
+    const status =
+      compra && totalPagado < Number(compra.total) - 0.01 ? 'pagada_parcial' : 'pagada'
     await supabase
       .from('compras')
-      .update({ status: 'pagada' })
+      .update({ status })
       .eq('id', compraId)
       .eq('proveedor_id', proveedorId)
   }

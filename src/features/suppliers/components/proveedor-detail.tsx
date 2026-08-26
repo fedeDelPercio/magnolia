@@ -275,10 +275,17 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   // Mapa compra → pago para mostrar método al lado del badge "Pagada".
   // Si una compra tiene varios pagos (parciales), nos quedamos con el más reciente.
   const pagoPorCompra = new Map<string, PagoProveedor>()
+  // Y compra → total pagado, para el faltante de los pagos parciales.
+  const pagadoPorCompra = new Map<string, number>()
   for (const p of pagos) {
     if (!p.compra_id) continue
     const prev = pagoPorCompra.get(p.compra_id)
     if (!prev || p.fecha > prev.fecha) pagoPorCompra.set(p.compra_id, p)
+    pagadoPorCompra.set(p.compra_id, (pagadoPorCompra.get(p.compra_id) ?? 0) + Number(p.monto))
+  }
+
+  function faltanteDeCompra(compra: CompraWithItems): number {
+    return Math.max(0, Number(compra.total) - (pagadoPorCompra.get(compra.id) ?? 0))
   }
 
   async function handleDeleteCompra(compraId: string) {
@@ -308,7 +315,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   }
 
   function handleSaldar(compra: CompraWithItems) {
-    setPagoDefaultMonto(compra.total)
+    // Si ya hubo pagos parciales, el dialog abre con lo que FALTA, no el total.
+    setPagoDefaultMonto(faltanteDeCompra(compra))
     setPagoCompraId(compra.id)
     setPagoOpen(true)
   }
@@ -478,16 +486,20 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
                       const isCheque = c.status === 'pagada' && pago?.metodo === 'cheque'
                       const chequePending = isCheque && !pago?.cleared_at
                       const metodoStr = pago ? (METODO_LABELS[pago.metodo] ?? pago.metodo).toLowerCase() : null
+                      const esParcial = c.status === 'pagada_parcial'
+                      const faltante = esParcial ? faltanteDeCompra(c) : 0
                       const label =
                         c.status === 'pagada' && metodoStr
                           ? `Pagada · ${metodoStr}`
-                          : STATUS_LABELS[c.status]
+                          : esParcial && faltante > 0
+                            ? `Pago parcial · faltan ${formatCurrency(faltante)}`
+                            : STATUS_LABELS[c.status]
                       const tone =
                         c.status === 'pagada'
                           ? chequePending
                             ? 'bg-amber-100 text-amber-800'
                             : 'border-primary/25 bg-primary/10 text-primary'
-                          : c.status === 'pagada_parcial'
+                          : esParcial
                             ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-rose-50/80 text-rose-800/90'
                       return (
@@ -498,7 +510,9 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
                               ? chequePending
                                 ? `Cheque vence ${formatDate(pago.due_date)}`
                                 : `Cheque cobrado ${formatDate(pago.cleared_at!)}`
-                              : undefined
+                              : esParcial
+                                ? `Pagado ${formatCurrency(Number(c.total) - faltante)} de ${formatCurrency(c.total)}`
+                                : undefined
                           }
                         >
                           {label}
@@ -517,7 +531,7 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
                         onClick={() => handleSaldar(c)}
                       >
                         <CheckCircleIcon className="size-3" />
-                        Saldar
+                        {c.status === 'pagada_parcial' ? 'Saldar resto' : 'Saldar'}
                       </Button>
                     )}
 
