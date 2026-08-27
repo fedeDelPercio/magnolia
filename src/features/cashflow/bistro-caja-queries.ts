@@ -41,6 +41,10 @@ export type BistroCajaSummary = {
   diferencia: number | null     // variacionReal - cambioNeto (descuadre real del mes; null si todavia no cerro)
   retirosByMotivo: Array<{ motivo: string; total: number; count: number }>
   movimientos: BistroCajaMovimiento[]
+  // Dias del mes sin transacciones de la API cuyos numeros se tomaron del
+  // cierre cargado por PDF (Bistrosoft a veces publica tarde).
+  diasPdf: string[]
+  saldoFinalFuente: 'bistro' | 'pdf' | null
 }
 
 function motivoFromComment(comment: string | null): string {
@@ -77,7 +81,19 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
   // descuento. traspasosACajaMayor queda en 0 en este summary.
   const traspasosACajaMayor = 0
 
-  if (rows.length === 0) {
+  // Cierres cargados por PDF: respaldo para los dias que la API todavia no
+  // publico. Solo source='pdf' porque los cierres source='api' traen
+  // efectivo_apertura/cierre y retiros en 0 (no son confiables para caja).
+  const { data: cierresPdf } = await supabase
+    .from('cierres_caja')
+    .select('fecha_cierre_local, efectivo_apertura, efectivo_cierre, monto_efectivo, total_retiros, total_depositos')
+    .eq('tenant_id', tenantId)
+    .eq('source', 'pdf')
+    .gte('fecha_cierre_local', from)
+    .lt('fecha_cierre_local', nextMonth)
+    .order('fecha_cierre_local', { ascending: true })
+
+  if (rows.length === 0 && (cierresPdf ?? []).length === 0) {
     return {
       hasData: false,
       saldoInicial: 0,
@@ -92,6 +108,8 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
       diferencia: null,
       retirosByMotivo: [],
       movimientos: [],
+      diasPdf: [],
+      saldoFinalFuente: null,
     }
   }
 
@@ -139,6 +157,41 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
     }
   }
 
+  // Merge de dias tomados del PDF: solo si ese dia NO tiene transacciones de
+  // la API (cuando la API se ponga al dia, pisa al PDF automaticamente).
+  // Ademas, si el cierre PDF es mas nuevo que el ultimo CIERRE DE CAJA del
+  // feed, su efectivo_cierre pasa a ser el saldo real.
+  const fechasConTransacciones = new Set(rows.map((r) => r.fecha_local).filter(Boolean))
+  const diasPdf: string[] = []
+  let saldoFinalFuente: 'bistro' | 'pdf' | null = saldoFinal !== null ? 'bistro' : null
+  for (const c of cierresPdf ?? []) {
+    const fecha = c.fecha_cierre_local
+    if (!fecha) continue
+    if (!fechasConTransacciones.has(fecha)) {
+      const ventasDia = Number(c.monto_efectivo) || 0
+      const retirosDia = Math.abs(Number(c.total_retiros) || 0)
+      const depositosDia = Number(c.total_depositos) || 0
+      ventasEfectivo += ventasDia
+      depositos += depositosDia
+      if (retirosDia > 0) {
+        retiros += retirosDia
+        const motivo = `SEGÚN CIERRE PDF (${fecha.slice(8, 10)}/${fecha.slice(5, 7)})`
+        const prev = retirosMap.get(motivo) ?? { total: 0, count: 0 }
+        retirosMap.set(motivo, { total: prev.total + retirosDia, count: prev.count + 1 })
+      }
+      if (!saldoInicialEncontrado) {
+        saldoInicial = Number(c.efectivo_apertura) || 0
+        saldoInicialEncontrado = true
+      }
+      diasPdf.push(fecha)
+    }
+    if (saldoFinalFecha === null || fecha > saldoFinalFecha) {
+      saldoFinal = Number(c.efectivo_cierre) || 0
+      saldoFinalFecha = fecha
+      saldoFinalFuente = 'pdf'
+    }
+  }
+
   const cambioNeto = ventasEfectivo + depositos - retiros
   const variacionReal = saldoFinal !== null ? saldoFinal - saldoInicial : null
   const diferencia = variacionReal !== null ? variacionReal - cambioNeto : null
@@ -161,6 +214,8 @@ export async function getBistroCajaMovimientos(month: string): Promise<BistroCaj
     diferencia,
     retirosByMotivo,
     movimientos: movimientos.sort((a, b) => b.fecha_hora.localeCompare(a.fecha_hora)),
+    diasPdf,
+    saldoFinalFuente,
   }
 }
 

@@ -76,7 +76,10 @@ export function BistroCajaCard({ summary }: Props) {
         ) : (
           <>
             <div className="flex justify-between text-muted-foreground">
-              <span>Saldo real (último cierre{summary.saldoFinalFecha ? ` ${formatDateShort(summary.saldoFinalFecha)}` : ''})</span>
+              <span>
+                Saldo real (último cierre{summary.saldoFinalFecha ? ` ${formatDateShort(summary.saldoFinalFecha)}` : ''}
+                {summary.saldoFinalFuente === 'pdf' ? ' · según PDF' : ''})
+              </span>
               <span className="tabular-nums">{formatCurrency(summary.saldoFinal ?? 0)}</span>
             </div>
             <div className={cn(
@@ -91,6 +94,14 @@ export function BistroCajaCard({ summary }: Props) {
           </>
         )}
       </div>
+
+      {summary.diasPdf.length > 0 && (
+        <p className="mt-2 text-[10px] text-muted-foreground">
+          Bistro todavía no publicó las transacciones de{' '}
+          {summary.diasPdf.map((f) => formatDateShort(f)).join(', ')}; esos días se toman del
+          cierre cargado por PDF y se reemplazan solos cuando llegue la data.
+        </p>
+      )}
 
       {/* Retiros por motivo */}
       {summary.retirosByMotivo.length > 0 && (
