@@ -119,6 +119,9 @@ const DIALECTS: Dialect[] = [
   { fromKey: 'fechaDesde', toKey: 'fechaHasta', fmt: fmtIso },
 ]
 let discoveredDialect: number | null = null
+// Si la batería completa ya corrió sin éxito en esta ejecución, no la
+// repetimos por cada día vacío: la API rate-limitea (429) ante ráfagas.
+let discoveryExhausted = false
 
 // El spec dice "dd/MM/yyyy" + "HH:mm:ss" sin timezone, pero la API real
 // puede devolver "yyyy-MM-dd" (o incluso "yyyy-MM-ddTHH:mm:ss..." con T).
@@ -281,9 +284,9 @@ export async function fetchTransactions(
   }
 
   for (const version of TOKEN_API_VERSIONS) {
-    // Si ya descubrimos un dialecto que funciona, lo usamos directo.
-    if (discoveredDialect !== null) {
-      const r = await intentar(version, DIALECTS[discoveredDialect]!)
+    // Con dialecto conocido (o batería ya agotada sin éxito) un solo intento.
+    if (discoveredDialect !== null || discoveryExhausted) {
+      const r = await intentar(version, DIALECTS[discoveredDialect ?? 0]!)
       if (r === 'version_failed') continue
       if (r !== null) return r
       return lastEmpty! // vacío con dialecto conocido = día sin datos
@@ -297,7 +300,10 @@ export async function fetchTransactions(
         return r
       }
     }
-    if (lastEmpty) return lastEmpty
+    if (lastEmpty) {
+      discoveryExhausted = true
+      return lastEmpty
+    }
   }
 
   throw lastError ?? new BistroApiError('TransactionDetailReport sin versiones disponibles', 400)
