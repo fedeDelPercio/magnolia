@@ -90,6 +90,36 @@ export function formatDateForBistro(date: Date): string {
   return `${dd}-${mm}-${yyyy}`
 }
 
+function fmtSlash(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}/${d.getFullYear()}`
+}
+
+function fmtIso(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+// Combinaciones de nombre de parámetro + formato de fecha que probamos contra
+// el TransactionDetailReport hasta encontrar la que la versión vigente de la
+// API entiende (Bistrosoft cambió de versión sin publicar documentación).
+type Dialect = { fromKey: string; toKey: string; fmt: (d: Date) => string }
+const DIALECTS: Dialect[] = [
+  { fromKey: 'From', toKey: 'To', fmt: formatDateForBistro },
+  { fromKey: 'From', toKey: 'To', fmt: fmtSlash },
+  { fromKey: 'From', toKey: 'To', fmt: fmtIso },
+  { fromKey: 'DateFrom', toKey: 'DateTo', fmt: formatDateForBistro },
+  { fromKey: 'DateFrom', toKey: 'DateTo', fmt: fmtSlash },
+  { fromKey: 'DateFrom', toKey: 'DateTo', fmt: fmtIso },
+  { fromKey: 'StartDate', toKey: 'EndDate', fmt: fmtIso },
+  { fromKey: 'StartDate', toKey: 'EndDate', fmt: fmtSlash },
+  { fromKey: 'fechaDesde', toKey: 'fechaHasta', fmt: fmtSlash },
+  { fromKey: 'fechaDesde', toKey: 'fechaHasta', fmt: fmtIso },
+]
+let discoveredDialect: number | null = null
+
 // El spec dice "dd/MM/yyyy" + "HH:mm:ss" sin timezone, pero la API real
 // puede devolver "yyyy-MM-dd" (o incluso "yyyy-MM-ddTHH:mm:ss..." con T).
 // Soportamos los 3 casos. Asumimos AR (UTC-3) cuando no viene timezone.
@@ -190,68 +220,82 @@ export async function fetchTransactions(
   token: string,
   params: FetchTransactionsParams,
 ): Promise<BistroTransactionsResponse & { rawSample?: string }> {
-  // La v1 devolvió totalCount=0 para días con datos usando dd-MM-yyyy, así
-  // que si una consulta viene vacía reintentamos con otros formatos de fecha
-  // antes de aceptar que el día realmente no tiene transacciones.
-  const dateFormats: Array<(d: Date) => string> = [
-    formatDateForBistro, // dd-MM-yyyy (formato v2 histórico)
-    (d) => {
-      const dd = String(d.getDate()).padStart(2, '0')
-      const mm = String(d.getMonth() + 1).padStart(2, '0')
-      return `${dd}/${mm}/${d.getFullYear()}`
-    },
-    (d) => {
-      const dd = String(d.getDate()).padStart(2, '0')
-      const mm = String(d.getMonth() + 1).padStart(2, '0')
-      return `${d.getFullYear()}-${mm}-${dd}`
-    },
-  ]
-
-  // Igual que el Token: Bistrosoft migró de v2 a v1, y el token de una
-  // versión no sirve para la otra (v2 devuelve 401 con token v1). Probamos
-  // en el mismo orden que el Token y caemos a la otra versión si responde
-  // UnsupportedApiVersion o 401.
+  // La v1 respondió 200 con totalCount=0 para días con datos e ignoró
+  // nuestro Limit (pageSize quedó en su default 5000), así que además del
+  // formato de fecha probamos distintos NOMBRES de parámetro. El primer
+  // dialecto que devuelva transacciones queda cacheado para el resto de la
+  // ejecución (module-level: sobrevive dentro de la misma lambda).
   let lastError: BistroApiError | null = null
   let lastEmpty: (BistroTransactionsResponse & { rawSample?: string }) | null = null
 
+  const intentar = async (
+    version: string,
+    dialect: Dialect,
+  ): Promise<(BistroTransactionsResponse & { rawSample?: string }) | 'version_failed' | null> => {
+    const qs = new URLSearchParams()
+    qs.set(dialect.fromKey, dialect.fmt(params.from))
+    qs.set(dialect.toKey, dialect.fmt(params.to))
+    // Paginación bajo varios nombres a la vez: los desconocidos se ignoran.
+    if (params.page) {
+      qs.set('Page', String(params.page))
+      qs.set('page', String(params.page))
+    }
+    if (params.limit) {
+      qs.set('Limit', String(params.limit))
+      qs.set('pageSize', String(params.limit))
+    }
+    if (params.shopCodes?.length) {
+      qs.set('ShopCodes', params.shopCodes.join(','))
+      qs.set('ShopCode', params.shopCodes[0]!)
+    }
+    if (params.transactionType) qs.set('TransactionType', params.transactionType)
+    if (params.origin) qs.set('Origin', params.origin)
+
+    const res = await fetch(`${BISTRO_API_BASE}/api/${version}/TransactionDetailReport?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      const { message, code } = await parseErrorBody(res)
+      lastError = new BistroApiError(message, res.status, code)
+      if (code === 'UnsupportedApiVersion' || res.status === 401) return 'version_failed'
+      throw lastError
+    }
+
+    const json: unknown = await res.json()
+    const parsed = transactionsResponseSchema.parse(json)
+    const transactions = parsed.transactions ?? parsed.items ?? []
+    const totalPages = parsed.totalPages ?? 1
+    const normalized: BistroTransactionsResponse = {
+      ...parsed,
+      transactions,
+      hasMore: parsed.hasMore ?? (params.page ?? 1) < totalPages,
+    }
+    if (transactions.length > 0) return normalized
+    lastEmpty = {
+      ...normalized,
+      rawSample: `${JSON.stringify(json).slice(0, 400)} · qs: ${qs.toString().slice(0, 200)}`,
+    }
+    return null
+  }
+
   for (const version of TOKEN_API_VERSIONS) {
-    for (const fmt of dateFormats) {
-      const qs = new URLSearchParams()
-      qs.set('From', fmt(params.from))
-      qs.set('To', fmt(params.to))
-      if (params.page) qs.set('Page', String(params.page))
-      if (params.limit) qs.set('Limit', String(params.limit))
-      if (params.shopCodes?.length) qs.set('ShopCodes', params.shopCodes.join(','))
-      if (params.transactionType) qs.set('TransactionType', params.transactionType)
-      if (params.origin) qs.set('Origin', params.origin)
+    // Si ya descubrimos un dialecto que funciona, lo usamos directo.
+    if (discoveredDialect !== null) {
+      const r = await intentar(version, DIALECTS[discoveredDialect]!)
+      if (r === 'version_failed') continue
+      if (r !== null) return r
+      return lastEmpty! // vacío con dialecto conocido = día sin datos
+    }
 
-      const res = await fetch(`${BISTRO_API_BASE}/api/${version}/TransactionDetailReport?${qs.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store',
-      })
-
-      if (!res.ok) {
-        const { message, code } = await parseErrorBody(res)
-        lastError = new BistroApiError(message, res.status, code)
-        if (code === 'UnsupportedApiVersion' || res.status === 401) break // probar la otra versión
-        throw lastError
+    for (let i = 0; i < DIALECTS.length; i++) {
+      const r = await intentar(version, DIALECTS[i]!)
+      if (r === 'version_failed') break // probar la otra versión
+      if (r !== null) {
+        discoveredDialect = i
+        return r
       }
-
-      const json: unknown = await res.json()
-      const parsed = transactionsResponseSchema.parse(json)
-      const transactions = parsed.transactions ?? parsed.items ?? []
-      const totalPages = parsed.totalPages ?? 1
-      const normalized: BistroTransactionsResponse = {
-        ...parsed,
-        transactions,
-        hasMore: parsed.hasMore ?? (params.page ?? 1) < totalPages,
-      }
-
-      if (transactions.length > 0) return normalized
-
-      // Vacío: puede ser un día sin ventas o un formato de fecha que la API
-      // no entendió. Guardamos la respuesta y probamos el siguiente formato.
-      lastEmpty = { ...normalized, rawSample: JSON.stringify(json).slice(0, 600) }
     }
     if (lastEmpty) return lastEmpty
   }

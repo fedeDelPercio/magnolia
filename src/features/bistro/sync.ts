@@ -796,7 +796,8 @@ export async function syncRange(
           to: dayCursor,
           page,
           limit: PAGE_LIMIT,
-          shopCodes: params.shopCodes,
+          // La v1 podría exigir el shop: mandamos el configurado si no vino otro.
+          shopCodes: params.shopCodes ?? (credRow?.shop_code ? [credRow.shop_code] : undefined),
         })
         pages++
         if (res.rawSample) rawSample = res.rawSample
