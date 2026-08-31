@@ -764,6 +764,9 @@ export async function syncRange(
   let pages = 0
   let unmapped = 0
   let rawSample: string | null = null
+  // Muestra del modelo PLANO de la API v1: hasta adaptar la ingesta a esa
+  // forma, capturamos datos reales sin escribir nada (modo inspección).
+  let v1Sample: string | null = null
 
   try {
     const token = await getValidToken(client, tenantId)
@@ -787,20 +790,30 @@ export async function syncRange(
     const endCursor = new Date(params.to)
     endCursor.setHours(0, 0, 0, 0)
 
-    while (dayCursor.getTime() <= endCursor.getTime()) {
+    let primeraRequest = true
+    while (dayCursor.getTime() <= endCursor.getTime() && v1Sample === null) {
       let page = 1
       let hasMore = true
       while (hasMore) {
+        // La API v1 permite 12 requests por minuto: espaciamos para no comer 429.
+        if (!primeraRequest) await new Promise((r) => setTimeout(r, 5200))
+        primeraRequest = false
         const res = await fetchTransactions(token, {
           from: dayCursor,
           to: dayCursor,
           page,
           limit: PAGE_LIMIT,
-          // La v1 podría exigir el shop: mandamos el configurado si no vino otro.
           shopCodes: params.shopCodes ?? (credRow?.shop_code ? [credRow.shop_code] : undefined),
         })
         pages++
         if (res.rawSample) rawSample = res.rawSample
+        if (res.isV1Flat && res.transactions.length > 0) {
+          // Modelo plano detectado: capturamos muestra y NO ingerimos nada
+          // hasta adaptar upsertTransaction a esta forma (evita corromper
+          // bistro_transacciones, que alimenta caja y ventas).
+          v1Sample = JSON.stringify(res.transactions.slice(0, 4)).slice(0, 1800)
+          break
+        }
         for (const tx of res.transactions ?? []) {
           const outcome = await upsertTransaction(client, tenantId, tx, defaultShopCode, maps)
           if (outcome.inserted) inserted++
@@ -836,8 +849,11 @@ export async function syncRange(
         unmapped_items_count: unmapped,
         // Diagnóstico: si terminó "ok" pero sin transacciones, dejamos una
         // muestra de lo que respondió la API para poder ver cambios de forma.
-        error_message:
-          inserted + updated === 0 && rawSample ? `sin transacciones · respuesta: ${rawSample}` : null,
+        error_message: v1Sample
+          ? `API v1 plana: ingesta en pausa hasta adaptar el parser · muestra: ${v1Sample}`
+          : inserted + updated === 0 && rawSample
+            ? `sin transacciones · respuesta: ${rawSample}`
+            : null,
       })
       .eq('id', runId)
 

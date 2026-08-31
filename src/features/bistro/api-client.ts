@@ -35,6 +35,27 @@ const transactionSchema = z.object({
   client: z.string().nullable().optional(),
   shopCode: z.string().nullable().optional(),
   items: z.array(lineSchema).nullable().optional(),
+  // Campos del modelo PLANO de la API v1 (spec: ar-api.bistrosoft.com/index.html):
+  // cada fila es un renglón (pago o producto consumido), sin items anidados.
+  hour: z.string().nullable().optional(),
+  product: z.string().nullable().optional(),
+  quantity: z.number().nullable().optional(),
+  unitPrice: z.number().nullable().optional(),
+  vat: z.number().nullable().optional(),
+  unitCost: z.number().nullable().optional(),
+  totalCost: z.number().nullable().optional(),
+  sku: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
+  waiter: z.string().nullable().optional(),
+  tableName: z.string().nullable().optional(),
+  dinnersQty: z.string().nullable().optional(),
+  status: z.string().nullable().optional(),
+  uuid: z.string().nullable().optional(),
+  timestamp: z.string().nullable().optional(),
+  shop: z.string().nullable().optional(),
+  txClosed: z.string().nullable().optional(),
+  txOpened: z.string().nullable().optional(),
+  itemAdded: z.string().nullable().optional(),
 })
 
 const transactionsResponseSchema = z.object({
@@ -90,38 +111,11 @@ export function formatDateForBistro(date: Date): string {
   return `${dd}-${mm}-${yyyy}`
 }
 
-function fmtSlash(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  return `${dd}/${mm}/${d.getFullYear()}`
-}
-
 function fmtIso(d: Date): string {
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   return `${d.getFullYear()}-${mm}-${dd}`
 }
-
-// Combinaciones de nombre de parámetro + formato de fecha que probamos contra
-// el TransactionDetailReport hasta encontrar la que la versión vigente de la
-// API entiende (Bistrosoft cambió de versión sin publicar documentación).
-type Dialect = { fromKey: string; toKey: string; fmt: (d: Date) => string }
-const DIALECTS: Dialect[] = [
-  { fromKey: 'From', toKey: 'To', fmt: formatDateForBistro },
-  { fromKey: 'From', toKey: 'To', fmt: fmtSlash },
-  { fromKey: 'From', toKey: 'To', fmt: fmtIso },
-  { fromKey: 'DateFrom', toKey: 'DateTo', fmt: formatDateForBistro },
-  { fromKey: 'DateFrom', toKey: 'DateTo', fmt: fmtSlash },
-  { fromKey: 'DateFrom', toKey: 'DateTo', fmt: fmtIso },
-  { fromKey: 'StartDate', toKey: 'EndDate', fmt: fmtIso },
-  { fromKey: 'StartDate', toKey: 'EndDate', fmt: fmtSlash },
-  { fromKey: 'fechaDesde', toKey: 'fechaHasta', fmt: fmtSlash },
-  { fromKey: 'fechaDesde', toKey: 'fechaHasta', fmt: fmtIso },
-]
-let discoveredDialect: number | null = null
-// Si la batería completa ya corrió sin éxito en esta ejecución, no la
-// repetimos por cada día vacío: la API rate-limitea (429) ante ráfagas.
-let discoveryExhausted = false
 
 // El spec dice "dd/MM/yyyy" + "HH:mm:ss" sin timezone, pero la API real
 // puede devolver "yyyy-MM-dd" (o incluso "yyyy-MM-ddTHH:mm:ss..." con T).
@@ -219,92 +213,47 @@ export type FetchTransactionsParams = {
   origin?: string
 }
 
+// Según el spec oficial (https://ar-api.bistrosoft.com/index.html →
+// openapi/v1.json): GET /api/v1/TransactionDetailReport con startDate/endDate
+// (yyyy-MM-dd), pageNumber (¡la primera página es 0!) y shopCode opcional.
+// Máximo 500 items por página y 12 requests por minuto (429 al pasarse).
+// La respuesta es PLANA: {records, totalPages, pageSize, totalCount, items[]}
+// donde cada item es un renglón (pago o producto), sin items anidados como v2.
 export async function fetchTransactions(
   token: string,
   params: FetchTransactionsParams,
-): Promise<BistroTransactionsResponse & { rawSample?: string }> {
-  // La v1 respondió 200 con totalCount=0 para días con datos e ignoró
-  // nuestro Limit (pageSize quedó en su default 5000), así que además del
-  // formato de fecha probamos distintos NOMBRES de parámetro. El primer
-  // dialecto que devuelva transacciones queda cacheado para el resto de la
-  // ejecución (module-level: sobrevive dentro de la misma lambda).
-  let lastError: BistroApiError | null = null
-  let lastEmpty: (BistroTransactionsResponse & { rawSample?: string }) | null = null
+): Promise<BistroTransactionsResponse & { rawSample?: string; isV1Flat?: boolean }> {
+  const qs = new URLSearchParams()
+  qs.set('startDate', fmtIso(params.from))
+  qs.set('endDate', fmtIso(params.to))
+  qs.set('pageNumber', String((params.page ?? 1) - 1))
+  if (params.shopCodes?.length) qs.set('shopCode', params.shopCodes[0]!)
 
-  const intentar = async (
-    version: string,
-    dialect: Dialect,
-  ): Promise<(BistroTransactionsResponse & { rawSample?: string }) | 'version_failed' | null> => {
-    const qs = new URLSearchParams()
-    qs.set(dialect.fromKey, dialect.fmt(params.from))
-    qs.set(dialect.toKey, dialect.fmt(params.to))
-    // Paginación bajo varios nombres a la vez: los desconocidos se ignoran.
-    if (params.page) {
-      qs.set('Page', String(params.page))
-      qs.set('page', String(params.page))
-    }
-    if (params.limit) {
-      qs.set('Limit', String(params.limit))
-      qs.set('pageSize', String(params.limit))
-    }
-    if (params.shopCodes?.length) {
-      qs.set('ShopCodes', params.shopCodes.join(','))
-      qs.set('ShopCode', params.shopCodes[0]!)
-    }
-    if (params.transactionType) qs.set('TransactionType', params.transactionType)
-    if (params.origin) qs.set('Origin', params.origin)
+  const res = await fetch(`${BISTRO_API_BASE}/api/v1/TransactionDetailReport?${qs.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
 
-    const res = await fetch(`${BISTRO_API_BASE}/api/${version}/TransactionDetailReport?${qs.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    })
-
-    if (!res.ok) {
-      const { message, code } = await parseErrorBody(res)
-      lastError = new BistroApiError(message, res.status, code)
-      if (code === 'UnsupportedApiVersion' || res.status === 401) return 'version_failed'
-      throw lastError
-    }
-
-    const json: unknown = await res.json()
-    const parsed = transactionsResponseSchema.parse(json)
-    const transactions = parsed.transactions ?? parsed.items ?? []
-    const totalPages = parsed.totalPages ?? 1
-    const normalized: BistroTransactionsResponse = {
-      ...parsed,
-      transactions,
-      hasMore: parsed.hasMore ?? (params.page ?? 1) < totalPages,
-    }
-    if (transactions.length > 0) return normalized
-    lastEmpty = {
-      ...normalized,
-      rawSample: `${JSON.stringify(json).slice(0, 400)} · qs: ${qs.toString().slice(0, 200)}`,
-    }
-    return null
+  if (!res.ok) {
+    const { message, code } = await parseErrorBody(res)
+    throw new BistroApiError(message, res.status, code)
   }
 
-  for (const version of TOKEN_API_VERSIONS) {
-    // Con dialecto conocido (o batería ya agotada sin éxito) un solo intento.
-    if (discoveredDialect !== null || discoveryExhausted) {
-      const r = await intentar(version, DIALECTS[discoveredDialect ?? 0]!)
-      if (r === 'version_failed') continue
-      if (r !== null) return r
-      return lastEmpty! // vacío con dialecto conocido = día sin datos
-    }
-
-    for (let i = 0; i < DIALECTS.length; i++) {
-      const r = await intentar(version, DIALECTS[i]!)
-      if (r === 'version_failed') break // probar la otra versión
-      if (r !== null) {
-        discoveredDialect = i
-        return r
-      }
-    }
-    if (lastEmpty) {
-      discoveryExhausted = true
-      return lastEmpty
-    }
+  const json: unknown = await res.json()
+  const parsed = transactionsResponseSchema.parse(json)
+  const isV1Flat = parsed.transactions == null && parsed.items != null
+  // El modelo plano trae la hora en "hour"; el resto del pipeline espera "time".
+  const transactions = (parsed.transactions ?? parsed.items ?? []).map((t) => ({
+    ...t,
+    time: t.time ?? t.hour ?? null,
+  }))
+  const totalPages = parsed.totalPages ?? 1
+  return {
+    ...parsed,
+    transactions,
+    hasMore: parsed.hasMore ?? (params.page ?? 1) < totalPages,
+    isV1Flat,
+    rawSample:
+      transactions.length === 0 ? `${JSON.stringify(json).slice(0, 400)} · qs: ${qs.toString()}` : undefined,
   }
-
-  throw lastError ?? new BistroApiError('TransactionDetailReport sin versiones disponibles', 400)
 }
