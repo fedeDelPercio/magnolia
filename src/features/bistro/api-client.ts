@@ -46,13 +46,16 @@ const transactionsResponseSchema = z.object({
     .object({ from: z.string().nullable().optional(), to: z.string().nullable().optional() })
     .nullable()
     .optional(),
-  transactions: z.array(transactionSchema).nullable().optional(),
-  hasMore: z.boolean(),
-  page: z.number().int(),
-  limit: z.number().int(),
-  totalCount: z.number().int(),
-  totalPages: z.number().int(),
-})
+    transactions: z.array(transactionSchema).nullable().optional(),
+    // Los metadatos de paginación pueden variar entre versiones de la API;
+    // solo hasMore importa para el loop de sync (default: página única).
+    hasMore: z.boolean().nullable().optional(),
+    page: z.number().int().nullable().optional(),
+    limit: z.number().int().nullable().optional(),
+    totalCount: z.number().int().nullable().optional(),
+    totalPages: z.number().int().nullable().optional(),
+  })
+  .transform((o) => ({ ...o, hasMore: o.hasMore ?? false }))
 
 export type BistroTokenResponse = z.infer<typeof tokenResponseSchema>
 export type BistroTransaction = z.infer<typeof transactionSchema>
@@ -186,15 +189,27 @@ export async function fetchTransactions(
   if (params.transactionType) qs.set('TransactionType', params.transactionType)
   if (params.origin) qs.set('Origin', params.origin)
 
-  const res = await fetch(`${BISTRO_API_BASE}/api/v2/TransactionDetailReport?${qs.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-  })
+  // Igual que el Token: Bistrosoft migró de v2 a v1, y el token de una
+  // versión no sirve para la otra (v2 devuelve 401 con token v1). Probamos
+  // en el mismo orden que el Token y caemos a la otra versión si responde
+  // UnsupportedApiVersion o 401.
+  let lastError: BistroApiError | null = null
 
-  if (!res.ok) {
-    const { message, code } = await parseErrorBody(res)
-    throw new BistroApiError(message, res.status, code)
+  for (const version of TOKEN_API_VERSIONS) {
+    const res = await fetch(`${BISTRO_API_BASE}/api/${version}/TransactionDetailReport?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      const { message, code } = await parseErrorBody(res)
+      lastError = new BistroApiError(message, res.status, code)
+      if (code === 'UnsupportedApiVersion' || res.status === 401) continue
+      throw lastError
+    }
+
+    return transactionsResponseSchema.parse(await res.json())
   }
 
-  return transactionsResponseSchema.parse(await res.json())
+  throw lastError ?? new BistroApiError('TransactionDetailReport sin versiones disponibles', 400)
 }
