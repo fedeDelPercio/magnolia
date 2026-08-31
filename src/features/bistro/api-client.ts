@@ -3,9 +3,12 @@ import { z } from 'zod'
 export const BISTRO_API_BASE = 'https://ar-api.bistrosoft.com'
 const AR_TZ_OFFSET_MIN = -180
 
+// La expiración puede venir con distintos nombres según la versión de la API.
 const tokenResponseSchema = z.object({
   token: z.string().min(1),
-  expiration: z.string().min(1),
+  expiration: z.string().min(1).optional(),
+  expirationDate: z.string().min(1).optional(),
+  expiresAt: z.string().min(1).optional(),
 })
 
 const lineSchema = z.object({
@@ -121,24 +124,43 @@ async function parseErrorBody(res: Response): Promise<{ message: string; code?: 
   return { message: `HTTP ${res.status} ${res.statusText}` }
 }
 
+// Bistrosoft movió el Token de v2 a v1 (ago-2026) sin avisar; probamos en
+// orden y si una versión responde UnsupportedApiVersion pasamos a la otra.
+const TOKEN_API_VERSIONS = ['v1', 'v2'] as const
+
 export async function requestToken(
   username: string,
   password: string,
 ): Promise<{ token: string; expiresAt: Date }> {
-  const res = await fetch(`${BISTRO_API_BASE}/api/v2/Token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-    cache: 'no-store',
-  })
+  let lastError: BistroApiError | null = null
 
-  if (!res.ok) {
-    const { message, code } = await parseErrorBody(res)
-    throw new BistroApiError(message, res.status, code)
+  for (const version of TOKEN_API_VERSIONS) {
+    const res = await fetch(`${BISTRO_API_BASE}/api/${version}/Token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      const { message, code } = await parseErrorBody(res)
+      lastError = new BistroApiError(message, res.status, code)
+      if (code === 'UnsupportedApiVersion') continue
+      throw lastError
+    }
+
+    const parsed = tokenResponseSchema.parse(await res.json())
+    const rawExpiration = parsed.expiration ?? parsed.expirationDate ?? parsed.expiresAt
+    const expiresAt = rawExpiration ? new Date(rawExpiration) : new Date(NaN)
+    return {
+      token: parsed.token,
+      // Si no vino expiración interpretable, cacheamos corto y renovamos en el
+      // próximo sync en vez de quedarnos con un token vencido.
+      expiresAt: isNaN(expiresAt.getTime()) ? new Date(Date.now() + 30 * 60_000) : expiresAt,
+    }
   }
 
-  const parsed = tokenResponseSchema.parse(await res.json())
-  return { token: parsed.token, expiresAt: new Date(parsed.expiration) }
+  throw lastError ?? new BistroApiError('Token API sin versiones disponibles', 400)
 }
 
 export type FetchTransactionsParams = {
