@@ -179,7 +179,7 @@ export type FetchTransactionsParams = {
 export async function fetchTransactions(
   token: string,
   params: FetchTransactionsParams,
-): Promise<BistroTransactionsResponse> {
+): Promise<BistroTransactionsResponse & { rawSample?: string }> {
   const qs = new URLSearchParams()
   qs.set('From', formatDateForBistro(params.from))
   qs.set('To', formatDateForBistro(params.to))
@@ -208,7 +208,14 @@ export async function fetchTransactions(
       throw lastError
     }
 
-    return transactionsResponseSchema.parse(await res.json())
+    const json: unknown = await res.json()
+    const parsed = transactionsResponseSchema.parse(json)
+    if (!parsed.transactions?.length) {
+      // Diagnóstico: si la versión de la API cambió la forma de la respuesta,
+      // esto nos deja ver qué devolvió realmente (el caller lo loguea).
+      return { ...parsed, rawSample: JSON.stringify(json).slice(0, 600) }
+    }
+    return parsed
   }
 
   throw lastError ?? new BistroApiError('TransactionDetailReport sin versiones disponibles', 400)

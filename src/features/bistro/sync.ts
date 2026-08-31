@@ -763,6 +763,7 @@ export async function syncRange(
   let updated = 0
   let pages = 0
   let unmapped = 0
+  let rawSample: string | null = null
 
   try {
     const token = await getValidToken(client, tenantId)
@@ -798,6 +799,7 @@ export async function syncRange(
           shopCodes: params.shopCodes,
         })
         pages++
+        if (res.rawSample) rawSample = res.rawSample
         for (const tx of res.transactions ?? []) {
           const outcome = await upsertTransaction(client, tenantId, tx, defaultShopCode, maps)
           if (outcome.inserted) inserted++
@@ -831,6 +833,10 @@ export async function syncRange(
         transactions_updated: updated,
         pages_fetched: pages,
         unmapped_items_count: unmapped,
+        // Diagnóstico: si terminó "ok" pero sin transacciones, dejamos una
+        // muestra de lo que respondió la API para poder ver cambios de forma.
+        error_message:
+          inserted + updated === 0 && rawSample ? `sin transacciones · respuesta: ${rawSample}` : null,
       })
       .eq('id', runId)
 
