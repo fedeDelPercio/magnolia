@@ -46,21 +46,31 @@ const transactionsResponseSchema = z.object({
     .object({ from: z.string().nullable().optional(), to: z.string().nullable().optional() })
     .nullable()
     .optional(),
+    // v2 devuelve "transactions"; v1 devuelve "items".
     transactions: z.array(transactionSchema).nullable().optional(),
-    // Los metadatos de paginación pueden variar entre versiones de la API;
-    // solo hasMore importa para el loop de sync (default: página única).
+    items: z.array(transactionSchema).nullable().optional(),
+    // Los metadatos de paginación varían entre versiones; normalizamos en
+    // fetchTransactions (hasMore explícito en v2, page<totalPages en v1).
     hasMore: z.boolean().nullable().optional(),
     page: z.number().int().nullable().optional(),
     limit: z.number().int().nullable().optional(),
+    pageSize: z.number().int().nullable().optional(),
+    records: z.number().int().nullable().optional(),
     totalCount: z.number().int().nullable().optional(),
     totalPages: z.number().int().nullable().optional(),
   })
-  .transform((o) => ({ ...o, hasMore: o.hasMore ?? false }))
 
 export type BistroTokenResponse = z.infer<typeof tokenResponseSchema>
 export type BistroTransaction = z.infer<typeof transactionSchema>
 export type BistroLine = z.infer<typeof lineSchema>
-export type BistroTransactionsResponse = z.infer<typeof transactionsResponseSchema>
+// Forma normalizada que devuelve fetchTransactions, sin importar la versión.
+export type BistroTransactionsResponse = Omit<
+  z.infer<typeof transactionsResponseSchema>,
+  'transactions' | 'hasMore'
+> & {
+  transactions: BistroTransaction[]
+  hasMore: boolean
+}
 
 export class BistroApiError extends Error {
   constructor(
@@ -180,42 +190,70 @@ export async function fetchTransactions(
   token: string,
   params: FetchTransactionsParams,
 ): Promise<BistroTransactionsResponse & { rawSample?: string }> {
-  const qs = new URLSearchParams()
-  qs.set('From', formatDateForBistro(params.from))
-  qs.set('To', formatDateForBistro(params.to))
-  if (params.page) qs.set('Page', String(params.page))
-  if (params.limit) qs.set('Limit', String(params.limit))
-  if (params.shopCodes?.length) qs.set('ShopCodes', params.shopCodes.join(','))
-  if (params.transactionType) qs.set('TransactionType', params.transactionType)
-  if (params.origin) qs.set('Origin', params.origin)
+  // La v1 devolvió totalCount=0 para días con datos usando dd-MM-yyyy, así
+  // que si una consulta viene vacía reintentamos con otros formatos de fecha
+  // antes de aceptar que el día realmente no tiene transacciones.
+  const dateFormats: Array<(d: Date) => string> = [
+    formatDateForBistro, // dd-MM-yyyy (formato v2 histórico)
+    (d) => {
+      const dd = String(d.getDate()).padStart(2, '0')
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      return `${dd}/${mm}/${d.getFullYear()}`
+    },
+    (d) => {
+      const dd = String(d.getDate()).padStart(2, '0')
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      return `${d.getFullYear()}-${mm}-${dd}`
+    },
+  ]
 
   // Igual que el Token: Bistrosoft migró de v2 a v1, y el token de una
   // versión no sirve para la otra (v2 devuelve 401 con token v1). Probamos
   // en el mismo orden que el Token y caemos a la otra versión si responde
   // UnsupportedApiVersion o 401.
   let lastError: BistroApiError | null = null
+  let lastEmpty: (BistroTransactionsResponse & { rawSample?: string }) | null = null
 
   for (const version of TOKEN_API_VERSIONS) {
-    const res = await fetch(`${BISTRO_API_BASE}/api/${version}/TransactionDetailReport?${qs.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    })
+    for (const fmt of dateFormats) {
+      const qs = new URLSearchParams()
+      qs.set('From', fmt(params.from))
+      qs.set('To', fmt(params.to))
+      if (params.page) qs.set('Page', String(params.page))
+      if (params.limit) qs.set('Limit', String(params.limit))
+      if (params.shopCodes?.length) qs.set('ShopCodes', params.shopCodes.join(','))
+      if (params.transactionType) qs.set('TransactionType', params.transactionType)
+      if (params.origin) qs.set('Origin', params.origin)
 
-    if (!res.ok) {
-      const { message, code } = await parseErrorBody(res)
-      lastError = new BistroApiError(message, res.status, code)
-      if (code === 'UnsupportedApiVersion' || res.status === 401) continue
-      throw lastError
-    }
+      const res = await fetch(`${BISTRO_API_BASE}/api/${version}/TransactionDetailReport?${qs.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
 
-    const json: unknown = await res.json()
-    const parsed = transactionsResponseSchema.parse(json)
-    if (!parsed.transactions?.length) {
-      // Diagnóstico: si la versión de la API cambió la forma de la respuesta,
-      // esto nos deja ver qué devolvió realmente (el caller lo loguea).
-      return { ...parsed, rawSample: JSON.stringify(json).slice(0, 600) }
+      if (!res.ok) {
+        const { message, code } = await parseErrorBody(res)
+        lastError = new BistroApiError(message, res.status, code)
+        if (code === 'UnsupportedApiVersion' || res.status === 401) break // probar la otra versión
+        throw lastError
+      }
+
+      const json: unknown = await res.json()
+      const parsed = transactionsResponseSchema.parse(json)
+      const transactions = parsed.transactions ?? parsed.items ?? []
+      const totalPages = parsed.totalPages ?? 1
+      const normalized: BistroTransactionsResponse = {
+        ...parsed,
+        transactions,
+        hasMore: parsed.hasMore ?? (params.page ?? 1) < totalPages,
+      }
+
+      if (transactions.length > 0) return normalized
+
+      // Vacío: puede ser un día sin ventas o un formato de fecha que la API
+      // no entendió. Guardamos la respuesta y probamos el siguiente formato.
+      lastEmpty = { ...normalized, rawSample: JSON.stringify(json).slice(0, 600) }
     }
-    return parsed
+    if (lastEmpty) return lastEmpty
   }
 
   throw lastError ?? new BistroApiError('TransactionDetailReport sin versiones disponibles', 400)
