@@ -1,6 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { getActiveTenantId } from '@/lib/tenant/server'
 import type { Tables } from '@/types/database'
 import type { IngredienteFormValues } from './schemas'
+
+// IMPORTANTE: todos los listados filtran por tenant ACTIVO explícitamente.
+// RLS sola no alcanza: un usuario miembro de varios tenants ve las filas de
+// todos, y estas listas alimentan selectores — una receta de otro tenant
+// aparece pero después no se puede vincular (RLS bloquea el cruce al guardar).
 
 export type RecetaParaProducto = {
   id: string
@@ -21,6 +27,7 @@ export type RecetaWithIngredientes = Tables<'recetas'> & {
 
 export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
   // Traemos todas las recetas + los ids que estan siendo usados como (a) receta
   // 1:1 de un producto y (b) sub-receta dentro de otra. Con eso filtramos las
   // que solo existen como backing de un producto — para el usuario esas son
@@ -38,10 +45,15 @@ export async function getRecetas(): Promise<RecetaWithIngredientes[]> {
       )
     `,
       )
+      .eq('tenant_id', tenantId)
       .order('name'),
-    supabase.from('productos').select('receta_id').not('receta_id', 'is', null),
-    supabase.from('receta_ingredientes').select('sub_receta_id').not('sub_receta_id', 'is', null),
-    supabase.from('receta_costs').select('id, total_cost'),
+    supabase.from('productos').select('receta_id').eq('tenant_id', tenantId).not('receta_id', 'is', null),
+    supabase
+      .from('receta_ingredientes')
+      .select('sub_receta_id, recetas!receta_ingredientes_receta_id_fkey!inner(tenant_id)')
+      .eq('recetas.tenant_id', tenantId)
+      .not('sub_receta_id', 'is', null),
+    supabase.from('receta_costs').select('id, total_cost').eq('tenant_id', tenantId),
   ])
 
   if (allRes.error) throw allRes.error
@@ -76,12 +88,14 @@ export type RecetaSimpleConCosto = Pick<Tables<'recetas'>, 'id' | 'name' | 'yiel
 
 export async function getRecetasSimple(): Promise<RecetaSimpleConCosto[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
   // Traemos total_cost desde la vista receta_costs (migracion 0053) que
   // computa recipe_cost() por receta. Asi el ingredientes-editor puede
   // mostrar el costo real de cada sub-receta al usarla en un producto.
   const { data, error } = await supabase
     .from('receta_costs')
     .select('id, name, yield_unit, yield_qty, total_cost')
+    .eq('tenant_id', tenantId)
     .eq('active', true)
     .order('name')
   if (error) throw error
@@ -101,9 +115,12 @@ export type DescartableParaProducto = {
 
 export async function getDescartablesParaProductos(): Promise<DescartableParaProducto[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  // producto_descartables no tiene tenant_id propio: filtramos via el producto.
   const { data, error } = await supabase
     .from('producto_descartables')
-    .select('producto_id, insumo_id, qty')
+    .select('producto_id, insumo_id, qty, productos!inner(tenant_id)')
+    .eq('productos.tenant_id', tenantId)
 
   if (error) throw error
 
@@ -122,9 +139,11 @@ export async function getDescartablesParaProductos(): Promise<DescartableParaPro
 
 export async function getRecetasParaProductos(): Promise<RecetaParaProducto[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
   const { data, error } = await supabase
     .from('recetas')
     .select('id, yield_qty, yield_unit, receta_ingredientes!receta_ingredientes_receta_id_fkey(kind, insumo_id, sub_receta_id, qty, unit)')
+    .eq('tenant_id', tenantId)
     .order('name')
 
   if (error) throw error
@@ -145,9 +164,11 @@ export async function getRecetasParaProductos(): Promise<RecetaParaProducto[]> {
 
 export async function getInsumosSimple(): Promise<Pick<Tables<'insumos'>, 'id' | 'name' | 'unit' | 'kind' | 'current_price'>[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
   const { data, error } = await supabase
     .from('insumos')
     .select('id, name, unit, kind, current_price')
+    .eq('tenant_id', tenantId)
     .eq('active', true)
     .order('name')
 

@@ -61,9 +61,11 @@ export async function getProductosForMatching(): Promise<ProductoBasico[]> {
 
 export async function getCierresCaja(): Promise<CierreCaja[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
   const { data, error } = await supabase
     .from('cierres_caja')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('fecha_cierre', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -75,9 +77,11 @@ export async function getMonthlyDigitalTotal(month: string): Promise<number> {
   const [y, m] = month.split('-').map(Number)
   const from = `${month}-01`
   const to = m === 12 ? `${y! + 1}-01-01` : `${y}-${String(m! + 1).padStart(2, '0')}-01`
+  const tenantId = await getActiveTenantId()
   const { data, error } = await supabase
     .from('cierres_caja_active')
     .select('monto_tarjetas, monto_qr, monto_online')
+    .eq('tenant_id', tenantId)
     .gte('fecha_cierre_local', from)
     .lt('fecha_cierre_local', to)
   if (error) throw new Error(error.message)
@@ -99,9 +103,11 @@ export async function getMonthlyVentasSummary(month: string): Promise<MonthlyVen
   const [y, m] = month.split('-').map(Number)
   const from = `${month}-01`
   const to = m === 12 ? `${y! + 1}-01-01` : `${y}-${String(m! + 1).padStart(2, '0')}-01`
+  const tenantId = await getActiveTenantId()
   const { data, error } = await supabase
     .from('cierres_caja_active')
     .select('monto_efectivo, monto_tarjetas, monto_qr, monto_online')
+    .eq('tenant_id', tenantId)
     .gte('fecha_cierre_local', from)
     .lt('fecha_cierre_local', to)
   if (error) throw new Error(error.message)

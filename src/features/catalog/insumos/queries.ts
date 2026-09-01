@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getActiveTenantId } from '@/lib/tenant/server'
 import type { Tables } from '@/types/database'
 
 export type InsumoStock = {
@@ -14,10 +15,16 @@ export type InsumoWithProveedor = Tables<'insumos'> & {
 
 export async function getInsumos(): Promise<InsumoWithProveedor[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
 
+  // Filtro explícito por tenant activo: RLS sola mezcla los tenants de un
+  // usuario miembro de varios (ver nota en recetas/queries.ts).
   const [insumosResult, stockResult] = await Promise.all([
-    supabase.from('insumos').select('*, proveedores(id, name)').order('name'),
-    supabase.from('insumo_stock').select('insumo_id, stock_actual, stock_referencia, unit'),
+    supabase.from('insumos').select('*, proveedores(id, name)').eq('tenant_id', tenantId).order('name'),
+    supabase
+      .from('insumo_stock')
+      .select('insumo_id, stock_actual, stock_referencia, unit')
+      .eq('tenant_id', tenantId),
   ])
 
   if (insumosResult.error) throw insumosResult.error
@@ -34,9 +41,11 @@ export async function getInsumos(): Promise<InsumoWithProveedor[]> {
 
 export async function getProveedores(): Promise<Pick<Tables<'proveedores'>, 'id' | 'name'>[]> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
   const { data, error } = await supabase
     .from('proveedores')
     .select('id, name')
+    .eq('tenant_id', tenantId)
     .eq('active', true)
     .order('name')
 
@@ -110,6 +119,7 @@ export type InsumoUsadoEn = {
 
 export async function getInsumoUsadoEn(insumoId: string): Promise<InsumoUsadoEn> {
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
   const [usoRes, directoRes, prodBackedRes] = await Promise.all([
     supabase.rpc('insumo_usado_en', { p_insumo_id: insumoId }),
     // Recetas que llevan el insumo DIRECTO — para separar las sub-recetas.
@@ -118,7 +128,7 @@ export async function getInsumoUsadoEn(insumoId: string): Promise<InsumoUsadoEn>
       .select('receta_id, recetas!receta_ingredientes_receta_id_fkey(id, name)')
       .eq('kind', 'insumo')
       .eq('insumo_id', insumoId),
-    supabase.from('productos').select('receta_id').not('receta_id', 'is', null),
+    supabase.from('productos').select('receta_id').eq('tenant_id', tenantId).not('receta_id', 'is', null),
   ])
   if (usoRes.error) throw usoRes.error
 
