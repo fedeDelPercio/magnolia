@@ -505,6 +505,20 @@ async function consolidateCierreForDay(
   fechaLocal: string,
   shopCode: string,
 ): Promise<void> {
+  // Si ese día ya tiene un cierre cargado por PDF (el reporte firmado que sube
+  // el local), ese manda: no generamos el 'api'. OJO, no es cosmético — la
+  // vista cierres_caja_active deduplica por (día + montos), así que dos cierres
+  // del mismo día con montos distintos SUMAN los dos y la facturación del día
+  // se contaría dos veces. Mientras la API estuvo caída se cargaron PDFs a
+  // mano; al recuperar esos días por API se pisarían.
+  const { count: pdfCount } = await client
+    .from('cierres_caja')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('source', 'pdf')
+    .eq('fecha_cierre_local', fechaLocal)
+  if ((pdfCount ?? 0) > 0) return
+
   // Carga todas las transacciones VENTA del día/shop con sus items
   const { data: txs } = await client
     .from('bistro_transacciones')
