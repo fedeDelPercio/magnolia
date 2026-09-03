@@ -13,7 +13,7 @@ import {
 
 type Client = SupabaseClient<Database>
 
-const PAGE_LIMIT = 1000
+const PAGE_LIMIT = 500 // maximo documentado por la API v1
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60_000
 const AR_TZ = 'America/Argentina/Buenos_Aires'
 // En el Bistrosoft de Magnolia, tanto VENTA como COMANDA representan tickets
@@ -784,51 +784,46 @@ export async function syncRange(
     // Mantener set de (shop_code, fecha_local) tocados para consolidar después
     const touchedDays = new Set<string>()
 
-    // Loop por día (chunks chicos)
-    const dayCursor = new Date(params.from)
-    dayCursor.setHours(0, 0, 0, 0)
-    const endCursor = new Date(params.to)
-    endCursor.setHours(0, 0, 0, 0)
-
+    // Una sola consulta por RANGO (no día por día). El equipo de Bistrosoft
+    // documentó así el endpoint v1: .../TransactionDetailReport?ShopCode=X&
+    // startDate=2026-08-27&endDate=2026-08-29&pageNumber=0 — pidiendo
+    // startDate == endDate la API devuelve totalCount 0 aunque el día tenga
+    // ventas. Además baja mucho la cantidad de requests (limite 12/min).
+    let page = 1
+    let hasMore = true
     let primeraRequest = true
-    while (dayCursor.getTime() <= endCursor.getTime() && v1Sample === null) {
-      let page = 1
-      let hasMore = true
-      while (hasMore) {
-        // La API v1 permite 12 requests por minuto: espaciamos para no comer 429.
-        if (!primeraRequest) await new Promise((r) => setTimeout(r, 5200))
-        primeraRequest = false
-        const res = await fetchTransactions(token, {
-          from: dayCursor,
-          to: dayCursor,
-          page,
-          limit: PAGE_LIMIT,
-          shopCodes: params.shopCodes ?? (credRow?.shop_code ? [credRow.shop_code] : undefined),
-        })
-        pages++
-        if (res.rawSample) rawSample = res.rawSample
-        if (res.isV1Flat && res.transactions.length > 0) {
-          // Modelo plano detectado: capturamos muestra y NO ingerimos nada
-          // hasta adaptar upsertTransaction a esta forma (evita corromper
-          // bistro_transacciones, que alimenta caja y ventas).
-          v1Sample = JSON.stringify(res.transactions.slice(0, 4)).slice(0, 1800)
-          break
-        }
-        for (const tx of res.transactions ?? []) {
-          const outcome = await upsertTransaction(client, tenantId, tx, defaultShopCode, maps)
-          if (outcome.inserted) inserted++
-          if (outcome.updated) updated++
-          unmapped += outcome.unmappedItems
-          const shopCode = tx.shopCode?.trim() || defaultShopCode
-          const fechaLocal = tx.date && tx.time
-            ? fechaArgentina(parseTransactionDateTime(tx.date, tx.time))
-            : null
-          if (fechaLocal) touchedDays.add(`${shopCode}::${fechaLocal}`)
-        }
-        hasMore = res.hasMore
-        page++
+    while (hasMore && v1Sample === null) {
+      if (!primeraRequest) await new Promise((r) => setTimeout(r, 5200))
+      primeraRequest = false
+      const res = await fetchTransactions(token, {
+        from: params.from,
+        to: params.to,
+        page,
+        limit: PAGE_LIMIT,
+        shopCodes: params.shopCodes ?? (credRow?.shop_code ? [credRow.shop_code] : undefined),
+      })
+      pages++
+      if (res.rawSample) rawSample = res.rawSample
+      if (res.isV1Flat && res.transactions.length > 0) {
+        // Modelo plano detectado: capturamos muestra y NO ingerimos nada
+        // hasta adaptar upsertTransaction a esta forma (evita corromper
+        // bistro_transacciones, que alimenta caja y ventas).
+        v1Sample = JSON.stringify(res.transactions.slice(0, 4)).slice(0, 1800)
+        break
       }
-      dayCursor.setDate(dayCursor.getDate() + 1)
+      for (const tx of res.transactions ?? []) {
+        const outcome = await upsertTransaction(client, tenantId, tx, defaultShopCode, maps)
+        if (outcome.inserted) inserted++
+        if (outcome.updated) updated++
+        unmapped += outcome.unmappedItems
+        const shopCode = tx.shopCode?.trim() || defaultShopCode
+        const fechaLocal = tx.date && tx.time
+          ? fechaArgentina(parseTransactionDateTime(tx.date, tx.time))
+          : null
+        if (fechaLocal) touchedDays.add(`${shopCode}::${fechaLocal}`)
+      }
+      hasMore = res.hasMore
+      page++
     }
 
     // Consolidar por (shop, día)
