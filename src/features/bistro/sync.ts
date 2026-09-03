@@ -517,7 +517,9 @@ async function consolidateCierreForDay(
     .eq('tenant_id', tenantId)
     .eq('source', 'pdf')
     .eq('fecha_cierre_local', fechaLocal)
-  if ((pdfCount ?? 0) > 0) return
+  // OJO: no cortamos la funcion — las ventas por producto de movimientos_diarios
+  // (lo que muestra la grilla /operacion) salen igual del detalle de la API.
+  const soloVentas = (pdfCount ?? 0) > 0
 
   // Carga todas las transacciones VENTA del día/shop con sus items
   const { data: txs } = await client
@@ -530,7 +532,7 @@ async function consolidateCierreForDay(
     .eq('fecha_local', fechaLocal)
 
   // Borrar cierre 'api' previo del día (CASCADE limpia cierre_caja_productos)
-  await client
+  if (!soloVentas) await client
     .from('cierres_caja')
     .delete()
     .eq('tenant_id', tenantId)
@@ -581,8 +583,10 @@ async function consolidateCierreForDay(
 
   const ticketPromedio = ventas.length > 0 ? total_vendido / ventas.length : 0
 
-  // Insertar cierre con source='api'
-  const { data: cierre, error: cierreErr } = await client
+  // Insertar cierre con source='api' — salvo que el día ya tenga uno por PDF.
+  const { data: cierre, error: cierreErr } = soloVentas
+    ? { data: null, error: null }
+    : await client
     .from('cierres_caja')
     .insert({
       tenant_id: tenantId,
@@ -614,7 +618,7 @@ async function consolidateCierreForDay(
     })
     .select('id')
     .single()
-  if (cierreErr || !cierre) throw new Error(`Consolidar cierre ${fechaLocal}: ${cierreErr?.message}`)
+  if (!soloVentas && (cierreErr || !cierre)) throw new Error(`Consolidar cierre ${fechaLocal}: ${cierreErr?.message}`)
 
   // Productos: agregar por (producto_id, item_name, canal, formato). Incluimos
   // canal y formato en la clave para no colapsar variantes — el mismo item
@@ -648,7 +652,7 @@ async function consolidateCierreForDay(
     }
   }
 
-  if (agg.size > 0) {
+  if (agg.size > 0 && cierre) {
     const productos = Array.from(agg.values()).map((p) => ({
       cierre_caja_id: cierre.id,
       categoria: null,
@@ -687,7 +691,7 @@ async function consolidateCierreForDay(
   }
 
   if (diaId) {
-    await client.from('cierres_caja').update({ dia_operativo_id: diaId }).eq('id', cierre.id)
+    if (cierre) await client.from('cierres_caja').update({ dia_operativo_id: diaId }).eq('id', cierre.id)
 
     // Agregar cantidad total por producto_id (varios items con el mismo SKU
     // sumados; descartamos no mapeados — esos se quedan en cierre_caja_productos
