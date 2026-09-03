@@ -133,11 +133,18 @@ export function parseTransactionDateTime(date: string, time: string): Date {
   let y: number | undefined
 
   if (date.includes('-')) {
-    // yyyy-MM-dd
+    // Puede ser yyyy-MM-dd (v2) o dd-MM-yyyy (v1). Desambiguamos por la
+    // longitud del primer segmento: si tiene 4 digitos es el año.
     const parts = date.split('-').map(Number)
-    y = parts[0]
-    m = parts[1]
-    d = parts[2]
+    if ((date.split('-')[0] ?? '').length === 4) {
+      y = parts[0]
+      m = parts[1]
+      d = parts[2]
+    } else {
+      d = parts[0]
+      m = parts[1]
+      y = parts[2]
+    }
   } else if (date.includes('/')) {
     // dd/MM/yyyy
     const parts = date.split('/').map(Number)
@@ -203,6 +210,91 @@ export async function requestToken(
   throw lastError ?? new BistroApiError('Token API sin versiones disponibles', 400)
 }
 
+// ---------------------------------------------------------------------------
+// Adaptador del modelo PLANO de la API v1
+// ---------------------------------------------------------------------------
+// v1 devuelve UNA FILA POR RENGLON: por cada ticket viene una cabecera
+// (Venta/Comanda/VENTA_OLD) y N filas "- ITEM" con cada producto. v2 devolvia
+// la transaccion con sus items anidados, que es lo que espera el resto del
+// pipeline (upsertTransaction, consolidacion de cierres, matching de productos).
+// Este adaptador reagrupa lo plano en la forma vieja para no tocar nada de eso.
+const V1_HEADER_TYPES = new Set(['VENTA', 'COMANDA', 'VENTA_OLD'])
+
+function v1IsItemRow(t: string): boolean {
+  return t.toUpperCase().startsWith('- ITEM')
+}
+
+// "CAJA (RETIRO)" -> "RETIRO"; "Venta" -> "VENTA"; una cabecera anulada pasa a
+// VOID_BY_BISTRO_OLD, que es como v2 nombraba al contra-asiento (no cuenta como
+// venta, igual que su VENTA_OLD original).
+function v1NormalizarTipo(raw: string | null | undefined, status: string | null | undefined): string {
+  const t = (raw ?? '').trim()
+  const caja = /^CAJA\s*\((.+)\)$/i.exec(t)
+  if (caja) return caja[1]!.trim().toUpperCase()
+  if (status === 'VOID_BY_BISTRO' && V1_HEADER_TYPES.has(t.toUpperCase())) return 'VOID_BY_BISTRO_OLD'
+  return t.toUpperCase()
+}
+
+export function adaptV1FlatRows(rows: BistroTransaction[]): BistroTransaction[] {
+  const out: BistroTransaction[] = []
+  const grupos = new Map<string, BistroTransaction[]>()
+
+  for (const r of rows) {
+    // Los movimientos de caja vienen con ticketNumber 0 y sin items propios.
+    if (!r.ticketNumber) {
+      out.push({ ...r, transactionType: v1NormalizarTipo(r.transactionType, r.status), items: [] })
+      continue
+    }
+    const key = `${r.date ?? ''}::${r.ticketNumber}`
+    const arr = grupos.get(key)
+    if (arr) arr.push(r)
+    else grupos.set(key, [r])
+  }
+
+  for (const filas of grupos.values()) {
+    const cabeceras = filas.filter((f) => V1_HEADER_TYPES.has((f.transactionType ?? '').trim().toUpperCase()))
+    const detalle = filas.filter((f) => v1IsItemRow(f.transactionType ?? ''))
+    const items: BistroLine[] = detalle.map((it) => ({
+      // Los "- ITEM DESCUENTO" son un descuento a nivel ticket (product '-',
+      // quantity 0, monto negativo): les damos un nombre reconocible para que
+      // no aparezcan como un producto llamado "-".
+      item: v1IsItemRow(it.transactionType ?? '') && (it.transactionType ?? '').toUpperCase().includes('DESCUENTO')
+        ? 'DESCUENTO'
+        : (it.product ?? null),
+      amount: it.amount ?? null,
+      quantity: it.quantity ?? null,
+      type: it.transactionType ?? null,
+      measureUnit: null,
+      comments: it.comments ?? null,
+      sku: it.sku ?? null,
+      vat: it.vat ?? null,
+    }))
+
+    // El detalle cuelga de la cabecera valida (CLOSE). En un ticket anulado
+    // conviven VENTA_OLD + la cabecera anulada; el detalle va al original y el
+    // contra-asiento queda sin items, replicando el par que armaba v2.
+    const principal = cabeceras.find((h) => h.status === 'CLOSE') ?? cabeceras[0]
+
+    if (!principal) {
+      // Defensivo: ticket sin cabecera (no deberia pasar). No perdemos el
+      // detalle: lo emitimos como una transaccion propia.
+      const base = filas[0]!
+      out.push({ ...base, transactionType: 'VENTA', items })
+      continue
+    }
+
+    for (const h of cabeceras) {
+      out.push({
+        ...h,
+        transactionType: v1NormalizarTipo(h.transactionType, h.status),
+        items: h === principal ? items : [],
+      })
+    }
+  }
+
+  return out
+}
+
 export type FetchTransactionsParams = {
   from: Date
   to: Date
@@ -223,9 +315,14 @@ export async function fetchTransactions(
   token: string,
   params: FetchTransactionsParams,
 ): Promise<BistroTransactionsResponse & { rawSample?: string; isV1Flat?: boolean }> {
+  // endDate es EXCLUSIVO: pidiendo 27→29 la API devuelve el 27 y el 28. Le
+  // sumamos un dia para que el ultimo dia del rango entre.
+  const endExclusive = new Date(params.to)
+  endExclusive.setDate(endExclusive.getDate() + 1)
+
   const qs = new URLSearchParams()
   qs.set('startDate', fmtIso(params.from))
-  qs.set('endDate', fmtIso(params.to))
+  qs.set('endDate', fmtIso(endExclusive))
   qs.set('pageNumber', String((params.page ?? 1) - 1))
   if (params.shopCodes?.length) qs.set('shopCode', params.shopCodes[0]!)
 
@@ -243,10 +340,12 @@ export async function fetchTransactions(
   const parsed = transactionsResponseSchema.parse(json)
   const isV1Flat = parsed.transactions == null && parsed.items != null
   // El modelo plano trae la hora en "hour"; el resto del pipeline espera "time".
-  const transactions = (parsed.transactions ?? parsed.items ?? []).map((t) => ({
+  const normalizadas = (parsed.transactions ?? parsed.items ?? []).map((t) => ({
     ...t,
     time: t.time ?? t.hour ?? null,
   }))
+  // v1 viene plano (una fila por renglon): lo reagrupamos a la forma de v2.
+  const transactions = isV1Flat ? adaptV1FlatRows(normalizadas) : normalizadas
   const totalPages = parsed.totalPages ?? 1
   return {
     ...parsed,
