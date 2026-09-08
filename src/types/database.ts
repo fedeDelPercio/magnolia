@@ -2111,37 +2111,46 @@ export type Database = {
           caja_movimiento_id: string | null
           concepto_id: string | null
           created_at: string
+          estado: string
           fecha: string
           id: string
           metodo: Database["public"]["Enums"]["pago_metodo"]
           monto: number
           notas: string | null
+          pagado_at: string | null
           proveedor_id: string
           tenant_id: string
+          vencimiento: string | null
         }
         Insert: {
           caja_movimiento_id?: string | null
           concepto_id?: string | null
           created_at?: string
+          estado?: string
           fecha: string
           id?: string
           metodo?: Database["public"]["Enums"]["pago_metodo"]
           monto: number
           notas?: string | null
+          pagado_at?: string | null
           proveedor_id: string
           tenant_id: string
+          vencimiento?: string | null
         }
         Update: {
           caja_movimiento_id?: string | null
           concepto_id?: string | null
           created_at?: string
+          estado?: string
           fecha?: string
           id?: string
           metodo?: Database["public"]["Enums"]["pago_metodo"]
           monto?: number
           notas?: string | null
+          pagado_at?: string | null
           proveedor_id?: string
           tenant_id?: string
+          vencimiento?: string | null
         }
         Relationships: [
           {
@@ -2705,6 +2714,7 @@ export type Database = {
       saldos_proveedores: {
         Row: {
           active: boolean | null
+          ai_extraction_notes: string | null
           contact_email: string | null
           contact_name: string | null
           contact_phone: string | null
@@ -2721,6 +2731,7 @@ export type Database = {
           notes: string | null
           payment_rule: Json | null
           payment_terms_days: number | null
+          pendiente_servicios: number | null
           saldo: number | null
           tenant_id: string | null
           tipo: Database["public"]["Enums"]["proveedor_tipo"] | null

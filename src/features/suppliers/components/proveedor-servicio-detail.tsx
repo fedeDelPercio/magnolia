@@ -11,6 +11,7 @@ import {
   TrendingUpIcon,
   TrendingDownIcon,
   MoreHorizontalIcon,
+  CheckCircleIcon,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ import {
   deleteProveedor,
 } from '../actions'
 import { PagoServicioDialog } from './pago-servicio-dialog'
+import { SaldarPagoServicioDialog } from './saldar-pago-servicio-dialog'
 import { ConceptoServicioDialog } from './concepto-servicio-dialog'
 import { ProveedorDialog } from './proveedor-dialog'
 import type { SaldoProveedor, ConceptoServicio, PagoServicio } from '../queries'
@@ -89,6 +91,19 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
     editing: ConceptoServicio | null
   }>({ open: false, editing: null })
   const [pagoDialog, setPagoDialog] = useState(false)
+  const [saldarPago, setSaldarPago] = useState<PagoServicio | null>(null)
+
+  // Pendientes = facturas cargadas sin pagar. Van arriba de todo y ordenadas
+  // por vencimiento (las sin vencimiento al final) porque son las accionables.
+  const pendientes = useMemo(
+    () =>
+      pagos
+        .filter((p) => p.estado === 'pendiente')
+        .sort((a, b) => (a.vencimiento ?? '9999').localeCompare(b.vencimiento ?? '9999')),
+    [pagos],
+  )
+  const pagados = useMemo(() => pagos.filter((p) => p.estado !== 'pendiente'), [pagos])
+  const totalPendiente = pendientes.reduce((s, p) => s + Number(p.monto), 0)
 
   // Agrupamos pagos por concepto (los sueltos van a 'sin-concepto') y ordenamos
   // por fecha ascendente dentro de cada grupo para el mini-chart de evolución.
@@ -119,7 +134,10 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
   }
 
   function handleDeletePago(p: PagoServicio) {
-    if (!window.confirm(`¿Eliminar este pago de ${formatCurrency(p.monto)} del ${formatDate(p.fecha)}?`)) return
+    const msg = p.estado === 'pendiente'
+      ? `¿Eliminar esta factura pendiente de ${formatCurrency(p.monto)} del ${formatDate(p.fecha)}?`
+      : `¿Eliminar este pago de ${formatCurrency(p.monto)} del ${formatDate(p.fecha)}?`
+    if (!window.confirm(msg)) return
     startTransition(async () => {
       const result = await deletePagoServicio(p.id)
       if (result.error) toast.error(result.error)
@@ -140,8 +158,11 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
     })
   }
 
-  const totalPagado = pagos.reduce((s, p) => s + Number(p.monto), 0)
-  const ultimoPago = pagos[0] ?? null
+  // Total pagado y "último pago" miran sólo lo saldado: un pendiente todavía
+  // no salió de la caja.
+  const totalPagado = pagados.reduce((s, p) => s + Number(p.monto), 0)
+  const ultimoPago = pagados[0] ?? null
+  const hoy = new Date().toISOString().slice(0, 10)
 
   return (
     <>
@@ -191,12 +212,21 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
         </div>
 
         {/* Resumen */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-3 ${pendientes.length > 0 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
+          {pendientes.length > 0 && (
+            <div className="card-editorial p-5 ring-1 ring-amber-200 bg-amber-50/40">
+              <p className="text-eyebrow text-amber-800">Pendiente de pago</p>
+              <p className="mt-3 num-editorial text-2xl text-amber-900">{formatCurrency(totalPendiente)}</p>
+              <p className="mt-1 text-xs text-amber-800/80">
+                {pendientes.length} factura{pendientes.length === 1 ? '' : 's'} sin saldar
+              </p>
+            </div>
+          )}
           <div className="card-editorial p-5">
             <p className="text-eyebrow">Total pagado</p>
             <p className="mt-3 num-editorial text-2xl">{formatCurrency(totalPagado)}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              en {pagos.length} pago{pagos.length === 1 ? '' : 's'}
+              en {pagados.length} pago{pagados.length === 1 ? '' : 's'}
             </p>
           </div>
           <div className="card-editorial p-5">
@@ -313,7 +343,8 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
             <div>
               <p className="text-eyebrow">Pagos</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Cada pago se registra como egreso en caja mayor.
+                Cada pago se registra como egreso en caja mayor. Los pendientes recién impactan
+                al saldarlos.
               </p>
             </div>
             <Button size="sm" onClick={() => setPagoDialog(true)}>
@@ -328,21 +359,56 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
             </p>
           ) : (
             <div className="divide-y text-sm">
-              {pagos.map((p) => (
+              {/* Pendientes primero: son los que piden acción. */}
+              {[...pendientes, ...pagados].map((p) => {
+                const esPendiente = p.estado === 'pendiente'
+                const vencida = esPendiente && !!p.vencimiento && p.vencimiento < hoy
+                return (
                 <div key={p.id} className="py-2.5 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium">
+                    <p className="font-medium flex items-center gap-2">
                       {p.concepto?.name ?? <span className="italic text-muted-foreground">Sin concepto</span>}
+                      {esPendiente && (
+                        <span
+                          className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
+                            vencida ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {vencida ? 'Vencida' : 'Pendiente'}
+                          {p.vencimiento && (
+                            <span className="ml-1 opacity-70 tabular-nums">{formatDate(p.vencimiento)}</span>
+                          )}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatDate(p.fecha)}
-                      {' · '}
-                      <span className="text-foreground/70">{METODO_LABELS[p.metodo] ?? p.metodo}</span>
+                      {esPendiente ? `Factura del ${formatDate(p.fecha)}` : formatDate(p.fecha)}
+                      {!esPendiente && (
+                        <>
+                          {' · '}
+                          <span className="text-foreground/70">{METODO_LABELS[p.metodo] ?? p.metodo}</span>
+                        </>
+                      )}
+                      {!esPendiente && p.pagado_at && ` · pagada el ${formatDate(p.pagado_at)}`}
                       {p.notas && ` · ${p.notas}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="tabular-nums font-medium">{formatCurrency(p.monto)}</span>
+                    <span className={`tabular-nums font-medium ${esPendiente ? 'text-amber-900' : ''}`}>
+                      {formatCurrency(p.monto)}
+                    </span>
+                    {esPendiente && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-6 gap-1 px-2 text-xs"
+                        onClick={() => setSaldarPago(p)}
+                        disabled={pending}
+                      >
+                        <CheckCircleIcon className="size-3" />
+                        Saldar
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -355,7 +421,8 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
                     </Button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -373,6 +440,13 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
         onOpenChange={setPagoDialog}
         proveedor={proveedor}
         conceptos={conceptos}
+      />
+
+      <SaldarPagoServicioDialog
+        open={saldarPago !== null}
+        onOpenChange={(v) => { if (!v) setSaldarPago(null) }}
+        pago={saldarPago}
+        metodoDefault={proveedor.metodo_pago_default}
       />
 
       <ProveedorDialog

@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 
 import { createPagoServicio } from '../actions'
-import { PAGO_METODOS, METODO_LABELS, type PagoMetodo } from '../schemas'
+import { PAGO_METODOS, METODO_LABELS, type PagoMetodo, type PagoServicioEstado } from '../schemas'
 import type { ConceptoServicio, SaldoProveedor } from '../queries'
 
 function isPagoMetodo(v: string | null): v is PagoMetodo {
@@ -31,7 +32,11 @@ function todayStr() {
 }
 
 export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }: Props) {
+  // 'pendiente' = la factura ya está pero todavía no se pagó. No genera egreso
+  // en caja hasta que se salde.
+  const [estado, setEstado] = useState<PagoServicioEstado>('pagado')
   const [fecha, setFecha] = useState(todayStr())
+  const [vencimiento, setVencimiento] = useState('')
   const [conceptoId, setConceptoId] = useState<string>(NONE_CONCEPT)
   const [montoStr, setMontoStr] = useState('')
   const [metodo, setMetodo] = useState<PagoMetodo>(() =>
@@ -40,10 +45,14 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const pendiente = estado === 'pendiente'
+
   const metodoDefault = proveedor.metodo_pago_default
   useEffect(() => {
     if (open) {
+      setEstado('pagado')
       setFecha(todayStr())
+      setVencimiento('')
       // Si hay un solo concepto, lo dejamos pre-seleccionado — flujo típico
       // (ej. proveedor de un solo servicio como Fibertel = Internet).
       setConceptoId(conceptos.length === 1 ? conceptos[0]!.id : NONE_CONCEPT)
@@ -66,8 +75,10 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
       metodo,
       concepto_id: conceptoId === NONE_CONCEPT ? null : conceptoId,
       notas: notas || undefined,
-      // Los pagos de servicio siempre generan un egreso en caja mayor —
-      // no hay caso practico donde interese cargar el pago sin egreso.
+      estado,
+      vencimiento: pendiente ? (vencimiento || null) : null,
+      // Los pagos ya hechos generan el egreso en caja mayor al guardarse; los
+      // pendientes no lo generan hasta que se saldan.
       generar_egreso_caja: true,
     })
     setSaving(false)
@@ -75,7 +86,7 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
       toast.error(result.error)
       return
     }
-    toast.success('Pago registrado')
+    toast.success(pendiente ? 'Pago pendiente registrado' : 'Pago registrado')
     onOpenChange(false)
   }
 
@@ -86,9 +97,33 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
           <DialogTitle>Nuevo pago — {proveedor.name}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {/* Ya pagado vs pendiente: define si el egreso impacta ahora en caja. */}
+          <div className="inline-flex w-full items-center gap-0.5 rounded-full bg-surface p-1">
+            {([
+              ['pagado', 'Ya lo pagué'],
+              ['pendiente', 'Queda pendiente'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setEstado(value)}
+                className={cn(
+                  'flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                  estado === value
+                    ? 'bg-card text-foreground shadow-sm ring-1 ring-border/60'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-sm font-medium">Fecha</label>
+              <label className="text-sm font-medium">
+                {pendiente ? 'Fecha de la factura' : 'Fecha'}
+              </label>
               <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
             <div className="space-y-1">
@@ -101,28 +136,43 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Método de pago</label>
-            <Select value={metodo} onValueChange={(v) => { if (isPagoMetodo(v)) setMetodo(v) }}>
-              <SelectTrigger className="w-full">
-                <SelectValue>
-                  {(v: string | null) => (v ? METODO_LABELS[v] ?? v : null)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {PAGO_METODOS.map((m) => (
-                  <SelectItem key={m} value={m} label={METODO_LABELS[m]}>
-                    {METODO_LABELS[m]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {metodo === 'transferencia' && (
+          {pendiente ? (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Vencimiento (opcional)</label>
+              <Input
+                type="date"
+                value={vencimiento}
+                onChange={(e) => setVencimiento(e.target.value)}
+              />
               <p className="text-xs text-muted-foreground">
-                Se descuenta de Medios Digitales.
+                Queda listado como pendiente hasta que lo saldes. El egreso en caja se registra
+                recién ahí, con la fecha en que lo pagues y el método que elijas.
               </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Método de pago</label>
+              <Select value={metodo} onValueChange={(v) => { if (isPagoMetodo(v)) setMetodo(v) }}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(v: string | null) => (v ? METODO_LABELS[v] ?? v : null)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGO_METODOS.map((m) => (
+                    <SelectItem key={m} value={m} label={METODO_LABELS[m]}>
+                      {METODO_LABELS[m]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {metodo === 'transferencia' && (
+                <p className="text-xs text-muted-foreground">
+                  Se descuenta de Medios Digitales.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Concepto</label>
@@ -165,7 +215,7 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
             Cancelar
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={saving || !montoStr}>
-            {saving ? 'Guardando...' : 'Registrar pago'}
+            {saving ? 'Guardando...' : pendiente ? 'Registrar pendiente' : 'Registrar pago'}
           </Button>
         </DialogFooter>
       </DialogContent>

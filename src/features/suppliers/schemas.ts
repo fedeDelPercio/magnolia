@@ -85,6 +85,11 @@ export type ConceptoServicioFormValues = z.infer<typeof conceptoServicioSchema>
 // Pago de servicio. Concepto opcional (permite pagos sueltos si aun no se
 // dieron de alta los conceptos). El monto es el precio en esa fecha, se usa
 // para graficar el incremento en el tiempo.
+// Estado de un pago de servicio. 'pendiente' = la factura esta cargada pero
+// todavia no se pago (no genera egreso en caja hasta que se salde).
+export const PAGO_SERVICIO_ESTADOS = ['pagado', 'pendiente'] as const
+export type PagoServicioEstado = (typeof PAGO_SERVICIO_ESTADOS)[number]
+
 export const pagoServicioSchema = z.object({
   fecha: z.string().min(1, 'Fecha requerida'),
   monto: z.number().positive('El monto tiene que ser mayor a 0'),
@@ -96,8 +101,22 @@ export const pagoServicioSchema = z.object({
   // Si true, adicionalmente al pago crea un egreso en caja movimientos
   // categoria "Pago a proveedores" para que aparezca en el flujo.
   generar_egreso_caja: z.boolean().default(true),
+  // Pendiente = factura registrada sin pagar. El egreso en caja se crea recien
+  // al saldarla, con la fecha real de pago.
+  estado: z.enum(PAGO_SERVICIO_ESTADOS).default('pagado'),
+  // Vencimiento de la factura pendiente. Opcional: a veces se carga el gasto
+  // sin tener la fecha a mano.
+  vencimiento: z.string().nullable().optional(),
 })
 export type PagoServicioFormValues = z.infer<typeof pagoServicioSchema>
+
+// Saldar un pago de servicio pendiente: se elige cuando se pago y por que via,
+// y recien ahi impacta en caja.
+export const saldarPagoServicioSchema = z.object({
+  fecha: z.string().min(1, 'Fecha requerida'),
+  metodo: z.enum(PAGO_METODOS),
+})
+export type SaldarPagoServicioFormValues = z.infer<typeof saldarPagoServicioSchema>
 
 export const DOW_LABELS: Record<number, string> = {
   0: 'domingo',

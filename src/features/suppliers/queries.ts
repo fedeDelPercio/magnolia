@@ -13,6 +13,9 @@ export type SaldoProveedor = {
   total_compras: number
   total_pagado: number
   saldo: number
+  // Facturas de servicio registradas y todavia no saldadas. Los proveedores de
+  // insumo siempre tienen 0 aca (su deuda vive en `saldo`, via compras).
+  pendiente_servicios: number
   d0_30: number
   d31_60: number
   d61_90: number

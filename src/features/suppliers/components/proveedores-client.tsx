@@ -87,8 +87,11 @@ export function ProveedoresClient({ proveedores }: Props) {
     })
   }
 
-  const conDeuda = filtered.filter((p) => p.saldo > 0).length
-  const deudaTotal = filtered.reduce((s, p) => s + (p.saldo > 0 ? p.saldo : 0), 0)
+  // Deuda = saldo de compras (insumos) + facturas de servicio sin saldar. Un
+  // proveedor solo tiene una de las dos, pero sumarlas evita ramificar por tipo.
+  const deudaDe = (p: SaldoProveedor) => Math.max(0, p.saldo) + Math.max(0, p.pendiente_servicios ?? 0)
+  const conDeuda = filtered.filter((p) => deudaDe(p) > 0).length
+  const deudaTotal = filtered.reduce((s, p) => s + deudaDe(p), 0)
 
   return (
     <div className="space-y-4">
@@ -166,7 +169,8 @@ export function ProveedoresClient({ proveedores }: Props) {
       ) : (
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((p) => {
-            const tieneSaldo = p.saldo > 0
+            const deuda = deudaDe(p)
+            const tieneSaldo = deuda > 0
             return (
               <div
                 key={p.id}
@@ -203,10 +207,10 @@ export function ProveedoresClient({ proveedores }: Props) {
                           tieneSaldo ? 'text-rose-700' : 'text-muted-foreground',
                         )}
                       >
-                        {tieneSaldo ? formatCurrency(p.saldo) : '$0'}
+                        {tieneSaldo ? formatCurrency(deuda) : '$0'}
                       </p>
                       <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        saldo deudor
+                        {p.tipo === 'servicio' ? 'pendiente de pago' : 'saldo deudor'}
                       </p>
                     </div>
                     {!p.active && (

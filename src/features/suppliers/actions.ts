@@ -11,6 +11,7 @@ import type {
   PagoFormValues,
   ConceptoServicioFormValues,
   PagoServicioFormValues,
+  SaldarPagoServicioFormValues,
 } from './schemas'
 
 // ---- Proveedores -------------------------------------------
@@ -592,6 +593,50 @@ export async function deleteConceptoServicio(
   return {}
 }
 
+// Egreso en caja mayor de un pago de servicio. Mismo patron que los pagos a
+// proveedores de insumo: categoria "Pago a proveedores" (viene seeded) y
+// ref_kind 'pago_servicio', que caja usa para resolver la cuenta segun metodo.
+async function crearEgresoServicio(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  proveedorId: string,
+  conceptoId: string | null,
+  fecha: string,
+  monto: number,
+): Promise<{ id?: string; error?: string }> {
+  const { data: prov } = await supabase
+    .from('proveedores')
+    .select('name')
+    .eq('id', proveedorId)
+    .single()
+  const conceptoName = conceptoId
+    ? (await supabase
+        .from('proveedor_conceptos')
+        .select('name')
+        .eq('id', conceptoId)
+        .single()).data?.name
+    : null
+  const descripcion = conceptoName
+    ? `${prov?.name ?? 'Servicio'} — ${conceptoName}`
+    : (prov?.name ?? 'Servicio')
+
+  const { data: mov, error: movErr } = await supabase
+    .from('caja_movimientos')
+    .insert({
+      tenant_id: tenantId,
+      fecha,
+      tipo: 'egreso',
+      monto,
+      descripcion,
+      categoria: 'Pago a proveedores',
+      ref_kind: 'pago_servicio',
+    })
+    .select('id')
+    .single()
+  if (movErr) return { error: movErr.message }
+  return { id: mov.id }
+}
+
 export async function createPagoServicio(
   proveedorId: string,
   values: PagoServicioFormValues,
@@ -599,40 +644,22 @@ export async function createPagoServicio(
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
+  const pendiente = values.estado === 'pendiente'
+
+  // Un pendiente todavia no movio plata: no genera egreso en caja. Se crea
+  // recien al saldarlo (saldarPagoServicio), con la fecha real de pago.
   let cajaMovimientoId: string | null = null
-  if (values.generar_egreso_caja) {
-    // Egreso automatico en caja mayor, mismo patron que pagos de proveedor
-    // de insumo. Categoria "Pago a proveedores" que ya viene seeded.
-    const { data: prov } = await supabase
-      .from('proveedores')
-      .select('name')
-      .eq('id', proveedorId)
-      .single()
-    const conceptoName = values.concepto_id
-      ? (await supabase
-          .from('proveedor_conceptos')
-          .select('name')
-          .eq('id', values.concepto_id)
-          .single()).data?.name
-      : null
-    const descripcion = conceptoName
-      ? `${prov?.name ?? 'Servicio'} — ${conceptoName}`
-      : (prov?.name ?? 'Servicio')
-    const { data: mov, error: movErr } = await supabase
-      .from('caja_movimientos')
-      .insert({
-        tenant_id: tenantId,
-        fecha: values.fecha,
-        tipo: 'egreso',
-        monto: values.monto,
-        descripcion,
-        categoria: 'Pago a proveedores',
-        ref_kind: 'pago_servicio',
-      })
-      .select('id')
-      .single()
-    if (movErr) return { error: movErr.message }
-    cajaMovimientoId = mov.id
+  if (values.generar_egreso_caja && !pendiente) {
+    const egreso = await crearEgresoServicio(
+      supabase,
+      tenantId,
+      proveedorId,
+      values.concepto_id ?? null,
+      values.fecha,
+      values.monto,
+    )
+    if (egreso.error) return { error: egreso.error }
+    cajaMovimientoId = egreso.id ?? null
   }
 
   const { error } = await supabase
@@ -646,6 +673,8 @@ export async function createPagoServicio(
       metodo: values.metodo,
       notas: values.notas || null,
       caja_movimiento_id: cajaMovimientoId,
+      estado: pendiente ? 'pendiente' : 'pagado',
+      vencimiento: pendiente ? (values.vencimiento || null) : null,
     })
   if (error) {
     // Si fallo el pago pero ya generamos el egreso, rollback manual del egreso
@@ -654,9 +683,63 @@ export async function createPagoServicio(
     }
     return { error: error.message }
   }
-  revalidatePath(`/proveedores/${proveedorId}`)
+  revalidatePath('/proveedores', 'layout')
   revalidatePath('/caja')
   // El método transferencia descuenta de Medios Digitales, que el dashboard mira.
+  revalidatePath('/dashboard')
+  return {}
+}
+
+// Salda un pago de servicio pendiente: recien aca impacta en caja, con la
+// fecha en que efectivamente se pago (que puede no ser la de la factura).
+export async function saldarPagoServicio(
+  pagoId: string,
+  values: SaldarPagoServicioFormValues,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+
+  const { data: pago, error: fetchErr } = await supabase
+    .from('proveedor_servicio_pagos')
+    .select('id, proveedor_id, concepto_id, monto, estado, caja_movimiento_id')
+    .eq('id', pagoId)
+    .single()
+  if (fetchErr) return { error: fetchErr.message }
+  if (pago.estado !== 'pendiente') return { error: 'Este pago ya está saldado' }
+
+  const egreso = await crearEgresoServicio(
+    supabase,
+    tenantId,
+    pago.proveedor_id,
+    pago.concepto_id,
+    values.fecha,
+    Number(pago.monto),
+  )
+  if (egreso.error) return { error: egreso.error }
+
+  const { data: updated, error } = await supabase
+    .from('proveedor_servicio_pagos')
+    .update({
+      estado: 'pagado',
+      pagado_at: values.fecha,
+      metodo: values.metodo,
+      caja_movimiento_id: egreso.id ?? null,
+    })
+    .eq('id', pagoId)
+    // Guarda contra doble click / dos pestañas: si otro request ya lo saldo,
+    // este update no matchea y hay que borrar el egreso recien creado para no
+    // duplicar la salida de plata en caja.
+    .eq('estado', 'pendiente')
+    .select('id')
+    .maybeSingle()
+
+  if (error || !updated) {
+    if (egreso.id) await supabase.from('caja_movimientos').delete().eq('id', egreso.id)
+    return { error: error?.message ?? 'Este pago ya está saldado' }
+  }
+
+  revalidatePath('/proveedores', 'layout')
+  revalidatePath('/caja')
   revalidatePath('/dashboard')
   return {}
 }
@@ -682,7 +765,7 @@ export async function deletePagoServicio(
   if (existing?.caja_movimiento_id) {
     await supabase.from('caja_movimientos').delete().eq('id', existing.caja_movimiento_id)
   }
-  if (existing?.proveedor_id) revalidatePath(`/proveedores/${existing.proveedor_id}`)
+  if (existing?.proveedor_id) revalidatePath('/proveedores', 'layout')
   revalidatePath('/caja')
   return {}
 }
