@@ -97,8 +97,11 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
           <DialogTitle>Nuevo pago — {proveedor.name}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {/* Ya pagado vs pendiente: define si el egreso impacta ahora en caja. */}
-          <div className="inline-flex w-full items-center gap-0.5 rounded-full bg-surface p-1">
+          {/* Ya pagado vs pendiente: define si el egreso impacta ahora en caja.
+              El riel va en `bg-secondary`, un tono por debajo del fondo del
+              dialog (que es `surface`): sin ese contraste la opción no elegida
+              parecía un texto suelto y no se leía como botón. */}
+          <div className="inline-flex w-full items-center gap-0.5 rounded-full bg-secondary p-1 ring-1 ring-border/50">
             {([
               ['pagado', 'Ya lo pagué'],
               ['pendiente', 'Queda pendiente'],
@@ -107,11 +110,12 @@ export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }:
                 key={value}
                 type="button"
                 onClick={() => setEstado(value)}
+                aria-pressed={estado === value}
                 className={cn(
-                  'flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                  'flex-1 cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
                   estado === value
                     ? 'bg-card text-foreground shadow-sm ring-1 ring-border/60'
-                    : 'text-muted-foreground hover:text-foreground',
+                    : 'text-muted-foreground hover:bg-card/60 hover:text-foreground',
                 )}
               >
                 {label}
