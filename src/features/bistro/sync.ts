@@ -335,9 +335,11 @@ async function upsertTransaction(
   // administrativos (APERTURA / CIERRE / RETIRO / DEPOSITO) que la API devuelve
   // todos con ticketNumber=0. Sin esto, todos los ticket=0 del mismo dia
   // colisionaban y solo persistia uno (el ultimo upserteado del dia pisaba al resto).
+  // Y payment_method porque un ticket pagado con dos medios trae una cabecera
+  // por pago, a veces con la MISMA hora: sin el medio, una pata pisa a la otra.
   const { data: upserted, error: upsertErr } = await client
     .from('bistro_transacciones')
-    .upsert(payload, { onConflict: 'tenant_id,shop_code,fecha_local,ticket_number,fecha_hora,transaction_type' })
+    .upsert(payload, { onConflict: 'tenant_id,shop_code,fecha_local,ticket_number,fecha_hora,transaction_type,payment_method' })
     .select('id, synced_at, raw_payload')
     .single()
   if (upsertErr || !upserted) throw new Error(`Upsert ticket ${tx.ticketNumber}: ${upsertErr?.message}`)

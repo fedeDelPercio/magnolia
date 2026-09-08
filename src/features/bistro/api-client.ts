@@ -220,19 +220,49 @@ export async function requestToken(
 // Este adaptador reagrupa lo plano en la forma vieja para no tocar nada de eso.
 const V1_HEADER_TYPES = new Set(['VENTA', 'COMANDA', 'VENTA_OLD'])
 
+// Cuando un ticket se cobra con dos medios, Bistro emite UNA CABECERA POR PAGO
+// con el mismo ticketNumber y el tipo sufijado: "Comanda (Pago parcial)",
+// "Venta (Multipago)". Cada fila trae su medio y su monto parcial. Los llevamos
+// al vocabulario que ya usaba v2 (ver VENTA_TYPES en sync.ts) para que sigan
+// contando como venta; si no, el ticket entra por la mitad.
+const V1_SUFIJOS_CANONICOS = new Map([
+  ['pago parcial', 'Pago parcial'],
+  ['multipago', 'Multipago'],
+])
+
+// "Comanda (Pago parcial)" -> { base: 'COMANDA', sufijo: 'Pago parcial' }
+function v1SplitTipo(raw: string | null | undefined): { base: string; sufijo: string | null } {
+  const t = (raw ?? '').trim()
+  const m = /^(.+?)\s*\(([^)]*)\)$/.exec(t)
+  if (!m) return { base: t.toUpperCase(), sufijo: null }
+  return { base: m[1]!.trim().toUpperCase(), sufijo: m[2]!.trim() }
+}
+
+// Cabecera de ticket (con o sin sufijo de pago). "CAJA (RETIRO)" no lo es: su
+// base queda en 'CAJA'.
+function v1EsCabecera(raw: string | null | undefined): boolean {
+  return V1_HEADER_TYPES.has(v1SplitTipo(raw).base)
+}
+
 function v1IsItemRow(t: string): boolean {
   return t.toUpperCase().startsWith('- ITEM')
 }
 
-// "CAJA (RETIRO)" -> "RETIRO"; "Venta" -> "VENTA"; una cabecera anulada pasa a
-// VOID_BY_BISTRO_OLD, que es como v2 nombraba al contra-asiento (no cuenta como
-// venta, igual que su VENTA_OLD original).
+// "CAJA (RETIRO)" -> "RETIRO"; "Venta" -> "VENTA"; "Comanda (Pago parcial)" ->
+// "COMANDA (Pago parcial)". Una cabecera anulada pasa a VOID_BY_BISTRO_OLD, que
+// es como v2 nombraba al contra-asiento (no cuenta como venta, igual que su
+// VENTA_OLD original).
 function v1NormalizarTipo(raw: string | null | undefined, status: string | null | undefined): string {
   const t = (raw ?? '').trim()
   const caja = /^CAJA\s*\((.+)\)$/i.exec(t)
   if (caja) return caja[1]!.trim().toUpperCase()
-  if (status === 'VOID_BY_BISTRO' && V1_HEADER_TYPES.has(t.toUpperCase())) return 'VOID_BY_BISTRO_OLD'
-  return t.toUpperCase()
+  const { base, sufijo } = v1SplitTipo(t)
+  if (!V1_HEADER_TYPES.has(base)) return t.toUpperCase()
+  if (status === 'VOID_BY_BISTRO') return 'VOID_BY_BISTRO_OLD'
+  const canonico = sufijo ? V1_SUFIJOS_CANONICOS.get(sufijo.toLowerCase()) : null
+  // Sufijo desconocido -> cae al tipo base. Preferimos perder la etiqueta antes
+  // que la venta: un tipo que sync no conoce no suma a facturación.
+  return canonico ? `${base} (${canonico})` : base
 }
 
 export function adaptV1FlatRows(rows: BistroTransaction[]): BistroTransaction[] {
@@ -252,7 +282,7 @@ export function adaptV1FlatRows(rows: BistroTransaction[]): BistroTransaction[] 
   }
 
   for (const filas of grupos.values()) {
-    const cabeceras = filas.filter((f) => V1_HEADER_TYPES.has((f.transactionType ?? '').trim().toUpperCase()))
+    const cabeceras = filas.filter((f) => v1EsCabecera(f.transactionType))
     const detalle = filas.filter((f) => v1IsItemRow(f.transactionType ?? ''))
     const items: BistroLine[] = detalle.map((it) => ({
       // Los "- ITEM DESCUENTO" son un descuento a nivel ticket (product '-',
@@ -272,7 +302,9 @@ export function adaptV1FlatRows(rows: BistroTransaction[]): BistroTransaction[] 
 
     // El detalle cuelga de la cabecera valida (CLOSE). En un ticket anulado
     // conviven VENTA_OLD + la cabecera anulada; el detalle va al original y el
-    // contra-asiento queda sin items, replicando el par que armaba v2.
+    // contra-asiento queda sin items, replicando el par que armaba v2. En un
+    // ticket con dos pagos pasa lo mismo: los productos van a la primera pata y
+    // la otra queda sin items, asi el monto suma dos veces pero el producto no.
     const principal = cabeceras.find((h) => h.status === 'CLOSE') ?? cabeceras[0]
 
     if (!principal) {
