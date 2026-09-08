@@ -467,7 +467,7 @@ export function CompraDialog({
                             <Input
                               type="number"
                               min="0"
-                              step="0.001"
+                              step="any"
                               className="h-7 text-xs"
                               value={item.qtyInput}
                               onChange={(e) => updateItemInputs(idx, { qtyInput: e.target.value })}
@@ -480,7 +480,7 @@ export function CompraDialog({
                             <Input
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="any"
                               className="h-7 text-xs"
                               value={item.totalInput}
                               onChange={(e) => updateItemInputs(idx, { totalInput: e.target.value })}
@@ -580,7 +580,7 @@ export function CompraDialog({
                   id="compra-qty-input"
                   type="number"
                   min="0"
-                  step="0.001"
+                  step="any"
                   className="h-8 text-sm"
                   placeholder="0"
                   value={newQty}
@@ -593,7 +593,7 @@ export function CompraDialog({
                   id="compra-total-input"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="any"
                   className="h-8 text-sm"
                   placeholder="0"
                   value={newTotal}

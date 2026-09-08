@@ -693,7 +693,7 @@ export function ComprobanteUploadDialog({
                             <Input
                               type="number"
                               min="0"
-                              step="0.001"
+                              step="any"
                               className="h-8 text-xs"
                               value={line.qtyInput}
                               onChange={(e) => updateLine(idx, { qtyInput: e.target.value })}

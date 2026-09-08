@@ -415,6 +415,14 @@ const VARIANT_TO_FORMATO: Record<VariantKey, 'individual' | 'menu' | null> = {
   menu: 'menu',
 }
 
+
+// Busqueda por nombre insensible a mayusculas, alineada con el indice unico
+// lower(trim(name)) de la migracion 0072. Escapamos los comodines de LIKE
+// para que un nombre con "%" o "_" no matchee de mas.
+function ilikeExact(name: string): string {
+  return name.trim().replace(/[\%_]/g, (c) => `\${c}`)
+}
+
 async function upsertVariantProducto(
   supabase: Awaited<ReturnType<typeof createClient>>,
   tenantId: string,
@@ -444,7 +452,7 @@ async function upsertVariantProducto(
     .from('recetas')
     .select('id')
     .eq('tenant_id', tenantId)
-    .eq('name', productoName)
+    .ilike('name', ilikeExact(productoName))
     .maybeSingle()
   if (byNameReceta && !usedRecetaIds.has(byNameReceta.id)) recetaId = byNameReceta.id
   if (!recetaId && variant.receta_id && !usedRecetaIds.has(variant.receta_id)) {
@@ -523,7 +531,7 @@ async function upsertVariantProducto(
       .from('productos')
       .select('id, concepto_id')
       .eq('tenant_id', tenantId)
-      .eq('name', productoName)
+      .ilike('name', ilikeExact(productoName))
       .maybeSingle()
     if (byName) {
       if (byName.concepto_id === null || byName.concepto_id === conceptoId) {
