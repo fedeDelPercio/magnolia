@@ -463,7 +463,7 @@ export function ProveedorDialog({ open, onOpenChange, proveedor }: Props) {
                   <FormControl>
                     <Textarea
                       rows={3}
-                      placeholder="Ej: usá la columna SUBTOTAL de más a la derecha como precio de cada línea"
+                      placeholder="Ej: el precio de cada línea es la columna SUBTOTAL (la que va después de DESCUENTO y antes del IVA). La suma de las líneas tiene que dar el total al pie de esa columna."
                       {...field}
                     />
                   </FormControl>
