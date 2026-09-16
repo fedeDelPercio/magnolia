@@ -716,7 +716,14 @@ async function consolidateCierreForDay(
         // ventas es el TOTAL (bistro + ajuste manual por fuera del POS).
         // Reemplazamos SOLO la parte bistro y conservamos la diferencia manual
         // — sin esto, cada re-sync pisaba lo que la dueña cargó a mano.
-        const ajusteManual = (Number(existing.ventas) || 0) - (Number(existing.ventas_bistro) || 0)
+        //
+        // PERO solo si esta fila ya pasó por un sync antes (ventas_bistro > 0).
+        // Si nunca se sincronizó y ya tiene ventas, ese número es el TOTAL que
+        // la dueña tipeó a mano porque el dato de Bistro todavía no estaba
+        // (API caída, producto mapeado después): tratarlo como "extra" lo
+        // duplicaba. Caso real: 26/08-02/09, 1.325 unidades de más (ver 0077).
+        const bistroPrevio = Number(existing.ventas_bistro) || 0
+        const ajusteManual = bistroPrevio > 0 ? (Number(existing.ventas) || 0) - bistroPrevio : 0
         await client
           .from('movimientos_diarios')
           .update({ ventas: cantidad + ajusteManual, ventas_bistro: cantidad })
