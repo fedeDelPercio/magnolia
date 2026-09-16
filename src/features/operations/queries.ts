@@ -270,10 +270,13 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
   if (error || !data) return null
 
   // Si el día está abierto: (1) agregamos movimientos para productos activos
-  // creados después de abrir el día; (2) arrastramos automáticamente el
-  // stock_anterior desde el día previo en las filas NO editadas a mano
-  // (conteo físico, o teórico en vivo si no se contó; cortado en 0). Así el
-  // stock inicial siempre refleja lo que quedó ayer sin tener que cerrar el día.
+  // creados después de abrir el día; (2) arrastramos el stock_anterior desde
+  // el día previo en las filas NO editadas a mano (conteo físico, o teórico en
+  // vivo si no se contó; cortado en 0).
+  // OJO: desde 0075 el arrastre real lo hace un trigger en la BD, en cascada
+  // hacia todos los días abiertos que siguen, cada vez que cambia un dato de un
+  // día. Esta llamada queda como red de seguridad idempotente — no depender de
+  // ella: un día que nadie mira también tiene que estar bien.
   // Los días cerrados son inmutables.
   if (data.status === 'abierto') {
     const existingProductIds = new Set(
