@@ -6,7 +6,13 @@ import { esVarianteBase, grupoKey } from './grupos'
 export type DiaOperativo = Tables<'dias_operativos'>
 
 export type MovimientoConProducto = Tables<'movimientos_diarios'> & {
-  productos: Pick<Tables<'productos'>, 'name' | 'sale_price' | 'concepto_id' | 'canal' | 'formato'>
+  productos: Pick<
+    Tables<'productos'>,
+    'name' | 'sale_price' | 'concepto_id' | 'canal' | 'formato' | 'receta_id' | 'active'
+  > & {
+    // Lo completa getDia: la receta del producto tiene al menos un ingrediente.
+    receta_con_ingredientes?: boolean
+  }
 }
 
 export type DiaConMovimientos = DiaOperativo & {
@@ -261,7 +267,7 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
       *,
       movimientos_diarios(
         *,
-        productos(name, sale_price, concepto_id, canal, formato)
+        productos(name, sale_price, concepto_id, canal, formato, receta_id, active)
       )
     `)
     .eq('id', diaId)
@@ -318,15 +324,44 @@ export async function getDia(diaId: string): Promise<DiaConMovimientos | null> {
           *,
           movimientos_diarios(
             *,
-            productos(name, sale_price, concepto_id, canal, formato)
+            productos(name, sale_price, concepto_id, canal, formato, receta_id, active)
           )
         `)
         .eq('id', diaId)
         .single()
 
-      return refreshed as unknown as DiaConMovimientos
+      return marcarRecetas(supabase, refreshed as unknown as DiaConMovimientos)
     }
   }
 
-  return data as unknown as DiaConMovimientos
+  return marcarRecetas(supabase, data as unknown as DiaConMovimientos)
+}
+
+// Marca qué variantes tienen una receta con ingredientes. La grilla lo usa para
+// decidir en qué variante del grupo guarda la producción: los ingredientes se
+// descuentan según la receta del producto de ESA fila (vista insumo_stock).
+async function marcarRecetas(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  dia: DiaConMovimientos,
+): Promise<DiaConMovimientos> {
+  const recetaIds = [
+    ...new Set(
+      dia.movimientos_diarios.map((m) => m.productos.receta_id).filter((id): id is string => !!id),
+    ),
+  ]
+  const conIngredientes = new Set<string>()
+  // En tandas: un .in() con cientos de uuids puede pasarse del largo de URL.
+  for (let i = 0; i < recetaIds.length; i += 100) {
+    const { data } = await supabase
+      .from('receta_ingredientes')
+      .select('receta_id')
+      .in('receta_id', recetaIds.slice(i, i + 100))
+      .limit(10000)
+    for (const r of data ?? []) conIngredientes.add(r.receta_id)
+  }
+  for (const m of dia.movimientos_diarios) {
+    const id = m.productos.receta_id
+    m.productos.receta_con_ingredientes = !!id && conIngredientes.has(id)
+  }
+  return dia
 }

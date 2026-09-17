@@ -4,7 +4,7 @@ import { useState, useRef, memo } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { saveMovimiento } from '../actions'
-import { varianteLabel } from '../grupos'
+import { filaDeProduccion, varianteLabel } from '../grupos'
 import type { MovimientoConProducto } from '../queries'
 
 // Fila unificada: agrupa las variantes (salón, barra, menú) de un mismo
@@ -17,6 +17,12 @@ import type { MovimientoConProducto } from '../queries'
 // descartables de cada canal se descuenten bien); si la dueña vende por fuera
 // del POS puede subir el total — la diferencia se guarda en la variante base y
 // el sync la conserva en cada corrida.
+//
+// La PRODUCCIÓN es la excepción: se guarda en la variante que tiene la receta
+// cargada, porque los ingredientes se descuentan según la receta del producto
+// de esa fila. Casi siempre es la base; en los platos del día (que solo existen
+// como menú) la receta está en la variante Menú y la base está vacía — si la
+// producción fuera a la base no descontaría ningún insumo.
 
 type Props = {
   primary: MovimientoConProducto
@@ -81,6 +87,8 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   // "manual" y el arrastre automático deja de pisarlo.
   const stockManualRef = useRef(primary.stock_anterior_manual)
 
+  const filaProduccion = filaDeProduccion(primary, secondaries)
+
   // Parte Bistro de las ventas, por canal. El total editado se reparte:
   // las secundarias conservan sus ventas (dato de Bistro del canal) y la
   // diferencia va a la variante base.
@@ -104,26 +112,30 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
       await saveMovimiento(primary.id, {
         stock_anterior: updated.stock_anterior,
         stock_anterior_manual: stockManualRef.current,
-        produccion: updated.produccion,
+        produccion: filaProduccion.id === primary.id ? updated.produccion : 0,
         ventas: Math.max(0, updated.ventas - ventasSecundarias),
         desperdicio: updated.desperdicio,
         almuerzo: updated.almuerzo,
         conteo_fisico: updated.conteo_fisico,
       })
-      // Secundarias (Barra): ceramos los campos de stock/produccion pero
+      if (filaProduccion.id !== primary.id) {
+        await saveMovimiento(filaProduccion.id, { produccion: updated.produccion })
+      }
+      // Secundarias (Barra, Menú): ceramos los campos de stock/produccion pero
       // preservamos sus ventas (dato de Bistrosoft del canal).
       if (!consolidatedRef.current) {
         for (const sec of secondaries) {
+          const esFilaProduccion = sec.id === filaProduccion.id
           const needsReset =
             sec.stock_anterior !== 0 ||
-            sec.produccion !== 0 ||
+            (!esFilaProduccion && sec.produccion !== 0) ||
             sec.desperdicio !== 0 ||
             sec.almuerzo !== 0 ||
             (sec.conteo_fisico ?? 0) !== 0
           if (needsReset) {
             await saveMovimiento(sec.id, {
               stock_anterior: 0,
-              produccion: 0,
+              ...(esFilaProduccion ? {} : { produccion: 0 }),
               ventas: sec.ventas,
               desperdicio: 0,
               almuerzo: 0,

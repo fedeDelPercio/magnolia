@@ -30,3 +30,34 @@ export function varianteLabel(p: ProductoAgrupable): string {
 export function varianteOrden(p: ProductoAgrupable): number {
   return (p.formato === 'menu' ? 2 : 0) + (p.canal === 'delivery' ? 1 : 0)
 }
+
+type FilaConReceta = {
+  productos: ProductoAgrupable & {
+    name: string
+    active: boolean
+    receta_con_ingredientes?: boolean
+  }
+}
+
+// En qué variante del grupo se guarda la PRODUCCIÓN. Los ingredientes se
+// descuentan según la receta del producto de esa fila (vista insumo_stock), así
+// que tiene que ser una variante con receta cargada:
+//   - la base, si tiene receta (el caso normal);
+//   - si no, la variante Menú ACTIVA con receta: los platos del día solo existen
+//     como menú y tienen la receta ahí, con la base vacía. (Las variantes menú
+//     inactivas tienen recetas de relleno, no se usan.)
+// Los combos ("Menú Qui. Pollo": un producto base cuyo nombre ya es un menú) se
+// quedan en la base: sus componentes ya descuentan insumos al producirse cada
+// uno en su propia fila, y redirigirlos los descontaría dos veces.
+export function filaDeProduccion<T extends FilaConReceta>(primary: T, secondaries: T[]): T {
+  if (primary.productos.receta_con_ingredientes) return primary
+  if (/^men[uú]\s/i.test(primary.productos.name)) return primary
+  return (
+    secondaries.find(
+      (m) =>
+        m.productos.formato === 'menu' &&
+        m.productos.active &&
+        m.productos.receta_con_ingredientes,
+    ) ?? primary
+  )
+}
