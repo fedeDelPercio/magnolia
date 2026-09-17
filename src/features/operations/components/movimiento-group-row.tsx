@@ -1,11 +1,15 @@
 'use client'
 
 import { useState, useRef, memo } from 'react'
+import { ChevronRightIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { saveMovimiento } from '../actions'
+import { varianteLabel } from '../grupos'
 import type { MovimientoConProducto } from '../queries'
 
-// Fila unificada: agrupa las variantes de canal (Mostrador + Barra) de un mismo
-// producto en una sola linea. La produccion y los ajustes (stock, desperdicio,
+// Fila unificada: agrupa las variantes (salón, barra, menú) de un mismo
+// producto en una sola linea. Tocando el nombre se despliega por dónde se
+// vendió (una sub-fila por variante, solo lectura). La produccion y los ajustes (stock, desperdicio,
 // almuerzo, conteo) se cargan UNA vez y se guardan en la variante base
 // (Mostrador); las secundarias quedan en 0 para no duplicar el descuento de
 // ingredientes. Las ventas se muestran SUMADAS y son EDITABLES: la parte de
@@ -19,6 +23,9 @@ type Props = {
   secondaries: MovimientoConProducto[]
   name: string
   readonly: boolean
+  // Oculta por el buscador. Se esconde con CSS en vez de desmontar: la fila
+  // guarda su estado local (y un guardado pendiente) que se perdería.
+  hidden?: boolean
 }
 
 type LocalState = {
@@ -42,16 +49,14 @@ function DiferenciaCell({ diferencia }: { diferencia: number }) {
   return <span className="tabular-nums text-red-600">{rounded}</span>
 }
 
-function canalLabel(mov: MovimientoConProducto): string {
-  return mov.productos.canal === 'delivery' ? 'Barra' : 'Mostrador'
-}
-
 export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   primary,
   secondaries,
   name,
   readonly,
+  hidden = false,
 }: Props) {
+  const [open, setOpen] = useState(false)
   const all = [primary, ...secondaries]
   const sum = (f: keyof MovimientoConProducto) =>
     all.reduce((s, m) => s + (Number(m[f]) || 0), 0)
@@ -82,7 +87,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   const ventasBistroSum = all.reduce((s, m) => s + (Number(m.ventas_bistro) || 0), 0)
   const ventasSecundarias = secondaries.reduce((s, m) => s + (m.ventas || 0), 0)
   const ventasBreakdown = all
-    .map((m) => `${canalLabel(m)}: ${Number(m.ventas_bistro) || 0}`)
+    .map((m) => `${varianteLabel(m.productos)}: ${Number(m.ventas_bistro) || 0}`)
     .join(' · ')
   const ventasManualDiff = local.ventas - ventasBistroSum
 
@@ -144,16 +149,38 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   const inputCls =
     'w-16 rounded border border-input bg-background px-1.5 py-1 text-right tabular-nums text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:bg-muted disabled:text-muted-foreground'
 
+  // Apertura de ventas por variante. La base se lleva lo editado a mano, así
+  // que sus ventas son el total menos lo que vendieron las demás.
+  const apertura = all.map((m) => ({
+    id: m.id,
+    label: varianteLabel(m.productos),
+    ventas: m.id === primary.id ? Math.max(0, local.ventas - ventasSecundarias) : m.ventas || 0,
+    bistro: Number(m.ventas_bistro) || 0,
+  }))
+  const variantesLabel = apertura.map((a) => a.label.toLowerCase()).join(' · ')
+
   return (
-    <tr className={saving ? 'opacity-70' : ''}>
+    <>
+    <tr hidden={hidden} className={saving ? 'opacity-70' : ''}>
       <td className="py-2 pl-4 pr-2 font-medium text-sm">
-        {name}
-        <span
-          className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] font-normal text-muted-foreground"
-          title="Este producto agrupa las variantes Mostrador y Barra en una sola producción."
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="group/nombre -ml-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 text-left hover:bg-muted"
+          title={`Agrupa ${variantesLabel} en una sola producción. Tocá para ver por dónde se vendió.`}
         >
-          barra+salón
-        </span>
+          <ChevronRightIcon
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground transition-transform',
+              open && 'rotate-90',
+            )}
+          />
+          {name}
+          <span className="ml-0.5 whitespace-nowrap rounded bg-muted px-1 py-0.5 text-[10px] font-normal text-muted-foreground group-hover/nombre:bg-background">
+            {variantesLabel}
+          </span>
+        </button>
         {saving && <span className="ml-1 text-xs text-muted-foreground">·</span>}
       </td>
       <td className="px-2 py-2 text-right">
@@ -235,5 +262,26 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
         <DiferenciaCell diferencia={diferencia} />
       </td>
     </tr>
+    {open &&
+      apertura.map((a) => (
+        <tr key={a.id} hidden={hidden} className="bg-muted/30 text-xs text-muted-foreground">
+          <td className="py-1.5 pl-10 pr-2">{a.label}</td>
+          <td colSpan={2} />
+          <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
+            {a.ventas !== a.bistro && (
+              <span
+                className="mr-1 text-[10px] text-muted-foreground"
+                title="Lo que registró Bistrosoft para esta variante. La diferencia se cargó a mano."
+              >
+                (Bistro {a.bistro})
+              </span>
+            )}
+            {/* Mismo ancho que el input de arriba, para que el número caiga debajo. */}
+            <span className="inline-block w-16 text-center">{a.ventas}</span>
+          </td>
+          <td colSpan={5} />
+        </tr>
+      ))}
+    </>
   )
 })

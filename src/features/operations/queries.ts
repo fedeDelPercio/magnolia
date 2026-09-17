@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import type { Tables } from '@/types/database'
+import { esVarianteBase, grupoKey } from './grupos'
 
 export type DiaOperativo = Tables<'dias_operativos'>
 
@@ -51,7 +52,7 @@ export async function getDiasMes(month: string): Promise<DiaOperativo[]> {
 // ---- Diferencias acumuladas del mes ------------------------------------
 // Resumen para Carolina: cuánta diferencia (conteo físico vs teórico) se
 // acumuló en el mes, por producto. Espeja el agrupado de la grilla diaria
-// (variantes barra+salón sumadas, menú aparte) y solo suma los días donde la
+// (variantes salón+barra+menú sumadas) y solo suma los días donde la
 // fila tiene conteo cargado — un día sin conteo no genera diferencia.
 // Nota: la grilla guarda conteo 0 cuando se edita una fila sin contar, así
 // que "contado" incluye esos ceros (igual que la columna Diferencia del día);
@@ -135,8 +136,8 @@ export async function getDiferenciasMes(month: string): Promise<DiferenciasMes> 
   )
   const rotas = new Set((rotasRes.data ?? []).map((r) => r.producto_id))
 
-  // Agrupar por (grupo de producto, fecha) — mismo criterio que la grilla:
-  // concepto (sin menú) = una fila; el resto, por producto.
+  // Agrupar por (grupo de producto, fecha) — mismo criterio que la grilla
+  // (ver grupos.ts): un concepto = una fila, con todas sus variantes.
   type DayAgg = {
     contado: boolean
     conteo: number
@@ -149,8 +150,7 @@ export async function getDiferenciasMes(month: string): Promise<DiferenciasMes> 
   const porDia = new Map<string, DayAgg>()
   for (const r of rows) {
     const p = r.productos
-    const isMenu = p.formato === 'menu'
-    const gkey = p.concepto_id && !isMenu ? `c:${p.concepto_id}` : `p:${r.producto_id}`
+    const gkey = grupoKey(r.producto_id, p)
     const key = `${gkey}|${r.dias_operativos.fecha}`
     const cur = porDia.get(key) ?? {
       contado: false,
@@ -169,7 +169,7 @@ export async function getDiferenciasMes(month: string): Promise<DiferenciasMes> 
       (Number(r.ventas) || 0) -
       (Number(r.desperdicio) || 0) -
       (Number(r.almuerzo) || 0)
-    if (p.canal === null && !isMenu) {
+    if (esVarianteBase(p)) {
       cur.baseId = r.producto_id
       cur.baseName = p.name
     }

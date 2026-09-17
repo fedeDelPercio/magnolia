@@ -7,6 +7,9 @@ import type { MovimientoConProducto } from '../queries'
 type Props = {
   mov: MovimientoConProducto
   readonly: boolean
+  // Oculta por el buscador. Se esconde con CSS en vez de desmontar: la fila
+  // guarda su estado local (y un guardado pendiente) que se perdería.
+  hidden?: boolean
 }
 
 type LocalState = {
@@ -30,7 +33,7 @@ function DiferenciaCell({ diferencia }: { diferencia: number }) {
   return <span className="tabular-nums text-red-600">{rounded}</span>
 }
 
-export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Props) {
+export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden = false }: Props) {
   const [local, setLocal] = useState<LocalState>({
     stock_anterior: mov.stock_anterior,
     produccion: mov.produccion,
@@ -83,7 +86,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly }: Prop
     'w-16 rounded border border-input bg-background px-1.5 py-1 text-right tabular-nums text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:bg-muted disabled:text-muted-foreground'
 
   return (
-    <tr className={saving ? 'opacity-70' : ''}>
+    <tr hidden={hidden} className={saving ? 'opacity-70' : ''}>
       <td className="py-2 pl-4 pr-2 font-medium text-sm">
         {mov.productos.name}
         {saving && <span className="ml-1 text-xs text-muted-foreground">·</span>}
