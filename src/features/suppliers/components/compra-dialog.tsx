@@ -700,8 +700,15 @@ export function CompraDialog({
               const qtyBase = qtyInput * factor
               const newUnitPrice = total / qtyBase
               const baseLabel = UNIT_LABELS[selectedInsumo.unit]
+              // El último precio guardado es BRUTO (con el descuento e IVA de
+              // la compra en que se cargó). Lo tipeado acá es neto de factura:
+              // para comparar peras con peras le aplicamos el descuento e IVA
+              // de ESTA compra (la línea nueva usa el IVA global). Si no, un
+              // proveedor con 40% de descuento mostraba un +67% falso.
+              const brutoMul = (1 - descuentoPct / 100) * (1 + ivaRate / 100)
+              const newBrutoPrice = newUnitPrice * brutoMul
               const prevPrice = selectedInsumo.current_price
-              const changePct = prevPrice > 0 ? ((newUnitPrice - prevPrice) / prevPrice) * 100 : null
+              const changePct = prevPrice > 0 ? ((newBrutoPrice - prevPrice) / prevPrice) * 100 : null
               const isLarge = changePct !== null && changePct >= 20
               const hasPresentation = factor !== 1
               const hasDespiece = selectedDespiece.length > 0
@@ -722,6 +729,9 @@ export function CompraDialog({
                       <>= {qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {baseLabel} · </>
                     )}
                     {formatCurrency(newUnitPrice)} / {baseLabel}
+                    {brutoMul !== 1 && (
+                      <span className="text-foreground/70"> · {formatCurrency(newBrutoPrice)} c/desc. e IVA</span>
+                    )}
                   </span>
                   {changePct !== null && prevPrice > 0 && (
                     <span className={`flex items-center gap-1 tabular-nums ${isLarge ? 'font-semibold text-red-600' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
