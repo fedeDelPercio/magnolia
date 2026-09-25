@@ -737,7 +737,7 @@ export function CompraDialog({
                     <span className={`flex items-center gap-1 tabular-nums ${isLarge ? 'font-semibold text-red-600' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
                       {isLarge && <AlertTriangleIcon className="size-3" />}
                       {changePct > 0 ? <TrendingUpIcon className="size-3" /> : <TrendingDownIcon className="size-3" />}
-                      Último: {formatCurrency(prevPrice)} · {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                      Último c/desc. e IVA: {formatCurrency(prevPrice)} · {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
                     </span>
                   )}
                 </div>
