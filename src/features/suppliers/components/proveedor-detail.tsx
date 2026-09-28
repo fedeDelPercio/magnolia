@@ -391,8 +391,9 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
           </div>
           <div className="px-6 py-4">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Saldo deudor</p>
-            <p className={`mt-1.5 tabular-nums text-lg font-semibold ${proveedor.saldo > 0 ? 'text-red-600' : 'text-foreground'}`}>
-              {formatCurrency(proveedor.saldo)}
+            {/* Saldo negativo = a favor nuestro: se muestra el monto tal cual. */}
+            <p className={`mt-1.5 tabular-nums text-lg font-semibold ${proveedor.saldo > 0 ? 'text-red-600' : proveedor.saldo === 0 ? 'text-green-700' : 'text-foreground'}`}>
+              {proveedor.saldo === 0 ? 'Al día' : formatCurrency(proveedor.saldo)}
             </p>
           </div>
         </div>

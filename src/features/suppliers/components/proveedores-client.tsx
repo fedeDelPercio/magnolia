@@ -203,14 +203,22 @@ export function ProveedoresClient({ proveedores }: Props) {
                     <div>
                       <p
                         className={cn(
-                          'num-editorial text-xl leading-none tabular-nums',
-                          tieneSaldo ? 'text-rose-700' : 'text-muted-foreground',
+                          'text-xl leading-none',
+                          // "Al día" es texto: sin la tipografía de números, que
+                          // trae el espaciado apretado y pega las palabras.
+                          tieneSaldo
+                            ? 'num-editorial tabular-nums text-rose-700'
+                            : 'font-medium text-emerald-700',
                         )}
                       >
-                        {tieneSaldo ? formatCurrency(deuda) : '$0'}
+                        {tieneSaldo ? formatCurrency(deuda) : 'Al día'}
                       </p>
                       <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {p.tipo === 'servicio' ? 'pendiente de pago' : 'saldo deudor'}
+                        {!tieneSaldo
+                          ? 'sin deuda'
+                          : p.tipo === 'servicio'
+                            ? 'pendiente de pago'
+                            : 'saldo deudor'}
                       </p>
                     </div>
                     {!p.active && (
