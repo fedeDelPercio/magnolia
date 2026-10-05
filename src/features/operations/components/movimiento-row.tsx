@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useRef, useCallback, memo } from 'react'
+import { useState, useRef, memo } from 'react'
+import { toast } from 'sonner'
 import { saveMovimiento } from '../actions'
+import { quitarPendiente, registrarPendiente } from '../guardados-pendientes'
 import type { MovimientoConProducto } from '../queries'
 
 type Props = {
@@ -29,7 +31,9 @@ function numInput(v: number | null | undefined): string {
   return v === 0 ? '' : String(v)
 }
 
-function DiferenciaCell({ diferencia }: { diferencia: number }) {
+// Sin conteo no hay diferencia que mostrar (al cerrar el día también queda vacía).
+function DiferenciaCell({ diferencia }: { diferencia: number | null }) {
+  if (diferencia === null) return <span className="text-muted-foreground">—</span>
   const rounded = Math.round(diferencia)
   if (rounded === 0) return <span className="tabular-nums text-green-700">0</span>
   if (rounded > 0) return <span className="tabular-nums text-blue-700">+{rounded}</span>
@@ -51,7 +55,11 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
   // entera, una pestaña abierta desde antes pisaría con valores viejos lo que
   // cambió mientras tanto (una reasignación de ventas, el sync de Bistro) y un
   // conteo vacío se grabaría como 0.
+  // Se vacía cuando el guardado sale bien: los campos ya guardados no se vuelven
+  // a mandar con valores viejos si después se edita otra columna.
   const dirtyRef = useRef<Set<Campo>>(new Set())
+  // Último estado tipeado, todavía sin guardar.
+  const pendingRef = useRef<LocalState | null>(null)
   // Una vez que el usuario edita el stock anterior, queda "manual" para este día
   // y el arrastre automático deja de pisarlo.
   const stockManualRef = useRef(mov.stock_anterior_manual)
@@ -59,33 +67,48 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
   const stockTeorico =
     local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
 
-  const diferencia = (local.conteo_fisico ?? 0) - stockTeorico
+  const diferencia = local.conteo_fisico === null ? null : local.conteo_fisico - stockTeorico
 
-  const schedulesSave = useCallback(
-    (updated: LocalState) => {
-      clearTimeout(timer.current)
-      timer.current = setTimeout(async () => {
-        const dirty = dirtyRef.current
-        const payload: Parameters<typeof saveMovimiento>[1] = {}
-        if (dirty.has('stock_anterior')) {
-          payload.stock_anterior = updated.stock_anterior
-          payload.stock_anterior_manual = stockManualRef.current
-        }
-        if (dirty.has('produccion')) payload.produccion = updated.produccion
-        if (dirty.has('ventas')) payload.ventas = updated.ventas
-        if (dirty.has('desperdicio')) payload.desperdicio = updated.desperdicio
-        if (dirty.has('almuerzo')) payload.almuerzo = updated.almuerzo
-        if (dirty.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
-        if (Object.keys(payload).length === 0) return
-        setSaving(true)
-        await saveMovimiento(mov.id, payload)
-        setSaving(false)
-      }, 700)
-    },
-    [mov.id],
-  )
+  async function guardar() {
+    clearTimeout(timer.current)
+    quitarPendiente(mov.id)
+    const updated = pendingRef.current
+    pendingRef.current = null
+    if (!updated) return
+    const campos = new Set(dirtyRef.current)
+    dirtyRef.current.clear()
+    const payload: Parameters<typeof saveMovimiento>[1] = {}
+    if (campos.has('stock_anterior')) {
+      payload.stock_anterior = updated.stock_anterior
+      payload.stock_anterior_manual = stockManualRef.current
+    }
+    if (campos.has('produccion')) payload.produccion = updated.produccion
+    if (campos.has('ventas')) payload.ventas = updated.ventas
+    if (campos.has('desperdicio')) payload.desperdicio = updated.desperdicio
+    if (campos.has('almuerzo')) payload.almuerzo = updated.almuerzo
+    if (campos.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
+    if (Object.keys(payload).length === 0) return
+    setSaving(true)
+    const res = await saveMovimiento(mov.id, payload)
+    setSaving(false)
+    if (res.error) {
+      // Quedan pendientes para el próximo guardado.
+      for (const c of campos) dirtyRef.current.add(c)
+      toast.error(`No se guardó ${mov.productos.name}: ${res.error}`)
+    }
+  }
+
+  function schedulesSave(updated: LocalState) {
+    pendingRef.current = updated
+    clearTimeout(timer.current)
+    registrarPendiente(mov.id, guardar)
+    timer.current = setTimeout(() => void guardar(), 700)
+  }
 
   function handleChange(field: Campo, raw: string) {
+    // Las cantidades no pueden ser negativas: un "-" tipeado se ignora (antes
+    // se guardaba como 0, que en el conteo es "contado 0").
+    if (raw.trim().startsWith('-')) return
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
     const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
     // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
@@ -144,7 +167,8 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
                       ? local.conteo_fisico === null ? '' : String(local.conteo_fisico)
                       : numInput(local[field])
                   }
-                  placeholder="0"
+                  // Conteo vacío = no se contó: se ve "—", distinto de un 0 contado.
+                  placeholder={field === 'conteo_fisico' ? '—' : '0'}
                   onChange={(e) => handleChange(field, e.target.value)}
                   title={
                     field === 'ventas'

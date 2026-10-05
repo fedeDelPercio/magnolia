@@ -46,6 +46,18 @@ export async function saveMovimiento(
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
 
+  // Un día cerrado no se edita (una pestaña vieja o un guardado demorado podía
+  // escribir igual y disparar el arrastre). Para corregirlo, se reabre.
+  const { data: fila } = await supabase
+    .from('movimientos_diarios')
+    .select('dias_operativos(status)')
+    .eq('id', id)
+    .maybeSingle()
+  const status = (fila as unknown as { dias_operativos: { status: string } | null } | null)?.dias_operativos?.status
+  if (status === 'cerrado') {
+    return { error: 'el día está cerrado (reabrilo para editarlo). Recargá la página.' }
+  }
+
   const { error } = await supabase
     .from('movimientos_diarios')
     .update(fields)

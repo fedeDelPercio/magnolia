@@ -50,14 +50,18 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
 
   useEffect(() => {
     let cancelado = false
-    getVentasDelDia(diaId).then((r) => {
-      if (cancelado) return
-      if (r.error || !r.data) {
-        setErrorCarga(r.error ?? 'No se pudieron leer las ventas del día')
-        return
-      }
-      setVentasFrescas(new Map(r.data.map((m) => [m.id, m.ventas])))
-    })
+    getVentasDelDia(diaId)
+      .then((r) => {
+        if (cancelado) return
+        if (r.error || !r.data) {
+          setErrorCarga('No se pudieron leer las ventas del día. Cerrá y probá de nuevo.')
+          return
+        }
+        setVentasFrescas(new Map(r.data.map((m) => [m.id, m.ventas])))
+      })
+      .catch(() => {
+        if (!cancelado) setErrorCarga('Sin conexión: no se pudieron leer las ventas del día. Cerrá y probá de nuevo.')
+      })
     return () => {
       cancelado = true
     }
@@ -116,6 +120,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
   }
 
   const cargando = ventasFrescas === null && !errorCarga
+  const sinDatos = ventasFrescas === null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -205,7 +210,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || cargando || !desde || !hacia || !cantidadValida}
+            disabled={saving || sinDatos || !desde || !hacia || !cantidadValida}
           >
             {saving ? 'Guardando...' : 'Reasignar'}
           </Button>

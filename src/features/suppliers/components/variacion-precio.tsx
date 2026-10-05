@@ -52,6 +52,7 @@ export function VariacionPrecio({
       {(subaFuerte || bajaFuerte) && <AlertTriangleIcon className="size-3" />}
       <Icono className="size-3" />
       Último c/desc. e IVA: {formatCurrency(anterior)} · {neutro ? '0.0' : `${suba ? '+' : ''}${pct.toFixed(1)}`}%
+      {bajaFuerte && <span className="font-normal"> · revisá cantidad y unidad</span>}
     </span>
   )
 }

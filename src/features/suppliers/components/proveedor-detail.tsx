@@ -355,15 +355,22 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
   // vencimiento = 0-30).
   const aging = useMemo(() => {
     const tramos = { d0_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 }
+    // "Sueltos" = plata pagada que no está cubriendo ninguna compra: pagos sin
+    // compra + lo pagado de más en cada compra (pagos duplicados, redondeos).
     let sueltos = pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0)
+    for (const c of compras) {
+      sueltos += Math.max(0, (pagadoPorCompra.get(c.id) ?? 0) - Number(c.total))
+    }
     const hoy = hoyISO()
     const diasDesde = (iso: string) => {
       const [y1, m1, d1] = iso.split('-').map(Number)
       const [y2, m2, d2] = hoy.split('-').map(Number)
       return Math.round((Date.UTC(y2!, m2! - 1, d2!) - Date.UTC(y1!, m1! - 1, d1!)) / 86400000)
     }
+    // Por lo que falta pagar, no por el estado (una compra editada puede
+    // figurar "pagada" con faltante).
     const impagas = compras
-      .filter((c) => c.status !== 'pagada')
+      .filter((c) => Number(c.total) - (pagadoPorCompra.get(c.id) ?? 0) > 0.009)
       .sort((a, b) => a.fecha.localeCompare(b.fecha))
     for (const c of impagas) {
       let falta = Math.max(0, Number(c.total) - (pagadoPorCompra.get(c.id) ?? 0))
@@ -384,6 +391,11 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
   const hasAging = aging.d31_60 > 0 || aging.d61_90 > 0 || aging.d90plus > 0
   // Saldo a favor: se pagó más de lo comprado (la vista lo muestra como 0).
   const saldoAFavor = Math.max(0, Number(proveedor.total_pagado) - Number(proveedor.total_compras))
+  // Plata pagada que no cubre ninguna compra (pagos sin compra + lo pagado de
+  // más en alguna): al saldar una compra se avisa, puede estar ya pagada con eso.
+  const plataSinCompra =
+    pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0) +
+    compras.reduce((s, c) => s + Math.max(0, (pagadoPorCompra.get(c.id) ?? 0) - Number(c.total)), 0)
   const compraPorId = new Map(compras.map((c) => [c.id, c]))
 
   // Filtros de tiempo aplican a compras y al historial de precios derivado.
@@ -938,6 +950,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
         defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
         pago={editingPago}
+        saldoAFavor={plataSinCompra}
         compraLabel={(() => {
           const id = editingPago?.compra_id ?? pagoCompraId
           const compra = id ? compraPorId.get(id) : undefined

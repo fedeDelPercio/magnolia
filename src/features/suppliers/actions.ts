@@ -528,7 +528,9 @@ async function recalcularEstadoCompra(
 }
 
 // Lo que falta pagar de una compra, sin contar el pago que se está editando.
-// Devuelve error si `monto` se pasa de eso (con un margen de centavos).
+// Devuelve error si `monto` se pasa de eso. Se tolera un redondeo chico
+// (hasta $100 o el 0,5 %, lo que sea mayor: pagar $274.700 una compra de
+// $274.669,49 es normal); un pago duplicado (100 % de más) no pasa.
 async function chequearTopeCompra(
   supabase: Awaited<ReturnType<typeof createClient>>,
   compraId: string,
@@ -544,15 +546,19 @@ async function chequearTopeCompra(
     .filter((p) => p.id !== excluirPagoId)
     .reduce((s, p) => s + Number(p.monto), 0)
   const falta = Math.round((Number(compra.total) - pagado) * 100) / 100
+  const tolerancia = Math.max(100, falta * 0.005)
   if (falta <= 0.01) {
     return {
-      error:
-        'Esta compra ya está pagada. Si es otro pago al proveedor, registralo con "Registrar pago" (sin compra); si se cargó dos veces, anulá el que sobra.',
+      error: excluirPagoId
+        ? 'Con este monto la compra quedaría pagada de más (los otros pagos ya la cubren). Si se cargó dos veces, anulá el que sobra.'
+        : 'Esta compra ya está pagada. Si es otro pago al proveedor, registralo con "Registrar pago" (sin compra); si se cargó dos veces, anulá el que sobra.',
     }
   }
-  if (monto > falta + 0.01) {
+  if (monto > falta + tolerancia) {
     return {
-      error: `El pago (${formatCurrency(monto)}) es mayor a lo que falta pagar de esta compra (${formatCurrency(falta)}).`,
+      error: excluirPagoId
+        ? `Este pago no puede superar ${formatCurrency(falta)}, lo que falta pagar de la compra (${formatCurrency(Number(compra.total))}). Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`
+        : `El pago (${formatCurrency(monto)}) es mayor a lo que falta pagar de esta compra (${formatCurrency(falta)}). Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`,
     }
   }
   return {}
@@ -576,7 +582,7 @@ export async function updatePago(
   if (prevErr) return { error: prevErr.message }
   if (!previo) return { error: 'Este pago ya no existe (quizás lo anuló otra persona). Recargá la página.' }
 
-  if (previo.compra_id) {
+  if (previo.compra_id && values.monto > Number(previo.monto) + 0.009) {
     const check = await chequearTopeCompra(supabase, previo.compra_id, values.monto, pagoId)
     if (check.error) return { error: check.error }
   }
@@ -678,11 +684,16 @@ export async function deletePago(pagoId: string): Promise<{ error?: string }> {
     .delete()
     .eq('id', pagoId)
     .select('id')
-  if (error || !borrado || borrado.length !== 1) {
+  if (error) {
+    // Falló de verdad: el egreso vuelve a estar como antes.
     if (cajaPrevia && cajaPrevia.length > 0) {
       await supabase.from('caja_movimientos').insert(cajaPrevia)
     }
     return { error: 'No se pudo anular el pago. Probá de nuevo en un momento.' }
+  }
+  if (!borrado || borrado.length === 0) {
+    // Otra persona lo anuló al mismo tiempo: ya no hay pago ni egreso.
+    return { error: 'Este pago ya no existe (quizás lo anuló otra persona). Recargá la página.' }
   }
 
   if (pago.compra_id) await recalcularEstadoCompra(supabase, pago.compra_id)
