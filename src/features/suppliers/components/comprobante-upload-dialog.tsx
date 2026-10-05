@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { CameraIcon, Loader2Icon, TrashIcon, CheckCircleIcon, AlertTriangleIcon, PencilIcon, PackageIcon } from 'lucide-react'
+import { CameraIcon, Loader2Icon, TrashIcon, CheckCircleIcon, AlertTriangleIcon, PencilIcon, PackageIcon, TrendingUpIcon, TrendingDownIcon } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -783,15 +783,35 @@ export function ComprobanteUploadDialog({
                                 </p>
                               )
                             }
+                            // Variación contra el último precio del insumo. El guardado
+                            // es BRUTO (con el descuento e IVA de la compra en que se
+                            // cargó), así que comparamos contra el bruto de esta línea:
+                            // mismo criterio que la carga manual (compra-dialog).
+                            const nuevoBruto = unitPriceBase * conIvaMul
+                            const prevPrice = Number(insumo.current_price) || 0
+                            const changePct = prevPrice > 0 ? ((nuevoBruto - prevPrice) / prevPrice) * 100 : null
+                            const isLarge = changePct !== null && changePct >= 20
                             return (
-                              <p className="col-span-12 text-[10px] text-muted-foreground">
-                                = {qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {baseLabel} · {formatCurrency(unitPriceBase)} / {baseLabel}
-                                {conIvaMul !== 1 && (
-                                  <span className="text-foreground/70">
-                                    {' '}· {formatCurrency(unitPriceBase * conIvaMul)} / {baseLabel} c/IVA
+                              <div className="col-span-12 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px]">
+                                <p className="text-muted-foreground">
+                                  = {qtyBase.toLocaleString('es-AR', { maximumFractionDigits: 3 })} {baseLabel} · {formatCurrency(unitPriceBase)} / {baseLabel}
+                                  {conIvaMul !== 1 && (
+                                    <span className="text-foreground/70">
+                                      {' '}· {formatCurrency(nuevoBruto)} / {baseLabel} {descuentoPct > 0 ? 'c/desc. e IVA' : 'c/IVA'}
+                                    </span>
+                                  )}
+                                </p>
+                                {changePct !== null && (
+                                  <span
+                                    className={`flex items-center gap-1 tabular-nums ${isLarge ? 'font-semibold text-red-600' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}
+                                    title="Último precio pagado por este insumo, con el descuento e IVA de esa compra"
+                                  >
+                                    {isLarge && <AlertTriangleIcon className="size-3" />}
+                                    {changePct > 0 ? <TrendingUpIcon className="size-3" /> : <TrendingDownIcon className="size-3" />}
+                                    Último c/desc. e IVA: {formatCurrency(prevPrice)} · {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
                                   </span>
                                 )}
-                              </p>
+                              </div>
                             )
                           })()}
                         </div>

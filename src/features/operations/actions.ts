@@ -97,3 +97,75 @@ export async function reabrirDia(diaId: string): Promise<{ error?: string }> {
   revalidatePath(`/operacion/${diaId}`)
   return {}
 }
+
+// Mueve unidades vendidas de un producto a otro dentro del mismo día. Caso
+// típico: en el POS se cobró como "Genérico" algo que era una empanada. Las
+// dos filas guardan el cambio como ajuste manual sobre lo que trajo Bistro
+// (ventas vs ventas_bistro), así que el sync lo conserva en cada corrida.
+// Solo en días abiertos: un día cerrado se reabre primero, como cualquier
+// otra edición.
+export async function reasignarVentas(input: {
+  diaId: string
+  desdeMovId: string
+  haciaMovId: string
+  cantidad: number
+}): Promise<{ error?: string }> {
+  const { diaId, desdeMovId, haciaMovId } = input
+  const cantidad = Number(input.cantidad)
+  if (!Number.isInteger(cantidad) || cantidad <= 0) {
+    return { error: 'La cantidad tiene que ser un número entero mayor a 0' }
+  }
+  if (desdeMovId === haciaMovId) return { error: 'Elegí un producto distinto al de origen' }
+
+  const supabase = await createClient()
+
+  const { data: dia } = await supabase
+    .from('dias_operativos')
+    .select('id, status')
+    .eq('id', diaId)
+    .maybeSingle()
+  if (!dia) return { error: 'Día no encontrado' }
+  if (dia.status !== 'abierto') return { error: 'El día está cerrado. Reabrilo para reasignar ventas.' }
+
+  const { data: filas, error: filasErr } = await supabase
+    .from('movimientos_diarios')
+    .select('id, dia_id, ventas')
+    .in('id', [desdeMovId, haciaMovId])
+  if (filasErr) return { error: filasErr.message }
+  const desde = filas?.find((f) => f.id === desdeMovId)
+  const hacia = filas?.find((f) => f.id === haciaMovId)
+  if (!desde || !hacia || desde.dia_id !== diaId || hacia.dia_id !== diaId) {
+    return { error: 'Los productos no corresponden a este día' }
+  }
+  const ventasDesde = Number(desde.ventas) || 0
+  if (cantidad > ventasDesde) {
+    return { error: `Solo hay ${ventasDesde} venta${ventasDesde === 1 ? '' : 's'} para reasignar` }
+  }
+
+  // Sin transacciones desde el cliente: primero restamos en el origen y, si
+  // sumar en el destino falla, devolvemos el origen a como estaba.
+  // El .eq('ventas') es un control de concurrencia: si alguien editó la fila
+  // entre la lectura y acá, no se toca nada.
+  const { data: restada, error: e1 } = await supabase
+    .from('movimientos_diarios')
+    .update({ ventas: ventasDesde - cantidad })
+    .eq('id', desdeMovId)
+    .eq('ventas', desde.ventas)
+    .select('id')
+  if (e1) return { error: e1.message }
+  if (!restada || restada.length !== 1) {
+    return { error: 'Las ventas cambiaron mientras tanto. Recargá la página y probá de nuevo.' }
+  }
+
+  const { error: e2 } = await supabase
+    .from('movimientos_diarios')
+    .update({ ventas: (Number(hacia.ventas) || 0) + cantidad })
+    .eq('id', haciaMovId)
+  if (e2) {
+    await supabase.from('movimientos_diarios').update({ ventas: desde.ventas }).eq('id', desdeMovId)
+    return { error: e2.message }
+  }
+
+  revalidatePath(`/operacion/${diaId}`)
+  return {}
+}

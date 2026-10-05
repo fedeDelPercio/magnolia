@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon, RotateCcwIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon } from 'lucide-react'
+import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon, RotateCcwIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon, ArrowRightLeftIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,7 @@ import { formatCurrency } from '@/lib/format'
 import { cerrarDia, reabrirDia, traerStockDiaAnterior } from '../actions'
 import { MovimientoRow } from './movimiento-row'
 import { MovimientoGroupRow } from './movimiento-group-row'
+import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
@@ -123,6 +124,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   const [loading, setLoading] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [selectedCierre, setSelectedCierre] = useState<CierreCajaWithProductos | null>(null)
+  const [reasignarOpen, setReasignarOpen] = useState(false)
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
@@ -226,6 +228,15 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
         <div className="flex gap-2">
           {dia.status === 'abierto' ? (
             <>
+              <Button
+                variant="outline"
+                onClick={() => setReasignarOpen(true)}
+                disabled={loading}
+                title="Pasar ventas cargadas en un producto equivocado (ej. Genérico) al correcto"
+              >
+                <ArrowRightLeftIcon className="size-4" />
+                Reasignar ventas
+              </Button>
               <Button variant="outline" onClick={handleTraerStock} disabled={loading}>
                 <RotateCcwIcon className="size-4" />
                 Traer stock anterior
@@ -346,6 +357,15 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
         <p className="text-center text-xs text-muted-foreground">
           Los cambios se guardan automáticamente.
         </p>
+      )}
+
+      {reasignarOpen && (
+        <ReasignarVentasDialog
+          open={reasignarOpen}
+          onOpenChange={setReasignarOpen}
+          diaId={dia.id}
+          movimientos={dia.movimientos_diarios}
+        />
       )}
 
       <ImportCierreDialog
