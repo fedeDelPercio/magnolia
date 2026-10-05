@@ -4,8 +4,8 @@ import { act, renderHook } from '@testing-library/react'
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 import { toast } from 'sonner'
-import { useGuardadoFila, EVENTO_GUARDADO_IMPOSIBLE, type ResultadoEnvio } from './use-guardado-fila'
-import { guardarPendientes, hayPendientes } from './guardados-pendientes'
+import { useGuardadoFila, EVENTO_GUARDADO_IMPOSIBLE, type DetalleGuardadoImposible, type ResultadoEnvio } from './use-guardado-fila'
+import { guardarPendientes, hayPendientes, reintentarFallidas } from './guardados-pendientes'
 
 type S = { conteo: number | null; produccion: number }
 
@@ -126,8 +126,8 @@ describe('useGuardadoFila', () => {
   it('un error permanente (día cerrado) pide recargar la pantalla, aunque se haya seguido editando, y no frena otros días', async () => {
     const base = crearBase({ conteo: null, produccion: 10 })
     const { result, unmount } = montar(base, 'dia-cerrado')
-    const eventos: string[] = []
-    const escuchar = (e: Event) => eventos.push((e as CustomEvent<string>).detail)
+    const eventos: DetalleGuardadoImposible[] = []
+    const escuchar = (e: Event) => eventos.push((e as CustomEvent<DetalleGuardadoImposible>).detail)
     window.addEventListener(EVENTO_GUARDADO_IMPOSIBLE, escuchar)
     act(() => result.current.cambiar('conteo', 3))
     await act(async () => { vi.advanceTimersByTime(700) })
@@ -139,7 +139,9 @@ describe('useGuardadoFila', () => {
     // La pantalla del día recibe el aviso para recargarse (no quedan valores
     // a la vista que la base no tiene).
     expect(eventos).toHaveLength(1)
-    expect(eventos[0]).toContain('día ya está cerrado')
+    expect(eventos[0]!.msg).toContain('día ya está cerrado')
+    // Lleva el día: solo la pantalla de ese día se recarga.
+    expect(eventos[0]!.diaId).toBe('dia-cerrado')
     expect(hayPendientes('dia-cerrado')).toBe(false)
     unmount()
     let fallidos: string[] = ['x']
@@ -168,7 +170,56 @@ describe('useGuardadoFila', () => {
     await act(async () => base.envios.at(-1)!.fallar())
     await flushMicrotasks()
     expect(vi.mocked(toast.error)).toHaveBeenCalled()
-    expect(String(vi.mocked(toast.error).mock.calls.at(-1)![0])).toContain('No se guardó Empanada')
+    const aviso = String(vi.mocked(toast.error).mock.calls.at(-1)![0])
+    expect(aviso).toContain('No se guardó Empanada')
+    // Nadie lo va a reintentar: el aviso no promete reintentos.
+    expect(aviso).toContain('Volvé a ese día y cargalo de nuevo')
+    expect(aviso).not.toContain('se reintenta')
+  })
+
+  it('al desmontarse, un rechazo por día cerrado avisa y no recarga otra pantalla', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const { result, unmount } = montar(base, 'dia-cerrado-al-salir')
+    const eventos: unknown[] = []
+    const escuchar = (e: Event) => eventos.push((e as CustomEvent).detail)
+    window.addEventListener(EVENTO_GUARDADO_IMPOSIBLE, escuchar)
+    act(() => result.current.cambiar('conteo', 3))
+    vi.mocked(toast.error).mockClear()
+    unmount()
+    await flushMicrotasks()
+    await act(async () => base.envios.at(-1)!.resolver({ error: 'el día ya está cerrado', permanente: true }))
+    await flushMicrotasks()
+    window.removeEventListener(EVENTO_GUARDADO_IMPOSIBLE, escuchar)
+    expect(eventos).toHaveLength(0)
+    expect(String(vi.mocked(toast.error).mock.calls.at(-1)![0])).toContain('día ya está cerrado')
+  })
+
+  it('el reintento automático solo reenvía lo que falló, no lo que se está tipeando', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const a = renderHook(() =>
+      useGuardadoFila<S>({ filaId: 'fa', diaId: 'dia-r', nombre: 'A', inicial: { conteo: null, produccion: 10 }, enviar: base.enviar }),
+    )
+    const b = renderHook(() =>
+      useGuardadoFila<S>({ filaId: 'fb', diaId: 'dia-r', nombre: 'B', inicial: { conteo: null, produccion: 10 }, enviar: base.enviar }),
+    )
+    // A falla.
+    act(() => a.result.current.cambiar('conteo', 5))
+    await act(async () => { vi.advanceTimersByTime(700) })
+    await act(async () => base.envios[0]!.fallar())
+    await flushMicrotasks()
+    // B se está tipeando (todavía en el debounce).
+    act(() => b.result.current.cambiar('conteo', 1))
+    const antes = base.envios.length
+    await act(async () => { void reintentarFallidas('dia-r') })
+    await flushMicrotasks()
+    // Solo salió A; B espera su debounce (no se manda un "1" a medio tipear).
+    expect(base.envios.length).toBe(antes + 1)
+    expect(base.envios.at(-1)!.payload).toEqual({ conteo: 5 })
+    await act(async () => base.envios.at(-1)!.resolver({}))
+    await flushMicrotasks()
+    expect(a.result.current.sinGuardar).toBe(false)
+    a.unmount()
+    b.unmount()
   })
 
   it('un guardado que no responde se corta por tiempo y queda pendiente', async () => {

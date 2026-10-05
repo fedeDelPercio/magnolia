@@ -12,6 +12,8 @@ type Fila = {
   guardar: () => Promise<boolean>
   // Hay algo tipeado que todavía no confirmó la base (o un guardado en curso).
   pendiente: () => boolean
+  // El último intento de guardar falló (y sigue pendiente).
+  fallida: () => boolean
 }
 
 const porDia = new Map<string, Map<string, Fila>>()
@@ -69,6 +71,12 @@ export async function esperarGuardadosAlSalir(maxMs = 25000): Promise<void> {
     }),
   ])
   clearTimeout(t)
+}
+
+/** Reintenta solo las filas cuyo guardado falló (no corta lo que se está tipeando). */
+export async function reintentarFallidas(diaId: string): Promise<void> {
+  const filas = [...(porDia.get(diaId)?.values() ?? [])].filter((f) => f.fallida())
+  await Promise.allSettled(filas.map((f) => f.guardar()))
 }
 
 export function hayPendientes(diaId: string): boolean {

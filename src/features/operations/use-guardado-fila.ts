@@ -29,6 +29,8 @@ export type ResultadoEnvio = {
 type Opciones<S> = {
   filaId: string
   diaId: string
+  // Para el aviso cuando un guardado falla después de salir del día.
+  diaFecha?: string
   nombre: string
   inicial: S
   enviar: (estado: S, campos: ReadonlySet<keyof S>) => Promise<ResultadoEnvio>
@@ -40,10 +42,11 @@ const DEBOUNCE_MS = 700
 const TIMEOUT_MS = 20000
 
 // Un guardado no se va a poder hacer nunca (día cerrado en otra pestaña): la
-// pantalla del día lo escucha para refrescarse.
+// pantalla de ESE día lo escucha para recargarse.
 export const EVENTO_GUARDADO_IMPOSIBLE = 'magnolia:guardado-imposible'
+export type DetalleGuardadoImposible = { diaId: string; msg: string }
 
-export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inicial, enviar }: Opciones<S>) {
+export function useGuardadoFila<S extends object>({ filaId, diaId, diaFecha = '', nombre, inicial, enviar }: Opciones<S>) {
   const [local, setLocal] = useState<S>(inicial)
   const [saving, setSaving] = useState(false)
   const [sinGuardar, setSinGuardar] = useState(false)
@@ -51,15 +54,22 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
   const latestRef = useRef<S>(inicial)
   const dirtyRef = useRef<Set<keyof S>>(new Set())
   const enVueloRef = useRef<Promise<void> | null>(null)
+  const fallidaRef = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const enviarRef = useRef(enviar)
   const nombreRef = useRef(nombre)
+  const diaIdRef = useRef(diaId)
+  const diaFechaRef = useRef(diaFecha)
   useEffect(() => {
     enviarRef.current = enviar
     nombreRef.current = nombre
+    diaIdRef.current = diaId
+    diaFechaRef.current = diaFecha
   })
 
-  const guardar = useCallback(async (avisar: boolean): Promise<boolean> => {
+  // alSalir: la fila ya no está en pantalla (se salió del día). Nadie la va a
+  // reintentar, así que el aviso dice que hay que volver a cargarlo.
+  const guardar = useCallback(async (avisar: boolean, alSalir = false): Promise<boolean> => {
     clearTimeout(timer.current)
     // Hasta 3 vueltas: si mientras se guardaba se tipeó algo más, se manda eso.
     for (let vuelta = 0; vuelta < 3; vuelta++) {
@@ -94,18 +104,27 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
 
       if (res.error) {
         setSinGuardar(true)
+        if (alSalir) {
+          const dia = diaFechaRef.current ? ` del ${diaFechaRef.current}` : ''
+          toast.error(
+            `No se guardó ${nombreRef.current}${dia} (${res.error}). Volvé a ese día y cargalo de nuevo.`,
+            { duration: 15000 },
+          )
+          return false
+        }
         if (res.permanente) {
           // No se va a poder guardar (día cerrado): la pantalla del día se
           // recarga para mostrar lo que de verdad hay en la base, en vez de
           // dejar a la vista valores que no se guardaron.
           dirtyRef.current.clear()
           window.dispatchEvent(
-            new CustomEvent(EVENTO_GUARDADO_IMPOSIBLE, {
-              detail: `No se guardó ${nombreRef.current}: ${res.error}`,
+            new CustomEvent<DetalleGuardadoImposible>(EVENTO_GUARDADO_IMPOSIBLE, {
+              detail: { diaId: diaIdRef.current, msg: `No se guardó ${nombreRef.current}: ${res.error}` },
             }),
           )
           return false
         }
+        fallidaRef.current = true
         if (avisar) {
           toast.error(
             `No se guardó ${nombreRef.current} (${res.error}). Queda marcado "sin guardar" y se reintenta solo cada medio minuto y antes de cerrar el día.`,
@@ -114,6 +133,7 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
         return false
       }
       // Confirmado: deja de estar pendiente lo que no se volvió a tocar.
+      fallidaRef.current = false
       for (const c of campos) {
         if (Object.is(latestRef.current[c], enviado[c])) dirtyRef.current.delete(c)
       }
@@ -137,13 +157,14 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
       nombre: () => nombreRef.current,
       guardar: () => guardar(false),
       pendiente: () => dirtyRef.current.size > 0 || enVueloRef.current !== null,
+      fallida: () => fallidaRef.current && dirtyRef.current.size > 0,
     })
     const dirty = dirtyRef.current
     return () => {
       quitarFila(diaId, filaId)
       // Al salir de la pantalla, lo que quedaba se intenta mandar igual; si
       // falla, se avisa (la pantalla del día ya intenta frenar la salida antes).
-      if (dirty.size > 0) registrarGuardadoAlSalir(guardar(true))
+      if (dirty.size > 0) registrarGuardadoAlSalir(guardar(true, true))
     }
   }, [diaId, filaId, guardar])
 

@@ -112,4 +112,30 @@ describe('CantidadInput', () => {
     await user.type(input, '12.345')
     expect(onCambio).toHaveBeenLastCalledWith(12345)
   })
+
+  it('al salir del campo muestra el número como quedó ("2.500" -> "2500")', async () => {
+    const onCambio = vi.fn()
+    render(<Probador inicial={0} onCambio={onCambio} />)
+    const input = screen.getByLabelText('cantidad') as HTMLInputElement
+    const user = userEvent.setup()
+    await user.type(input, '2.500')
+    expect(input.value).toBe('2.500')
+    await user.tab()
+    expect(input.value).toBe('2500')
+    expect(onCambio).toHaveBeenLastCalledWith(2500)
+  })
+
+  it('pegar desde una planilla ("12" con tabulación o espacio) funciona; pegar texto no', async () => {
+    const onCambio = vi.fn()
+    render(<Probador inicial={0} onCambio={onCambio} />)
+    const input = screen.getByLabelText('cantidad') as HTMLInputElement
+    const user = userEvent.setup()
+    await user.click(input)
+    await user.paste('12\t')
+    expect(onCambio).toHaveBeenLastCalledWith(12)
+    await user.clear(input)
+    onCambio.mockClear()
+    await user.paste('hola')
+    expect(onCambio).not.toHaveBeenCalled()
+  })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon, RotateCcwIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon, ArrowRightLeftIcon } from 'lucide-react'
@@ -17,8 +17,8 @@ import { MovimientoGroupRow } from './movimiento-group-row'
 import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
 import { guardarAvisoPendiente, leerAvisoPendiente } from '../aviso-pendiente'
-import { esperarGuardadosAlSalir, guardarPendientes, hayPendientes } from '../guardados-pendientes'
-import { EVENTO_GUARDADO_IMPOSIBLE } from '../use-guardado-fila'
+import { esperarGuardadosAlSalir, guardarPendientes, hayPendientes, reintentarFallidas } from '../guardados-pendientes'
+import { EVENTO_GUARDADO_IMPOSIBLE, type DetalleGuardadoImposible } from '../use-guardado-fila'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
 import { ImportCierreDialog } from '@/features/cierres/components/import-cierre-dialog'
@@ -171,6 +171,12 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   // Un guardado rebotó porque el día ya está cerrado y la pantalla se está
   // recargando: no se muestran otros avisos (como "Revisá la conexión").
   const recargandoRef = useRef(false)
+  // Las filas toman sus valores al aparecer. Cuando la página trae datos nuevos
+  // (router.refresh después de importar un cierre, reabrir, etc.) se vuelven a
+  // armar cambiando esta generación en su key.
+  const [generacion, setGeneracion] = useState(0)
+  const diaInicialRef = useRef(dia)
+  const navegandoRef = useRef(false)
 
   // Reasignar ventas recarga la página; el aviso de éxito queda guardado para
   // mostrarlo acá, después de la recarga.
@@ -186,36 +192,102 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     return () => clearTimeout(t)
   }, [])
 
-  // La pantalla puede abrir con datos viejos:
+  // La pantalla puede mostrar datos viejos:
   // - el botón Atrás del navegador (o el del celular) reusa la versión del día
   //   que Next ya tenía, sin pedirla de nuevo;
   // - un guardado del día anterior que terminó después de abrir este puede
-  //   cambiar su stock arrastrado.
-  // Las filas toman sus valores al aparecer, así que se compara con la base y,
-  // si no coincide, se recarga (guardando antes lo tipeado acá).
+  //   cambiar su stock arrastrado;
+  // - después de un router.refresh (importar un cierre, reabrir) llegan datos
+  //   nuevos pero las filas conservan los de cuando aparecieron.
+  // Al abrir y con cada dato nuevo se guarda lo tipeado y se compara con la
+  // base: si coincide, las filas se rearman con los datos nuevos; si no, se
+  // recarga. Si no se puede comprobar (sin conexión), se reintenta solo.
   useEffect(() => {
     let vigente = true
-    void (async () => {
-      await esperarGuardadosAlSalir()
-      if (!vigente) return
-      let res: Awaited<ReturnType<typeof getEstadoDia>>
-      try {
-        res = await getEstadoDia(dia.id)
-      } catch {
-        return
-      }
-      if (!vigente || !res.data || coincideConLaBase(dia, res.data)) return
-      if (hayPendientes(dia.id) && (await guardarPendientes(dia.id)).length > 0) return
-      if (!vigente) return
-      if (!puedeRecargar(dia.id)) {
-        toast.info('Hay datos más nuevos de este día. Recargá la página para verlos.')
+    const diaId = dia.id
+    const esRefresh = dia !== diaInicialRef.current
+    let enCurso = false
+    let avisoId: string | number | undefined
+    let reintento: ReturnType<typeof setInterval> | undefined
+
+    function recargar() {
+      if (!puedeRecargar(diaId)) {
+        toast.info('Hay datos más nuevos de este día.', {
+          duration: Infinity,
+          action: { label: 'Recargar', onClick: () => window.location.reload() },
+        })
         return
       }
       guardarAvisoPendiente('La pantalla se actualizó con lo último que quedó guardado.')
       window.location.reload()
+    }
+
+    // true = terminó (al día, rearmada o recargando); false = reintentar.
+    async function verificar(): Promise<boolean> {
+      if (hayPendientes(diaId)) {
+        let fallidos: string[]
+        try {
+          fallidos = await guardarPendientes(diaId)
+        } catch {
+          fallidos = ['?']
+        }
+        if (fallidos.length > 0) return false
+      }
+      if (!vigente) return true
+      let res: Awaited<ReturnType<typeof getEstadoDia>>
+      try {
+        res = await getEstadoDia(diaId)
+      } catch {
+        return false
+      }
+      if (!vigente) return true
+      if (!res.data) return false
+      // Tope de filas de la API: no se puede comparar (hoy hay ~110 por día).
+      if (res.data.filas.length >= 1000) return true
+      if (!coincideConLaBase(dia, res.data)) {
+        recargar()
+        return true
+      }
+      if (esRefresh) {
+        // Si se tipeó mientras tanto, se vuelve a comprobar en un rato.
+        if (hayPendientes(diaId)) return false
+        setGeneracion((g) => g + 1)
+      }
+      return true
+    }
+
+    async function intentar() {
+      if (!vigente || enCurso) return
+      enCurso = true
+      const listo = await verificar().finally(() => {
+        enCurso = false
+      })
+      if (!vigente) return
+      if (listo) {
+        clearInterval(reintento)
+        window.removeEventListener('online', intentar)
+        if (avisoId !== undefined) toast.dismiss(avisoId)
+        return
+      }
+      if (reintento === undefined) {
+        avisoId = toast.warning(
+          'No se pudo comprobar que la pantalla muestre lo último guardado. Se vuelve a intentar solo; si ves algo raro, recargá.',
+          { duration: Infinity },
+        )
+        reintento = setInterval(() => void intentar(), 30000)
+        window.addEventListener('online', intentar)
+      }
+    }
+
+    void (async () => {
+      if (!esRefresh) await esperarGuardadosAlSalir()
+      await intentar()
     })()
     return () => {
       vigente = false
+      clearInterval(reintento)
+      window.removeEventListener('online', intentar)
+      if (avisoId !== undefined) toast.dismiss(avisoId)
     }
   }, [dia])
 
@@ -223,6 +295,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
 
   const readonly = dia.status === 'cerrado'
+  const diaFecha = dia.fecha.slice(8, 10) + '/' + dia.fecha.slice(5, 7)
   const groups = useMemo(
     () => sortGroups(buildMovimientoGroups(dia.movimientos_diarios), sort),
     [dia.movimientos_diarios, sort],
@@ -256,6 +329,37 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     return false
   }
 
+  // Salir del día (link interno o flecha) con algo pendiente: primero se
+  // guarda y, si no se puede, se pregunta. Un intento a la vez: los clics
+  // repetidos no apilan preguntas ni navegaciones.
+  const salirA = useCallback(
+    async (destino: string) => {
+      if (navegandoRef.current || recargandoRef.current) return
+      if (!hayPendientes(dia.id)) {
+        router.push(destino)
+        return
+      }
+      navegandoRef.current = true
+      const aviso = toast.loading('Guardando antes de salir…')
+      let fallidos: string[]
+      try {
+        fallidos = await guardarPendientes(dia.id)
+      } catch {
+        fallidos = ['algunos productos']
+      }
+      toast.dismiss(aviso)
+      navegandoRef.current = false
+      if (recargandoRef.current) return
+      if (
+        fallidos.length === 0 ||
+        window.confirm(`No se pudo guardar ${fallidos.join(', ')}. Si salís ahora se pierde. ¿Salir igual?`)
+      ) {
+        router.push(destino)
+      }
+    },
+    [dia.id, router],
+  )
+
   // Red de seguridad para lo tipeado:
   // - al ocultar la página (cambiar de app, bloquear el celular) se manda lo
   //   pendiente sin esperar el debounce;
@@ -274,42 +378,35 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     }
     let recargaProgramada = false
     function alGuardadoImposible(e: Event) {
+      const detalle = (e as CustomEvent<DetalleGuardadoImposible>).detail
+      if (detalle?.diaId !== diaId) return
       // Una sola recarga aunque varias filas reboten a la vez; el aviso se
       // muestra después de recargar.
       if (recargaProgramada) return
       recargaProgramada = true
       recargandoRef.current = true
-      const msg = (e as CustomEvent<string>).detail
       guardarAvisoPendiente(
-        `${(msg ?? 'Hay cambios que no se guardaron').replace(/\.+$/, '')}. La pantalla se actualizó para mostrar lo que quedó guardado.`,
+        `${(detalle.msg || 'Hay cambios que no se guardaron').replace(/\.+$/, '')}. La pantalla se actualizó para mostrar lo que quedó guardado.`,
         'error',
       )
       window.location.reload()
     }
-    // Reintento automático de lo que quedó "sin guardar".
-    const reintento = setInterval(() => {
-      if (hayPendientes(diaId)) void guardarPendientes(diaId)
-    }, 30000)
+    // Reintento automático de lo que quedó "sin guardar" (solo lo que falló:
+    // no corta lo que se está tipeando).
+    const reintento = setInterval(() => void reintentarFallidas(diaId), 30000)
     // Navegación dentro de la app (menú, flecha atrás, links) con algo sin
     // guardar: primero se intenta guardar y, si no se puede, se pregunta.
     function alHacerClic(e: MouseEvent) {
-      if (!hayPendientes(diaId)) return
+      if (!navegandoRef.current && !hayPendientes(diaId)) return
       const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null
-      if (!a || a.target === '_blank' || e.ctrlKey || e.metaKey || e.shiftKey) return
+      if (!a || a.target === '_blank' || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return
       const destino = new URL(a.href, window.location.href)
       if (destino.origin !== window.location.origin || destino.pathname === window.location.pathname) return
+      // Sin stopPropagation: el onClick del link (cerrar un menú, por ejemplo)
+      // corre igual, y <Link> de Next no navega si el evento ya tiene
+      // preventDefault.
       e.preventDefault()
-      e.stopPropagation()
-      void guardarPendientes(diaId).then((fallidos) => {
-        if (
-          fallidos.length === 0 ||
-          window.confirm(
-            `No se pudo guardar ${fallidos.join(', ')}. Si salís ahora se pierde. ¿Salir igual?`,
-          )
-        ) {
-          router.push(destino.pathname + destino.search)
-        }
-      })
+      void salirA(destino.pathname + destino.search + destino.hash)
     }
     function alVolverConexion() {
       void guardarPendientes(diaId).then((fallidos) => {
@@ -319,7 +416,8 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       })
     }
     function antesDeSalir(e: BeforeUnloadEvent) {
-      if (!hayPendientes(diaId)) return
+      // Recarga porque el día ya está cerrado: lo pendiente no se puede guardar.
+      if (recargandoRef.current || !hayPendientes(diaId)) return
       void guardarPendientes(diaId)
       e.preventDefault()
       e.returnValue = ''
@@ -339,21 +437,12 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       window.removeEventListener('beforeunload', antesDeSalir)
       window.removeEventListener(EVENTO_GUARDADO_IMPOSIBLE, alGuardadoImposible)
     }
-  }, [dia.id, router])
+  }, [dia.id, salirA])
 
   // La flecha "atrás" es un botón (no un link): pasa por el mismo control de
   // pendientes que la navegación por links.
-  async function volverAlCalendario() {
-    if (hayPendientes(dia.id)) {
-      const fallidos = await guardarPendientes(dia.id)
-      if (
-        fallidos.length > 0 &&
-        !window.confirm(`No se pudo guardar ${fallidos.join(', ')}. Si salís ahora se pierde. ¿Salir igual?`)
-      ) {
-        return
-      }
-    }
-    router.push('/operacion')
+  function volverAlCalendario() {
+    void salirA('/operacion')
   }
 
   function handleCerrar() {
@@ -556,14 +645,15 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
               groups.map((g) => {
                 const hidden = q !== '' && !matchesSearch(g.searchText, q)
                 return g.secondaries.length === 0 ? (
-                  <MovimientoRow key={g.primary.id} mov={g.primary} readonly={readonly || loading} hidden={hidden} />
+                  <MovimientoRow key={`${g.primary.id}:${generacion}`} mov={g.primary} readonly={readonly || loading} diaFecha={diaFecha} hidden={hidden} />
                 ) : (
                   <MovimientoGroupRow
-                    key={g.key}
+                    key={`${g.key}:${generacion}`}
                     primary={g.primary}
                     secondaries={g.secondaries}
                     name={g.name}
                     readonly={readonly || loading}
+                    diaFecha={diaFecha}
                     hidden={hidden}
                   />
                 )
