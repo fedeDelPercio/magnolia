@@ -183,4 +183,51 @@ describe('useGuardadoFila', () => {
     expect(result.current.sinGuardar).toBe(true)
     expect(hayPendientes('dia-lento')).toBe(true)
   })
+
+  it('el día siguiente puede esperar el guardado que quedó en curso al salir', async () => {
+    // Módulos nuevos: el registro de guardados al salir es global y los tests
+    // anteriores dejan filas desmontadas con envíos colgados.
+    vi.resetModules()
+    const hook = await import('./use-guardado-fila')
+    const { esperarGuardadosAlSalir } = await import('./guardados-pendientes')
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const { result, unmount } = renderHook(() =>
+      hook.useGuardadoFila<S>({ filaId: 'f', diaId: 'dia-atras', nombre: 'Quiche', inicial: { conteo: null, produccion: 10 }, enviar: base.enviar }),
+    )
+    act(() => result.current.cambiar('conteo', 6))
+    await act(async () => { vi.advanceTimersByTime(700) }) // en curso
+    unmount()
+    let terminado = false
+    const espera = esperarGuardadosAlSalir().then(() => { terminado = true })
+    await flushMicrotasks()
+    expect(terminado).toBe(false)
+    await act(async () => base.envios[0]!.resolver({}))
+    await act(async () => { await espera })
+    expect(terminado).toBe(true)
+    expect(base.db.conteo).toBe(6)
+    // Sin nada en curso, no espera.
+    let libre = false
+    await act(async () => { await esperarGuardadosAlSalir(); libre = true })
+    expect(libre).toBe(true)
+  })
+
+  it('un guardado colgado al salir no frena la pantalla nueva más de 25 s', async () => {
+    vi.resetModules()
+    const hook = await import('./use-guardado-fila')
+    const { esperarGuardadosAlSalir } = await import('./guardados-pendientes')
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const { result, unmount } = renderHook(() =>
+      hook.useGuardadoFila<S>({ filaId: 'f', diaId: 'dia-colgado', nombre: 'Quiche', inicial: { conteo: null, produccion: 10 }, enviar: base.enviar }),
+    )
+    act(() => result.current.cambiar('conteo', 2))
+    await act(async () => { vi.advanceTimersByTime(700) }) // en curso, nunca responde
+    unmount()
+    let terminado = false
+    const espera = esperarGuardadosAlSalir().then(() => { terminado = true })
+    await act(async () => { vi.advanceTimersByTime(19000) })
+    expect(terminado).toBe(false)
+    await act(async () => { vi.advanceTimersByTime(6000) })
+    await act(async () => { await espera })
+    expect(terminado).toBe(true)
+  })
 })

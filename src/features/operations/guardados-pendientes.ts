@@ -47,6 +47,30 @@ export async function guardarPendientes(diaId: string): Promise<string[]> {
   return resultados.filter((n): n is string => n !== null)
 }
 
+// Guardados que siguen en curso cuando su fila ya se desmontó (se salió del
+// día con el botón Atrás del navegador, por ejemplo). La pantalla del día
+// siguiente los espera antes de compararse con la base: lo que guardan puede
+// cambiar su stock arrastrado.
+const alSalir = new Set<Promise<unknown>>()
+
+export function registrarGuardadoAlSalir(p: Promise<unknown>) {
+  alSalir.add(p)
+  void p.catch(() => {}).finally(() => alSalir.delete(p))
+}
+
+/** Espera esos guardados (con un tope: un envío colgado no frena la pantalla nueva). */
+export async function esperarGuardadosAlSalir(maxMs = 25000): Promise<void> {
+  if (alSalir.size === 0) return
+  let t: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    Promise.allSettled([...alSalir]),
+    new Promise<void>((resolve) => {
+      t = setTimeout(resolve, maxMs)
+    }),
+  ])
+  clearTimeout(t)
+}
+
 export function hayPendientes(diaId: string): boolean {
   for (const f of porDia.get(diaId)?.values() ?? []) {
     if (f.pendiente()) return true

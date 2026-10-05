@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import { quitarFila, registrarFila } from './guardados-pendientes'
+import { quitarFila, registrarFila, registrarGuardadoAlSalir } from './guardados-pendientes'
 
 // Guardado automático de una fila de la grilla de Operación.
 //
@@ -143,7 +143,7 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
       quitarFila(diaId, filaId)
       // Al salir de la pantalla, lo que quedaba se intenta mandar igual; si
       // falla, se avisa (la pantalla del día ya intenta frenar la salida antes).
-      if (dirty.size > 0) void guardar(true)
+      if (dirty.size > 0) registrarGuardadoAlSalir(guardar(true))
     }
   }, [diaId, filaId, guardar])
 

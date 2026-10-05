@@ -11,13 +11,13 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { matchesSearch } from '@/lib/text'
 import { formatCurrency } from '@/lib/format'
-import { cerrarDia, reabrirDia, traerStockDiaAnterior } from '../actions'
+import { cerrarDia, getEstadoDia, reabrirDia, traerStockDiaAnterior, type EstadoDia } from '../actions'
 import { MovimientoRow } from './movimiento-row'
 import { MovimientoGroupRow } from './movimiento-group-row'
 import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
 import { guardarAvisoPendiente, leerAvisoPendiente } from '../aviso-pendiente'
-import { guardarPendientes, hayPendientes } from '../guardados-pendientes'
+import { esperarGuardadosAlSalir, guardarPendientes, hayPendientes } from '../guardados-pendientes'
 import { EVENTO_GUARDADO_IMPOSIBLE } from '../use-guardado-fila'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
@@ -126,6 +126,34 @@ function sortGroups(groups: MovimientoGroup[], sort: Sort): MovimientoGroup[] {
   })
 }
 
+const CAMPOS_GRILLA = ['stock_anterior', 'produccion', 'ventas', 'desperdicio', 'almuerzo', 'conteo_fisico'] as const
+
+// ¿Lo que muestra la pantalla es lo que tiene la base?
+function coincideConLaBase(dia: DiaConMovimientos, base: EstadoDia): boolean {
+  if (dia.status !== base.status) return false
+  if (dia.movimientos_diarios.length !== base.filas.length) return false
+  const enPantalla = new Map(dia.movimientos_diarios.map((m) => [m.id, m]))
+  const num = (v: unknown) => (v === null || v === undefined ? null : Number(v))
+  return base.filas.every((f) => {
+    const m = enPantalla.get(f.id)
+    return !!m && CAMPOS_GRILLA.every((c) => num(m[c]) === num(f[c]))
+  })
+}
+
+// Una sola recarga automática por día cada 20 segundos: si la base cambia sin
+// parar (por ejemplo, otra persona cargando a la vez) no se entra en un ciclo.
+const CLAVE_RECARGA = 'magnolia:operacion:recarga:'
+function puedeRecargar(diaId: string): boolean {
+  try {
+    const ultima = Number(sessionStorage.getItem(CLAVE_RECARGA + diaId)) || 0
+    if (Date.now() - ultima < 20000) return false
+    sessionStorage.setItem(CLAVE_RECARGA + diaId, String(Date.now()))
+    return true
+  } catch {
+    return false
+  }
+}
+
 type Props = {
   dia: DiaConMovimientos
   cierres: CierreCajaWithProductos[]
@@ -154,6 +182,39 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     }, 150)
     return () => clearTimeout(t)
   }, [])
+
+  // La pantalla puede abrir con datos viejos:
+  // - el botón Atrás del navegador (o el del celular) reusa la versión del día
+  //   que Next ya tenía, sin pedirla de nuevo;
+  // - un guardado del día anterior que terminó después de abrir este puede
+  //   cambiar su stock arrastrado.
+  // Las filas toman sus valores al aparecer, así que se compara con la base y,
+  // si no coincide, se recarga (guardando antes lo tipeado acá).
+  useEffect(() => {
+    let vigente = true
+    void (async () => {
+      await esperarGuardadosAlSalir()
+      if (!vigente) return
+      let res: Awaited<ReturnType<typeof getEstadoDia>>
+      try {
+        res = await getEstadoDia(dia.id)
+      } catch {
+        return
+      }
+      if (!vigente || !res.data || coincideConLaBase(dia, res.data)) return
+      if (hayPendientes(dia.id) && (await guardarPendientes(dia.id)).length > 0) return
+      if (!vigente) return
+      if (!puedeRecargar(dia.id)) {
+        toast.info('Hay datos más nuevos de este día. Recargá la página para verlos.')
+        return
+      }
+      guardarAvisoPendiente('La pantalla se actualizó con lo último que quedó guardado.')
+      window.location.reload()
+    })()
+    return () => {
+      vigente = false
+    }
+  }, [dia])
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)

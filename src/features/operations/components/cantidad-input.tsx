@@ -32,7 +32,9 @@ function aTexto(v: number | null, mostrarCero: boolean): string {
 }
 
 function aNumero(texto: string, vacioEsNull: boolean): number | null {
-  const t = texto.replace(',', '.')
+  // "1.500" es mil quinientos (en Argentina el punto seguido de 3 dígitos es
+  // separador de miles), no 1,5. "2.5", "2,5" o "0.250" sí son decimales.
+  const t = /^[1-9]\d{0,2}\.\d{3}$/.test(texto) ? texto.replace('.', '') : texto.replace(',', '.')
   if (t === '' || t === '.') return vacioEsNull ? null : 0
   return Number(t)
 }
