@@ -341,7 +341,9 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       if (recargandoRef.current) return
       if (
         fallidos.length === 0 ||
-        window.confirm(`No se pudo guardar ${fallidos.join(', ')}. Si salís ahora se pierde. ¿Salir igual?`)
+        window.confirm(
+          `Todavía no se pudo guardar ${fallidos.join(', ')}. Se va a seguir intentando solo mientras la app esté abierta (no cierres la pestaña). ¿Salir igual?`,
+        )
       ) {
         router.push(destino)
       }
