@@ -1,10 +1,16 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 import { toast } from 'sonner'
-import { useGuardadoFila, EVENTO_GUARDADO_IMPOSIBLE, type DetalleGuardadoImposible, type ResultadoEnvio } from './use-guardado-fila'
+import {
+  useGuardadoFila,
+  descartarHuerfanas,
+  EVENTO_GUARDADO_IMPOSIBLE,
+  type DetalleGuardadoImposible,
+  type ResultadoEnvio,
+} from './use-guardado-fila'
 import { guardarPendientes, hayPendientes, reintentarFallidas } from './guardados-pendientes'
 
 type S = { conteo: number | null; produccion: number }
@@ -31,11 +37,16 @@ function crearBase(inicial: S) {
   return { db, envios, enviar }
 }
 
-const flushMicrotasks = () => act(async () => { await Promise.resolve(); await Promise.resolve() })
+const flushMicrotasks = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve() })
 
 describe('useGuardadoFila', () => {
   beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    // Lo que un test deja sin guardar al desmontar no se cruza con el siguiente.
+    cleanup()
+    descartarHuerfanas()
+    vi.useRealTimers()
+  })
 
   function montar(base: ReturnType<typeof crearBase>, diaId = 'dia-1', filaId = 'fila-1') {
     return renderHook(() =>
@@ -159,25 +170,100 @@ describe('useGuardadoFila', () => {
     expect(fallidos).toEqual([])
   })
 
-  it('al desmontarse con algo pendiente lo intenta guardar y, si falla, avisa', async () => {
+  it('al salir con algo pendiente se sigue intentando: si falla avisa (sin perderlo) y reintenta solo', async () => {
     const base = crearBase({ conteo: null, produccion: 10 })
     const { result, unmount } = montar(base, 'dia-nav')
     act(() => result.current.cambiar('conteo', 12))
     vi.mocked(toast.error).mockClear()
     unmount()
+    await act(async () => { vi.advanceTimersByTime(0) })
     await flushMicrotasks()
     expect(base.envios.at(-1)!.payload).toEqual({ conteo: 12 })
     await act(async () => base.envios.at(-1)!.fallar())
     await flushMicrotasks()
-    expect(vi.mocked(toast.error)).toHaveBeenCalled()
     const aviso = String(vi.mocked(toast.error).mock.calls.at(-1)![0])
     expect(aviso).toContain('No se guardó Empanada')
-    // Nadie lo va a reintentar: el aviso no promete reintentos.
-    expect(aviso).toContain('Volvé a ese día y cargalo de nuevo')
-    expect(aviso).not.toContain('se reintenta')
+    expect(aviso).toContain('Se sigue intentando solo')
+    // A los 30 s se reintenta solo y llega.
+    const antes = base.envios.length
+    await act(async () => { vi.advanceTimersByTime(30000) })
+    await flushMicrotasks()
+    expect(base.envios.length).toBe(antes + 1)
+    expect(base.envios.at(-1)!.payload).toEqual({ conteo: 12 })
+    await act(async () => base.envios.at(-1)!.resolver({}))
+    await flushMicrotasks()
+    expect(base.db.conteo).toBe(12)
   })
 
-  it('al desmontarse, un rechazo por día cerrado avisa y no recarga otra pantalla', async () => {
+  it('lo que quedó sin guardar al salir se manda apenas vuelve la conexión', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const { result, unmount } = montar(base, 'dia-online')
+    act(() => result.current.cambiar('produccion', 30))
+    unmount()
+    await act(async () => { vi.advanceTimersByTime(0) })
+    await act(async () => base.envios.at(-1)!.fallar())
+    await flushMicrotasks()
+    const antes = base.envios.length
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await flushMicrotasks()
+    expect(base.envios.length).toBe(antes + 1)
+    await act(async () => base.envios.at(-1)!.resolver({}))
+    await flushMicrotasks()
+    expect(base.db.produccion).toBe(30)
+  })
+
+  it('salir con algo "sin guardar" (Atrás del celular) y volver al día: la fila lo retoma, lo muestra y lo guarda', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const primera = montar(base, 'dia-vuelta', 'fila-v')
+    act(() => primera.result.current.cambiar('conteo', 5))
+    await act(async () => { vi.advanceTimersByTime(700) })
+    await act(async () => base.envios[0]!.fallar())
+    await flushMicrotasks()
+    expect(primera.result.current.sinGuardar).toBe(true)
+    primera.unmount()
+    await act(async () => { vi.advanceTimersByTime(0) })
+    await flushMicrotasks()
+    await act(async () => base.envios.at(-1)!.fallar()) // sigue sin conexión
+    await flushMicrotasks()
+    // Vuelve al día: la fila arranca con lo que no se guardó.
+    const segunda = montar(base, 'dia-vuelta', 'fila-v')
+    expect(segunda.result.current.local.conteo).toBe(5)
+    expect(segunda.result.current.sinGuardar).toBe(true)
+    expect(hayPendientes('dia-vuelta')).toBe(true)
+    await act(async () => { vi.advanceTimersByTime(0) })
+    await flushMicrotasks()
+    expect(base.envios.at(-1)!.payload).toEqual({ conteo: 5 })
+    await act(async () => base.envios.at(-1)!.resolver({}))
+    await flushMicrotasks()
+    expect(base.db.conteo).toBe(5)
+    expect(segunda.result.current.sinGuardar).toBe(false)
+  })
+
+  it('una fila que sale con un envío en curso no pisa lo que se tipea cuando vuelve a aparecer', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const primera = montar(base, 'dia-pisa', 'fila-p')
+    act(() => primera.result.current.cambiar('conteo', 5))
+    await act(async () => { vi.advanceTimersByTime(700) }) // envío del 5 en curso
+    primera.unmount()
+    // Vuelve a aparecer enseguida (se rearma la grilla) y se tipea otra cosa.
+    const segunda = montar(base, 'dia-pisa', 'fila-p')
+    expect(segunda.result.current.local.conteo).toBe(5)
+    act(() => segunda.result.current.cambiar('conteo', 9))
+    await act(async () => { vi.advanceTimersByTime(700) })
+    // Espera el envío que estaba en curso.
+    expect(base.envios).toHaveLength(1)
+    await act(async () => base.envios[0]!.resolver({}))
+    await flushMicrotasks()
+    expect(base.envios.at(-1)!.payload).toEqual({ conteo: 9 })
+    await act(async () => base.envios.at(-1)!.resolver({}))
+    await flushMicrotasks()
+    expect(base.db.conteo).toBe(9)
+    const desde9 = base.envios.findIndex((e) => e.payload.conteo === 9)
+    expect(base.envios.slice(desde9 + 1).some((e) => e.payload.conteo === 5)).toBe(false)
+    expect(segunda.result.current.sinGuardar).toBe(false)
+  })
+
+  it('al salir, un rechazo por día cerrado avisa y no recarga otra pantalla', async () => {
     const base = crearBase({ conteo: null, produccion: 10 })
     const { result, unmount } = montar(base, 'dia-cerrado-al-salir')
     const eventos: unknown[] = []
@@ -186,12 +272,17 @@ describe('useGuardadoFila', () => {
     act(() => result.current.cambiar('conteo', 3))
     vi.mocked(toast.error).mockClear()
     unmount()
+    await act(async () => { vi.advanceTimersByTime(0) })
     await flushMicrotasks()
     await act(async () => base.envios.at(-1)!.resolver({ error: 'el día ya está cerrado', permanente: true }))
     await flushMicrotasks()
     window.removeEventListener(EVENTO_GUARDADO_IMPOSIBLE, escuchar)
     expect(eventos).toHaveLength(0)
     expect(String(vi.mocked(toast.error).mock.calls.at(-1)![0])).toContain('día ya está cerrado')
+    // No se reintenta: no se va a poder guardar nunca.
+    const antes = base.envios.length
+    await act(async () => { vi.advanceTimersByTime(30000) })
+    expect(base.envios.length).toBe(antes)
   })
 
   it('el reintento automático solo reenvía lo que falló, no lo que se está tipeando', async () => {
@@ -235,9 +326,8 @@ describe('useGuardadoFila', () => {
     expect(hayPendientes('dia-lento')).toBe(true)
   })
 
-  it('el día siguiente puede esperar el guardado que quedó en curso al salir', async () => {
-    // Módulos nuevos: el registro de guardados al salir es global y los tests
-    // anteriores dejan filas desmontadas con envíos colgados.
+  it('el día siguiente puede esperar lo que quedó guardándose al salir', async () => {
+    // Módulos nuevos: los registros de guardados al salir son globales.
     vi.resetModules()
     const hook = await import('./use-guardado-fila')
     const { esperarGuardadosAlSalir } = await import('./guardados-pendientes')
@@ -250,16 +340,20 @@ describe('useGuardadoFila', () => {
     unmount()
     let terminado = false
     const espera = esperarGuardadosAlSalir().then(() => { terminado = true })
+    await act(async () => { vi.advanceTimersByTime(0) })
     await flushMicrotasks()
     expect(terminado).toBe(false)
+    // Llega el envío que estaba en curso; lo pendiente se vuelve a mandar
+    // (no se sabe si el primero llegó) y recién ahí termina.
     await act(async () => base.envios[0]!.resolver({}))
+    await flushMicrotasks()
+    expect(terminado).toBe(false)
+    expect(base.envios).toHaveLength(2)
+    await act(async () => base.envios[1]!.resolver({}))
     await act(async () => { await espera })
     expect(terminado).toBe(true)
     expect(base.db.conteo).toBe(6)
-    // Sin nada en curso, no espera.
-    let libre = false
-    await act(async () => { await esperarGuardadosAlSalir(); libre = true })
-    expect(libre).toBe(true)
+    hook.descartarHuerfanas()
   })
 
   it('un guardado colgado al salir no frena la pantalla nueva más de 25 s', async () => {
@@ -280,5 +374,6 @@ describe('useGuardadoFila', () => {
     await act(async () => { vi.advanceTimersByTime(6000) })
     await act(async () => { await espera })
     expect(terminado).toBe(true)
+    hook.descartarHuerfanas()
   })
 })

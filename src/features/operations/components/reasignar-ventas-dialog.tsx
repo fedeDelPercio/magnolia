@@ -222,7 +222,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
             )}
             {cantidadStr.trim() !== '' && !cantidadValida && desde && (
               <p className="text-xs text-red-600">
-                Tiene que ser un número entero entre 1 y {maxCantidad}.
+                Tiene que ser un número entero entre 1 y {maxCantidad.toLocaleString('es-AR', { maximumFractionDigits: 3 })}.
               </p>
             )}
           </div>

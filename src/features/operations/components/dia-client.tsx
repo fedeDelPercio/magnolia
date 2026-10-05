@@ -140,20 +140,6 @@ function coincideConLaBase(dia: DiaConMovimientos, base: EstadoDia): boolean {
   })
 }
 
-// Una sola recarga automática por día cada 20 segundos: si la base cambia sin
-// parar (por ejemplo, otra persona cargando a la vez) no se entra en un ciclo.
-const CLAVE_RECARGA = 'magnolia:operacion:recarga:'
-function puedeRecargar(diaId: string): boolean {
-  try {
-    const ultima = Number(sessionStorage.getItem(CLAVE_RECARGA + diaId)) || 0
-    if (Date.now() - ultima < 20000) return false
-    sessionStorage.setItem(CLAVE_RECARGA + diaId, String(Date.now()))
-    return true
-  } catch {
-    return false
-  }
-}
-
 type Props = {
   dia: DiaConMovimientos
   cierres: CierreCajaWithProductos[]
@@ -176,6 +162,10 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   // armar cambiando esta generación en su key.
   const [generacion, setGeneracion] = useState(0)
   const diaInicialRef = useRef(dia)
+  // Pedidos de datos nuevos seguidos sin que la pantalla quede al día: si la
+  // base cambia sin parar (otra persona cargando a la vez) no se entra en un
+  // ciclo.
+  const refrescosRef = useRef(0)
   const navegandoRef = useRef(false)
 
   // Reasignar ventas recarga la página; el aviso de éxito queda guardado para
@@ -200,8 +190,10 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   // - después de un router.refresh (importar un cierre, reabrir) llegan datos
   //   nuevos pero las filas conservan los de cuando aparecieron.
   // Al abrir y con cada dato nuevo se guarda lo tipeado y se compara con la
-  // base: si coincide, las filas se rearman con los datos nuevos; si no, se
-  // recarga. Si no se puede comprobar (sin conexión), se reintenta solo.
+  // base: si no coincide se piden los datos de nuevo (sin recargar la página);
+  // si coincide, las filas se rearman con ellos (lo que se esté tipeando no se
+  // pierde: la fila nueva lo retoma). Si no se puede comprobar (sin
+  // conexión), se reintenta solo.
   useEffect(() => {
     let vigente = true
     const diaId = dia.id
@@ -210,19 +202,19 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     let avisoId: string | number | undefined
     let reintento: ReturnType<typeof setInterval> | undefined
 
-    function recargar() {
-      if (!puedeRecargar(diaId)) {
+    function actualizar() {
+      if (refrescosRef.current >= 3) {
         toast.info('Hay datos más nuevos de este día.', {
           duration: Infinity,
           action: { label: 'Recargar', onClick: () => window.location.reload() },
         })
         return
       }
-      guardarAvisoPendiente('La pantalla se actualizó con lo último que quedó guardado.')
-      window.location.reload()
+      refrescosRef.current += 1
+      router.refresh()
     }
 
-    // true = terminó (al día, rearmada o recargando); false = reintentar.
+    // true = terminó (al día, rearmada o pidiendo datos nuevos); false = reintentar.
     async function verificar(): Promise<boolean> {
       if (hayPendientes(diaId)) {
         let fallidos: string[]
@@ -245,14 +237,11 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       // Tope de filas de la API: no se puede comparar (hoy hay ~110 por día).
       if (res.data.filas.length >= 1000) return true
       if (!coincideConLaBase(dia, res.data)) {
-        recargar()
+        actualizar()
         return true
       }
-      if (esRefresh) {
-        // Si se tipeó mientras tanto, se vuelve a comprobar en un rato.
-        if (hayPendientes(diaId)) return false
-        setGeneracion((g) => g + 1)
-      }
+      refrescosRef.current = 0
+      if (esRefresh) setGeneracion((g) => g + 1)
       return true
     }
 
@@ -289,7 +278,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       window.removeEventListener('online', intentar)
       if (avisoId !== undefined) toast.dismiss(avisoId)
     }
-  }, [dia])
+  }, [dia, router])
 
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
@@ -511,7 +500,14 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   function handleReabrir() {
     setLoading(true)
     startTransition(async () => {
-      const result = await reabrirDia(dia.id)
+      let result: Awaited<ReturnType<typeof reabrirDia>>
+      try {
+        result = await reabrirDia(dia.id)
+      } catch {
+        setLoading(false)
+        toast.error('Sin conexión: no sabemos si el día se reabrió. Recargá la página para ver cómo quedó.')
+        return
+      }
       setLoading(false)
       if (result.error) {
         toast.error(result.error)
