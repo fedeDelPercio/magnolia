@@ -1,33 +1,55 @@
-// Guardados de la grilla que todavía no llegaron a la base: los que esperan su
-// debounce y los que fallaron (sin conexión, error del servidor). Antes de
-// cerrar el día o traer stock se fuerzan todos, y si alguno no se puede
-// guardar la acción se frena: un día no puede cerrarse con un conteo que la
-// pantalla muestra pero la base no tiene.
+// Registro de las filas de la grilla de Operación, por día. Cada fila montada se
+// anota con una función que fuerza su guardado (y espera el que ya está en
+// curso). Antes de cerrar el día, traer stock o reasignar ventas se fuerzan
+// todas las filas de ESE día, y si alguna no se pudo guardar la acción se
+// frena: un día no puede cerrarse con un dato que la pantalla muestra pero la
+// base no tiene. Al desmontarse (salir de la pantalla) la fila se borra del
+// registro, así lo de un día no interfiere con otro.
 
-// Devuelve true si guardó (o no había nada para guardar).
-type Flush = () => Promise<boolean>
-
-const pendientes = new Map<string, { nombre: string; flush: Flush }>()
-
-export function registrarPendiente(id: string, nombre: string, flush: Flush) {
-  pendientes.set(id, { nombre, flush })
+type Fila = {
+  nombre: () => string
+  // Devuelve true si todo lo de la fila quedó guardado.
+  guardar: () => Promise<boolean>
+  // Hay algo tipeado que todavía no confirmó la base (o un guardado en curso).
+  pendiente: () => boolean
 }
 
-export function quitarPendiente(id: string) {
-  pendientes.delete(id)
+const porDia = new Map<string, Map<string, Fila>>()
+
+export function registrarFila(diaId: string, filaId: string, fila: Fila) {
+  let filas = porDia.get(diaId)
+  if (!filas) {
+    filas = new Map()
+    porDia.set(diaId, filas)
+  }
+  filas.set(filaId, fila)
 }
 
-/** Fuerza todos los guardados pendientes. Devuelve los nombres de los que fallaron. */
-export async function guardarPendientes(): Promise<string[]> {
-  const items = [...pendientes.values()]
+export function quitarFila(diaId: string, filaId: string) {
+  const filas = porDia.get(diaId)
+  if (!filas) return
+  filas.delete(filaId)
+  if (filas.size === 0) porDia.delete(diaId)
+}
+
+/** Fuerza el guardado de todas las filas del día. Devuelve los nombres de las que fallaron. */
+export async function guardarPendientes(diaId: string): Promise<string[]> {
+  const filas = [...(porDia.get(diaId)?.values() ?? [])]
   const resultados = await Promise.all(
-    items.map(async (p) => {
+    filas.map(async (f) => {
       try {
-        return (await p.flush()) ? null : p.nombre
+        return (await f.guardar()) ? null : f.nombre()
       } catch {
-        return p.nombre
+        return f.nombre()
       }
     }),
   )
   return resultados.filter((n): n is string => n !== null)
+}
+
+export function hayPendientes(diaId: string): boolean {
+  for (const f of porDia.get(diaId)?.values() ?? []) {
+    if (f.pendiente()) return true
+  }
+  return false
 }

@@ -557,7 +557,7 @@ async function chequearTopeCompra(
   if (monto > falta + tolerancia) {
     return {
       error: excluirPagoId
-        ? `Este pago no puede superar ${formatCurrency(falta)}: la compra es de ${formatCurrency(Number(compra.total))} y ya hay ${formatCurrency(Math.round(pagado * 100) / 100)} en otros pagos. Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`
+        ? `Este pago no puede superar ${formatCurrency(falta)}: la compra es de ${formatCurrency(Number(compra.total))}${pagado > 0.009 ? ` y ya hay ${formatCurrency(Math.round(pagado * 100) / 100)} en otros pagos` : ''}. Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`
         : `El pago (${formatCurrency(monto)}) es mayor a lo que falta pagar de esta compra (${formatCurrency(falta)}). Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`,
     }
   }

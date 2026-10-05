@@ -43,7 +43,7 @@ export async function saveMovimiento(
     almuerzo?: number
     conteo_fisico?: number | null
   },
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; permanente?: boolean }> {
   const supabase = await createClient()
 
   // Un día cerrado no se edita (una pestaña vieja o un guardado demorado podía
@@ -55,7 +55,10 @@ export async function saveMovimiento(
     .maybeSingle()
   const status = (fila as unknown as { dias_operativos: { status: string } | null } | null)?.dias_operativos?.status
   if (status === 'cerrado') {
-    return { error: 'el día está cerrado (reabrilo para editarlo). Recargá la página.' }
+    return {
+      error: 'el día está cerrado, no se puede editar. Reabrilo y recargá la página si hace falta corregirlo.',
+      permanente: true,
+    }
   }
 
   const { error } = await supabase
@@ -64,8 +67,10 @@ export async function saveMovimiento(
     .eq('id', id)
 
   if (error) {
-    // Mensajes de la base en castellano para la usuaria.
-    if (error.code === '22003') return { error: 'el número es demasiado grande' }
+    // Mensajes de la base en castellano para la usuaria; el error real queda
+    // en el log del servidor para diagnosticarlo.
+    console.error('saveMovimiento', id, error)
+    if (error.code === '22003') return { error: 'el número es demasiado grande', permanente: true }
     return { error: 'no se pudo guardar, probá de nuevo' }
   }
   return {}
@@ -125,6 +130,9 @@ export async function reasignarVentas(input: {
   desdeMovId: string
   haciaMovId: string
   cantidad: number
+  // Ventas del origen que mostraba el diálogo. Si en la base hay otra cosa
+  // (otra pestaña, un reintento después de un corte), no se aplica.
+  ventasDesdeEsperadas: number
 }): Promise<{ error?: string }> {
   const { diaId, desdeMovId, haciaMovId } = input
   const cantidad = Number(input.cantidad)
@@ -154,6 +162,9 @@ export async function reasignarVentas(input: {
     return { error: 'Los productos no corresponden a este día' }
   }
   const ventasDesde = Number(desde.ventas) || 0
+  if (Math.abs(ventasDesde - Number(input.ventasDesdeEsperadas)) > 0.0005) {
+    return { error: 'Las ventas cambiaron mientras tanto (¿ya se reasignó?). Recargá la página para ver cómo quedó.' }
+  }
   if (cantidad > ventasDesde) {
     return { error: `Solo hay ${ventasDesde} venta${ventasDesde === 1 ? '' : 's'} para reasignar` }
   }

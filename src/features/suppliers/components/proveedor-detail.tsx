@@ -315,8 +315,13 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   async function handleMarkPagada(compra: CompraWithItems) {
     const falta = faltanteDeCompra(compra)
     if (falta > 0.01) {
+      const cubierto = aging.cobertura.get(compra.id) ?? 0
+      const avisoCobertura =
+        cubierto >= 100
+          ? `\n\nOjo: ${proveedor.name} tiene pagos sin compra (o pagados de más en otra compra) que alcanzan para cubrir ${formatCurrency(cubierto)} de esta compra. Si ya se pagó con eso, no la marques así: se registraría otro pago.`
+          : ''
       const ok = window.confirm(
-        `¿Marcar como pagada la compra del ${formatDate(compra.fecha)}?\n\nSe registra un pago de ${formatCurrency(falta)} (método "otro", con fecha de hoy) y su egreso en caja. Si sabés cómo y cuándo se pagó, mejor usá "Saldar".`,
+        `¿Marcar como pagada la compra del ${formatDate(compra.fecha)}?\n\nSe registra un pago de ${formatCurrency(falta)} (método "otro", con fecha de hoy) y su egreso en caja. Si sabés cómo y cuándo se pagó, mejor usá "Saldar".${avisoCobertura}`,
       )
       if (!ok) return
     }

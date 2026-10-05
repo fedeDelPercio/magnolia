@@ -102,7 +102,9 @@ export function CurrencyInput({
         onFocus?.(e)
       }}
       onPointerDown={(e) => {
-        porPuntero.current = true
+        // Solo el mouse: en el celular, tocar un monto y tipear tiene que
+        // reemplazarlo (ahí "seleccionar todo" cuesta).
+        porPuntero.current = e.pointerType === 'mouse'
         onPointerDown?.(e)
       }}
       onBlur={(e) => {

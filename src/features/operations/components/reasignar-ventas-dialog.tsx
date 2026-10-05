@@ -11,6 +11,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import { getVentasDelDia, reasignarVentas } from '../actions'
 import { guardarAvisoPendiente } from '../aviso-pendiente'
+import { guardarPendientes } from '../guardados-pendientes'
 import type { MovimientoConProducto } from '../queries'
 
 type Props = {
@@ -47,6 +48,8 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
   const [haciaId, setHaciaId] = useState('')
   const [cantidadStr, setCantidadStr] = useState('')
   const [saving, setSaving] = useState(false)
+  // Hubo un corte al enviar: no sabemos si se aplicó. No se deja repetir sin recargar.
+  const [incierto, setIncierto] = useState(false)
 
   useEffect(() => {
     let cancelado = false
@@ -99,6 +102,14 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
   async function handleSubmit() {
     if (!desde || !hacia || !cantidadValida || cantidad === null) return
     setSaving(true)
+    // Lo tipeado en la grilla tiene que estar en la base antes: si no, al
+    // recargar, un valor viejo de ventas pisaría la reasignación.
+    const fallidos = await guardarPendientes(diaId).catch(() => ['algunos productos'])
+    if (fallidos.length > 0) {
+      setSaving(false)
+      toast.error(`Primero tiene que guardarse ${fallidos.join(', ')}. Revisá la conexión y probá de nuevo.`)
+      return
+    }
     let result: Awaited<ReturnType<typeof reasignarVentas>>
     try {
       result = await reasignarVentas({
@@ -106,9 +117,11 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
         desdeMovId: desde.id,
         haciaMovId: hacia.id,
         cantidad,
+        ventasDesdeEsperadas: desde.ventas,
       })
     } catch {
       setSaving(false)
+      setIncierto(true)
       toast.error('Sin conexión: no sabemos si se reasignó. Recargá la página para ver cómo quedó antes de repetirlo.')
       return
     }
@@ -217,7 +230,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || sinDatos || !desde || !hacia || !cantidadValida}
+            disabled={saving || incierto || sinDatos || !desde || !hacia || !cantidadValida}
           >
             {saving ? 'Guardando...' : 'Reasignar'}
           </Button>

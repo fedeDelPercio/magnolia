@@ -94,6 +94,9 @@ export async function getComprasByProveedor(proveedorId: string): Promise<Compra
     `)
     .eq('proveedor_id', proveedorId)
     .order('fecha', { ascending: false })
+    // Desempate estable entre compras del mismo día (la antigüedad y el aviso
+    // de plata sin compra las recorren en orden).
+    .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
   return data as unknown as CompraWithItems[]

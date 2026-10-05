@@ -54,7 +54,8 @@ export function VariacionPrecio({
       {/* Un solo bloque de texto: como hijos sueltos del flex, en celular el
           aviso quedaba en otra columna. */}
       <span>
-        Último c/desc. e IVA: {formatCurrency(anterior)} · {neutro ? '0.0' : `${suba ? '+' : ''}${pct.toFixed(1)}`}%
+        Último c/desc. e IVA: {formatCurrency(anterior)} ·{' '}
+        {neutro ? '0,0' : `${suba ? '+' : ''}${pct.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`}%
         {bajaFuerte && <span className="font-normal"> · revisá cantidad y unidad</span>}
       </span>
     </span>

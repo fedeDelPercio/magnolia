@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useRef, memo } from 'react'
-import { toast } from 'sonner'
+import { useRef, memo } from 'react'
 import { saveMovimiento } from '../actions'
-import { quitarPendiente, registrarPendiente } from '../guardados-pendientes'
+import { useGuardadoFila, type ResultadoEnvio } from '../use-guardado-fila'
+import { CantidadInput } from './cantidad-input'
 import type { MovimientoConProducto } from '../queries'
 
 type Props = {
@@ -24,121 +24,59 @@ type LocalState = {
   conteo_fisico: number | null
 }
 
-type Campo = keyof LocalState
-
-function numInput(v: number | null | undefined): string {
-  if (v === null || v === undefined) return ''
-  return v === 0 ? '' : String(v)
-}
+const formatoCantidad = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 
 // Sin conteo no hay diferencia que mostrar (al cerrar el día también queda vacía).
 function DiferenciaCell({ diferencia }: { diferencia: number | null }) {
   if (diferencia === null) return <span className="text-muted-foreground">—</span>
-  const rounded = Math.round(diferencia)
+  const rounded = Math.round(diferencia * 100) / 100
   if (rounded === 0) return <span className="tabular-nums text-green-700">0</span>
-  if (rounded > 0) return <span className="tabular-nums text-blue-700">+{rounded}</span>
-  return <span className="tabular-nums text-red-600">{rounded}</span>
+  if (rounded > 0) return <span className="tabular-nums text-blue-700">+{formatoCantidad(rounded)}</span>
+  return <span className="tabular-nums text-red-600">{formatoCantidad(rounded)}</span>
 }
 
 export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden = false }: Props) {
-  const [local, setLocal] = useState<LocalState>({
-    stock_anterior: mov.stock_anterior,
-    produccion: mov.produccion,
-    ventas: mov.ventas,
-    desperdicio: mov.desperdicio,
-    almuerzo: mov.almuerzo,
-    conteo_fisico: mov.conteo_fisico,
-  })
-  const [saving, setSaving] = useState(false)
-  // Hubo un guardado que falló y todavía no se pudo reintentar.
-  const [sinGuardar, setSinGuardar] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  // Solo se guardan los campos que la persona tocó. Si se mandara la fila
-  // entera, una pestaña abierta desde antes pisaría con valores viejos lo que
-  // cambió mientras tanto (una reasignación de ventas, el sync de Bistro) y un
-  // conteo vacío se grabaría como 0.
-  // Se vacía cuando el guardado sale bien: los campos ya guardados no se vuelven
-  // a mandar con valores viejos si después se edita otra columna.
-  const dirtyRef = useRef<Set<Campo>>(new Set())
-  // Último estado tipeado, todavía sin guardar.
-  const pendingRef = useRef<LocalState | null>(null)
   // Una vez que el usuario edita el stock anterior, queda "manual" para este día
   // y el arrastre automático deja de pisarlo.
   const stockManualRef = useRef(mov.stock_anterior_manual)
 
-  const stockTeorico =
-    local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
-
-  const diferencia = local.conteo_fisico === null ? null : local.conteo_fisico - stockTeorico
-
-  async function guardar(): Promise<boolean> {
-    clearTimeout(timer.current)
-    quitarPendiente(mov.id)
-    const updated = pendingRef.current
-    pendingRef.current = null
-    if (!updated) return true
-    const campos = new Set(dirtyRef.current)
-    dirtyRef.current.clear()
+  async function enviar(s: LocalState, campos: ReadonlySet<keyof LocalState>): Promise<ResultadoEnvio> {
     const payload: Parameters<typeof saveMovimiento>[1] = {}
     if (campos.has('stock_anterior')) {
-      payload.stock_anterior = updated.stock_anterior
+      payload.stock_anterior = s.stock_anterior
       payload.stock_anterior_manual = stockManualRef.current
     }
-    if (campos.has('produccion')) payload.produccion = updated.produccion
-    if (campos.has('ventas')) payload.ventas = updated.ventas
-    if (campos.has('desperdicio')) payload.desperdicio = updated.desperdicio
-    if (campos.has('almuerzo')) payload.almuerzo = updated.almuerzo
-    if (campos.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
-    if (Object.keys(payload).length === 0) return true
-    setSaving(true)
-    let error: string | null = null
-    try {
-      const res = await saveMovimiento(mov.id, payload)
-      if (res.error) error = res.error
-    } catch {
-      error = 'sin conexión'
-    } finally {
-      setSaving(false)
-    }
-    if (error) {
-      // No se pierde nada: los campos y el valor vuelven a quedar pendientes
-      // (si mientras tanto se tipeó algo más, se manda lo más nuevo) y el
-      // cierre del día lo reintenta antes de cerrar.
-      for (const c of campos) dirtyRef.current.add(c)
-      if (!pendingRef.current) pendingRef.current = updated
-      registrarPendiente(mov.id, mov.productos.name, guardar)
-      setSinGuardar(true)
-      toast.error(`No se guardó ${mov.productos.name} (${error}). Se vuelve a intentar al seguir editando o al cerrar el día.`)
-      return false
-    }
-    setSinGuardar(false)
-    return true
+    if (campos.has('produccion')) payload.produccion = s.produccion
+    if (campos.has('ventas')) payload.ventas = s.ventas
+    if (campos.has('desperdicio')) payload.desperdicio = s.desperdicio
+    if (campos.has('almuerzo')) payload.almuerzo = s.almuerzo
+    if (campos.has('conteo_fisico')) payload.conteo_fisico = s.conteo_fisico
+    return saveMovimiento(mov.id, payload)
   }
 
-  function schedulesSave(updated: LocalState) {
-    pendingRef.current = updated
-    clearTimeout(timer.current)
-    registrarPendiente(mov.id, mov.productos.name, guardar)
-    timer.current = setTimeout(() => void guardar(), 700)
-  }
+  const { local, cambiar, saving, sinGuardar } = useGuardadoFila<LocalState>({
+    filaId: mov.id,
+    diaId: mov.dia_id,
+    nombre: mov.productos.name,
+    inicial: {
+      stock_anterior: Number(mov.stock_anterior) || 0,
+      produccion: Number(mov.produccion) || 0,
+      ventas: Number(mov.ventas) || 0,
+      desperdicio: Number(mov.desperdicio) || 0,
+      almuerzo: Number(mov.almuerzo) || 0,
+      conteo_fisico: mov.conteo_fisico === null ? null : Number(mov.conteo_fisico),
+    },
+    enviar,
+  })
 
-  function handleChange(field: Campo, raw: string, invalido = false) {
-    // Las cantidades no pueden ser negativas: un "-" tipeado se ignora (antes
-    // se guardaba como 0, que en el conteo es "contado 0"). En un input
-    // numérico el "-" solo llega como valor vacío con badInput.
-    if (invalido || raw.trim().startsWith('-')) return
-    const parsed = raw === '' ? 0 : parseInt(raw, 10)
-    const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
-    // Tope razonable para una cantidad del día: más que esto es un error de
-    // tipeo y la base lo rechazaría (y trabaría el guardado de toda la fila).
-    if (num > 99999) return
-    // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
-    const value = field === 'conteo_fisico' && raw.trim() === '' ? null : num
+  const stockTeorico =
+    local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
+  const diferencia = local.conteo_fisico === null ? null : local.conteo_fisico - stockTeorico
+
+  function setCampo(field: keyof LocalState, value: number | null) {
     if (field === 'stock_anterior') stockManualRef.current = true
-    dirtyRef.current.add(field)
-    const updated = { ...local, [field]: value }
-    setLocal(updated)
-    schedulesSave(updated)
+    if (field === 'conteo_fisico') cambiar('conteo_fisico', value)
+    else cambiar(field, value ?? 0)
   }
 
   const inputCls =
@@ -156,16 +94,12 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
         )}
       </td>
       <td className="px-2 py-2 text-right">
-        <input
-          type="number"
-          min="0"
-          step="1"
-          inputMode="numeric"
+        <CantidadInput
           disabled={readonly}
           className={inputCls}
-          value={numInput(local.stock_anterior)}
+          value={local.stock_anterior}
           placeholder="0"
-          onChange={(e) => handleChange('stock_anterior', e.target.value, e.target.validity.badInput)}
+          onValueChange={(v) => setCampo('stock_anterior', v)}
           title="Por defecto viene del cierre del día anterior. Editalo si necesitás ajustar."
         />
       </td>
@@ -176,26 +110,21 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
           const ventasBistro = Number(mov.ventas_bistro) || 0
           const showBistroHint = field === 'ventas' && ventasBistro > 0
           const manualDiff = local.ventas - ventasBistro
+          const esConteo = field === 'conteo_fisico'
           // El hint "Bistro: N" va en posición absoluta para que la celda mida
           // igual que las demás y los inputs queden siempre centrados en altura.
           return (
             <td key={field} className="px-2 py-2 text-right">
               <div className="relative inline-block">
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="numeric"
+                <CantidadInput
                   disabled={readonly}
                   className={inputCls}
-                  value={
-                    field === 'conteo_fisico'
-                      ? local.conteo_fisico === null ? '' : String(local.conteo_fisico)
-                      : numInput(local[field])
-                  }
+                  value={local[field]}
+                  vacioEsNull={esConteo}
+                  mostrarCero={esConteo}
                   // Conteo vacío = no se contó: se ve "—", distinto de un 0 contado.
-                  placeholder={field === 'conteo_fisico' ? '—' : '0'}
-                  onChange={(e) => handleChange(field, e.target.value, e.target.validity.badInput)}
+                  placeholder={esConteo ? '—' : '0'}
+                  onValueChange={(v) => setCampo(field, v)}
                   title={
                     field === 'ventas'
                       ? `Bistro registró ${ventasBistro}. Si vendés por fuera del POS, editá el total — la diferencia se conserva aunque se re-sincronice.`
@@ -207,7 +136,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
                     Bistro: {ventasBistro}
                     {manualDiff !== 0 && (
                       <span className={manualDiff > 0 ? ' text-blue-700' : ' text-red-600'}>
-                        {' '}{manualDiff > 0 ? '+' : ''}{manualDiff} a mano
+                        {' '}{manualDiff > 0 ? '+' : ''}{formatoCantidad(manualDiff)} a mano
                       </span>
                     )}
                   </p>
@@ -217,9 +146,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
           )
         },
       )}
-      <td className="px-2 py-2 text-right tabular-nums text-sm">
-        {Math.round(stockTeorico)}
-      </td>
+      <td className="px-2 py-2 text-right tabular-nums text-sm">{formatoCantidad(stockTeorico)}</td>
       <td className="px-2 py-2 text-right text-sm">
         <DiferenciaCell diferencia={diferencia} />
       </td>

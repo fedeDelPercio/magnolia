@@ -17,7 +17,7 @@ import { MovimientoGroupRow } from './movimiento-group-row'
 import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
 import { leerAvisoPendiente } from '../aviso-pendiente'
-import { guardarPendientes } from '../guardados-pendientes'
+import { guardarPendientes, hayPendientes } from '../guardados-pendientes'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
 import { ImportCierreDialog } from '@/features/cierres/components/import-cierre-dialog'
@@ -174,27 +174,54 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   // Lo tipeado tiene que llegar a la base antes de cerrar o traer stock. Si
   // algo no se pudo guardar, la acción se frena.
   async function asegurarGuardado(accion: string): Promise<boolean> {
-    const fallidos = await guardarPendientes()
+    let fallidos: string[]
+    try {
+      fallidos = await guardarPendientes(dia.id)
+    } catch {
+      fallidos = ['algunos productos']
+    }
     if (fallidos.length === 0) return true
     toast.error(
-      `No se pudo guardar ${fallidos.join(', ')}. Revisá la conexión: ${accion}.`,
+      `No se pudo guardar ${fallidos.join(', ')} (quedan marcados "sin guardar"). Revisá la conexión: ${accion}.`,
     )
     return false
   }
 
-  // Si se oculta la página (cambiar de app, bloquear el celular, cerrar la
-  // pestaña) se manda lo pendiente en vez de esperar el debounce.
+  // Red de seguridad para lo tipeado:
+  // - al ocultar la página (cambiar de app, bloquear el celular) se manda lo
+  //   pendiente sin esperar el debounce;
+  // - al volver la conexión se reintenta lo que había fallado;
+  // - si se intenta cerrar o recargar la pestaña con algo sin guardar, el
+  //   navegador pregunta antes de salir.
   useEffect(() => {
+    const diaId = dia.id
     function alOcultar() {
-      if (document.visibilityState === 'hidden') void guardarPendientes()
+      if (document.visibilityState === 'hidden') void guardarPendientes(diaId)
+    }
+    function alVolverConexion() {
+      void guardarPendientes(diaId).then((fallidos) => {
+        if (fallidos.length > 0) {
+          toast.error(`Todavía no se pudo guardar ${fallidos.join(', ')}. Se vuelve a intentar al seguir editando.`)
+        }
+      })
+    }
+    function antesDeSalir(e: BeforeUnloadEvent) {
+      if (!hayPendientes(diaId)) return
+      void guardarPendientes(diaId)
+      e.preventDefault()
+      e.returnValue = ''
     }
     document.addEventListener('visibilitychange', alOcultar)
     window.addEventListener('pagehide', alOcultar)
+    window.addEventListener('online', alVolverConexion)
+    window.addEventListener('beforeunload', antesDeSalir)
     return () => {
       document.removeEventListener('visibilitychange', alOcultar)
       window.removeEventListener('pagehide', alOcultar)
+      window.removeEventListener('online', alVolverConexion)
+      window.removeEventListener('beforeunload', antesDeSalir)
     }
-  }, [])
+  }, [dia.id])
 
   function handleCerrar() {
     setLoading(true)
