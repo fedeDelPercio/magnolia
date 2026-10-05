@@ -506,6 +506,133 @@ export async function createPago(
   return {}
 }
 
+// Estado de una compra según lo pagado: se recalcula al crear, editar o anular
+// un pago vinculado. Sin pagos vuelve a 'pendiente'.
+async function recalcularEstadoCompra(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  compraId: string,
+) {
+  const [{ data: compra }, { data: pagosCompra }] = await Promise.all([
+    supabase.from('compras').select('total').eq('id', compraId).maybeSingle(),
+    supabase.from('pagos_proveedor').select('monto').eq('compra_id', compraId),
+  ])
+  if (!compra) return
+  const totalPagado = (pagosCompra ?? []).reduce((s, p) => s + Number(p.monto), 0)
+  const status =
+    totalPagado <= 0.01
+      ? 'pendiente'
+      : totalPagado < Number(compra.total) - 0.01
+        ? 'pagada_parcial'
+        : 'pagada'
+  await supabase.from('compras').update({ status }).eq('id', compraId)
+}
+
+// Edita un pago a proveedor (por ejemplo, se cargó mal el monto o el método).
+// El egreso en caja lo creó el trigger pago_proveedor_to_caja al insertar; acá
+// lo mantenemos alineado (fecha, monto, descripción). El método no vive en
+// caja: se lee del pago al mostrarla.
+export async function updatePago(
+  pagoId: string,
+  values: PagoFormValues,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: previo, error: prevErr } = await supabase
+    .from('pagos_proveedor')
+    .select('id, tenant_id, proveedor_id, compra_id, fecha, monto, metodo, descripcion, due_date, cleared_at, proveedores(name)')
+    .eq('id', pagoId)
+    .maybeSingle()
+  if (prevErr) return { error: prevErr.message }
+  if (!previo) return { error: 'Pago no encontrado' }
+
+  const esCheque = values.metodo === 'cheque'
+  const { error } = await supabase
+    .from('pagos_proveedor')
+    .update({
+      fecha: values.fecha,
+      monto: values.monto,
+      metodo: values.metodo,
+      descripcion: values.descripcion || null,
+      due_date: esCheque ? (values.due_date ?? null) : null,
+      // Si deja de ser cheque, la marca de "cobrado" ya no tiene sentido.
+      cleared_at: esCheque ? previo.cleared_at : null,
+    })
+    .eq('id', pagoId)
+  if (error) return { error: error.message }
+
+  const nombre = (previo.proveedores as { name: string } | null)?.name ?? ''
+  const { error: cajaErr } = await supabase
+    .from('caja_movimientos')
+    .update({
+      fecha: values.fecha,
+      monto: values.monto,
+      descripcion: values.descripcion || `Pago a ${nombre}`,
+    })
+    .eq('tenant_id', previo.tenant_id)
+    .eq('ref_kind', 'pago_proveedor')
+    .eq('ref_id', pagoId)
+  if (cajaErr) {
+    // Volvemos el pago a como estaba para no dejar caja y proveedor distintos.
+    await supabase
+      .from('pagos_proveedor')
+      .update({
+        fecha: previo.fecha,
+        monto: previo.monto,
+        metodo: previo.metodo,
+        descripcion: previo.descripcion,
+        due_date: previo.due_date,
+        cleared_at: previo.cleared_at,
+      })
+      .eq('id', pagoId)
+    return { error: `No se pudo actualizar la caja: ${cajaErr.message}` }
+  }
+
+  if (previo.compra_id) await recalcularEstadoCompra(supabase, previo.compra_id)
+
+  revalidatePath('/proveedores', 'layout')
+  revalidatePath('/caja')
+  revalidatePath('/alertas')
+  revalidatePath('/dashboard')
+  return {}
+}
+
+// Anula (borra) un pago cargado por error, junto con su egreso en caja. Si
+// estaba vinculado a una compra, la compra vuelve a pendiente o pago parcial.
+export async function deletePago(pagoId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+
+  const { data: pago } = await supabase
+    .from('pagos_proveedor')
+    .select('id, tenant_id, compra_id')
+    .eq('id', pagoId)
+    .maybeSingle()
+  if (!pago) return { error: 'Pago no encontrado' }
+
+  const { data: borrado, error } = await supabase
+    .from('pagos_proveedor')
+    .delete()
+    .eq('id', pagoId)
+    .select('id')
+  if (error) return { error: error.message }
+  if (!borrado || borrado.length !== 1) return { error: 'No se pudo anular el pago' }
+
+  const { error: cajaErr } = await supabase
+    .from('caja_movimientos')
+    .delete()
+    .eq('tenant_id', pago.tenant_id)
+    .eq('ref_kind', 'pago_proveedor')
+    .eq('ref_id', pagoId)
+
+  if (pago.compra_id) await recalcularEstadoCompra(supabase, pago.compra_id)
+
+  revalidatePath('/proveedores', 'layout')
+  revalidatePath('/caja')
+  revalidatePath('/alertas')
+  revalidatePath('/dashboard')
+  if (cajaErr) return { error: `El pago se anuló pero no se pudo borrar de caja: ${cajaErr.message}` }
+  return {}
+}
+
 // Marca/desmarca un cheque como cobrado. Pasar null en clearedAt deshace.
 export async function setChequeCleared(
   pagoId: string,

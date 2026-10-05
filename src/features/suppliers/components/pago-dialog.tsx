@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 
 import { pagoSchema, METODO_LABELS, type PagoFormValues, type PagoMetodo } from '../schemas'
-import { createPago } from '../actions'
+import { createPago, updatePago } from '../actions'
+import type { PagoProveedor } from '../queries'
 
 type Props = {
   open: boolean
@@ -25,6 +26,8 @@ type Props = {
   // igual puede cambiarlo por pago individual. null/undefined → 'transferencia'.
   defaultMetodo?: PagoMetodo | null
   compraId?: string
+  // Si viene, el dialog edita ese pago en vez de crear uno nuevo.
+  pago?: PagoProveedor | null
 }
 
 function todayStr() {
@@ -45,7 +48,7 @@ function addMonths(isoDate: string, months: number): string {
 
 type Plazo = '30' | '60' | 'otro'
 
-export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, defaultMetodo, compraId }: Props) {
+export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, defaultMetodo, compraId, pago }: Props) {
   const initialMetodo: PagoMetodo = defaultMetodo ?? 'transferencia'
   const form = useForm<PagoFormValues>({
     resolver: zodResolver(pagoSchema) as Resolver<PagoFormValues>,
@@ -55,10 +58,22 @@ export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, def
 
   useEffect(() => {
     if (open) {
-      form.reset({ fecha: todayStr(), monto: defaultMonto ?? 0, metodo: defaultMetodo ?? 'transferencia', descripcion: '' })
-      setPlazo('30')
+      if (pago) {
+        form.reset({
+          fecha: pago.fecha,
+          monto: Number(pago.monto),
+          metodo: pago.metodo,
+          descripcion: pago.descripcion ?? '',
+          due_date: pago.due_date ?? undefined,
+        })
+        // Al editar un cheque se respeta su vencimiento tal cual estaba.
+        setPlazo(pago.metodo === 'cheque' ? 'otro' : '30')
+      } else {
+        form.reset({ fecha: todayStr(), monto: defaultMonto ?? 0, metodo: defaultMetodo ?? 'transferencia', descripcion: '' })
+        setPlazo('30')
+      }
     }
-  }, [open, defaultMonto, defaultMetodo, form])
+  }, [open, defaultMonto, defaultMetodo, form, pago])
 
   // Auto-recalcular due_date cuando cambia fecha o plazo (sólo si metodo=cheque)
   const metodo = form.watch('metodo')
@@ -77,11 +92,13 @@ export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, def
   }, [metodo, fecha, plazo, form])
 
   async function onSubmit(values: PagoFormValues) {
-    const result = await createPago(proveedorId, values, compraId)
+    const result = pago
+      ? await updatePago(pago.id, values)
+      : await createPago(proveedorId, values, compraId)
     if (result.error) {
       toast.error(result.error)
     } else {
-      toast.success('Pago registrado')
+      toast.success(pago ? 'Pago actualizado' : 'Pago registrado')
       onOpenChange(false)
     }
   }
@@ -90,7 +107,7 @@ export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, def
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Pago a {proveedorName}</DialogTitle>
+          <DialogTitle>{pago ? 'Editar pago a' : 'Pago a'} {proveedorName}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -205,7 +222,7 @@ export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, def
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Guardando...' : 'Registrar pago'}
+                {form.formState.isSubmitting ? 'Guardando...' : pago ? 'Guardar cambios' : 'Registrar pago'}
               </Button>
             </DialogFooter>
           </form>

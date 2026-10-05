@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { groupQtyByPeriod, QTY_GROUP_LABELS, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
 import { METODO_LABELS, type PagoMetodo } from '../schemas'
-import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared } from '../actions'
+import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared, deletePago } from '../actions'
 import { CompraDialog } from './compra-dialog'
 import { PagoDialog } from './pago-dialog'
 import { ProveedorDialog } from './proveedor-dialog'
@@ -256,6 +256,8 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   const [pagoOpen, setPagoOpen] = useState(false)
   const [pagoDefaultMonto, setPagoDefaultMonto] = useState<number | undefined>(undefined)
   const [pagoCompraId, setPagoCompraId] = useState<string | undefined>(undefined)
+  const [editingPago, setEditingPago] = useState<PagoProveedor | null>(null)
+  const [anulandoPagoId, setAnulandoPagoId] = useState<string | null>(null)
   const [deletingCompraId, setDeletingCompraId] = useState<string | null>(null)
   const [expandedCompras, setExpandedCompras] = useState<Set<string>>(new Set())
   const [selectedInsumo, setSelectedInsumo] = useState<string | null>(null)
@@ -312,6 +314,20 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   async function handleMarkPagada(compraId: string) {
     const result = await updateCompraStatus(compraId, 'pagada', proveedor.id)
     if (result.error) toast.error(result.error)
+  }
+
+  async function handleAnularPago(p: PagoProveedor) {
+    const ok = window.confirm(
+      `¿Anular el pago de ${formatCurrency(p.monto)} del ${formatDate(p.fecha)}?
+
+Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra vuelve a quedar pendiente (o con pago parcial).`,
+    )
+    if (!ok) return
+    setAnulandoPagoId(p.id)
+    const result = await deletePago(p.id)
+    setAnulandoPagoId(null)
+    if (result.error) toast.error(result.error)
+    else toast.success('Pago anulado')
   }
 
   function handleSaldar(compra: CompraWithItems) {
@@ -635,7 +651,32 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
                       <p className="mt-0.5 text-xs text-muted-foreground">{p.descripcion}</p>
                     )}
                   </div>
-                  <span className="tabular-nums font-semibold text-green-700 shrink-0">{formatCurrency(p.monto)}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="tabular-nums font-semibold text-green-700">{formatCurrency(p.monto)}</span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        aria-label="Acciones del pago"
+                        disabled={anulandoPagoId === p.id}
+                        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      >
+                        <MoreHorizontalIcon className="size-3.5" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem onClick={() => { setEditingPago(p); setPagoOpen(true) }}>
+                          <PencilIcon className="size-3.5 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => handleAnularPago(p)}
+                        >
+                          <TrashIcon className="size-3.5 mr-2" />
+                          Anular pago
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               )
             })}
@@ -829,12 +870,13 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
       />
       <PagoDialog
         open={pagoOpen}
-        onOpenChange={(v) => { setPagoOpen(v); if (!v) { setPagoDefaultMonto(undefined); setPagoCompraId(undefined) } }}
+        onOpenChange={(v) => { setPagoOpen(v); if (!v) { setPagoDefaultMonto(undefined); setPagoCompraId(undefined); setEditingPago(null) } }}
         proveedorId={proveedor.id}
         proveedorName={proveedor.name}
         defaultMonto={pagoDefaultMonto}
         defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
+        pago={editingPago}
       />
       {/* La vista saldos_proveedores expone los campos del perfil (incl.
           ai_extraction_notes) justamente para poder abrir el dialog de edición
