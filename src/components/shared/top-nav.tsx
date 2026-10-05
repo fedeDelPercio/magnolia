@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { descartarTodoLoPendiente, guardarTodoLoPendiente, hayAlgoSinGuardar } from '@/features/operations/use-guardado-fila'
 import { toast } from 'sonner'
 
 type NavItem = {
@@ -101,6 +102,21 @@ export function TopNav() {
   }, [mobileOpen])
 
   async function handleLogout() {
+    // Lo tipeado en Operación se guarda antes de cerrar sesión.
+    if (hayAlgoSinGuardar()) {
+      const aviso = toast.loading('Guardando antes de cerrar sesión…')
+      const fallidos = await guardarTodoLoPendiente()
+      toast.dismiss(aviso)
+      if (fallidos.length > 0) {
+        if (
+          !window.confirm(
+            `No se pudo guardar ${fallidos.join(', ')}. Si cerrás sesión ahora se pierde. ¿Cerrar sesión igual?`,
+          )
+        )
+          return
+        descartarTodoLoPendiente()
+      }
+    }
     const supabase = createClient()
     const { error } = await supabase.auth.signOut()
     if (error) {

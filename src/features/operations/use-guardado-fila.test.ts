@@ -7,6 +7,9 @@ import { toast } from 'sonner'
 import {
   useGuardadoFila,
   descartarHuerfanas,
+  descartarTodoLoPendiente,
+  guardarTodoLoPendiente,
+  hayAlgoSinGuardar,
   EVENTO_GUARDADO_IMPOSIBLE,
   type DetalleGuardadoImposible,
   type ResultadoEnvio,
@@ -324,6 +327,50 @@ describe('useGuardadoFila', () => {
     expect(result.current.saving).toBe(false)
     expect(result.current.sinGuardar).toBe(true)
     expect(hayPendientes('dia-lento')).toBe(true)
+  })
+
+  it('antes de cerrar sesión se guarda lo de la pantalla y lo de filas que ya no están', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const visible = montar(base, 'dia-sesion', 'fila-visible')
+    const salio = montar(base, 'dia-sesion-2', 'fila-salio')
+    act(() => salio.result.current.cambiar('conteo', 4))
+    salio.unmount()
+    act(() => visible.result.current.cambiar('produccion', 7))
+    expect(hayAlgoSinGuardar()).toBe(true)
+    let fallidos: string[] = ['x']
+    const cierre = act(async () => { fallidos = await guardarTodoLoPendiente() })
+    await flushMicrotasks()
+    // Primero sale lo de la pantalla y después lo de la fila que ya no está.
+    expect(base.envios).toHaveLength(1)
+    expect(base.envios[0]!.payload).toEqual({ produccion: 7 })
+    await act(async () => base.envios[0]!.resolver({}))
+    await flushMicrotasks()
+    expect(base.envios).toHaveLength(2)
+    expect(base.envios[1]!.payload).toEqual({ conteo: 4 })
+    await act(async () => base.envios[1]!.resolver({}))
+    await cierre
+    expect(fallidos).toEqual([])
+    expect(base.db).toEqual({ conteo: 4, produccion: 7 })
+    expect(hayAlgoSinGuardar()).toBe(false)
+  })
+
+  it('cerrar sesión igual (sin conexión) descarta lo pendiente: no se guarda después con otra sesión', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const visible = montar(base, 'dia-sesion-3', 'fila-v3')
+    act(() => visible.result.current.cambiar('produccion', 9))
+    let fallidos: string[] = []
+    const cierre = act(async () => { fallidos = await guardarTodoLoPendiente() })
+    await flushMicrotasks()
+    await act(async () => base.envios.at(-1)!.fallar())
+    await cierre
+    expect(fallidos).toEqual(['Empanada'])
+    descartarTodoLoPendiente()
+    visible.unmount()
+    const antes = base.envios.length
+    await act(async () => { vi.advanceTimersByTime(60000) })
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    expect(base.envios.length).toBe(antes)
+    expect(hayAlgoSinGuardar()).toBe(false)
   })
 
   it('el día siguiente puede esperar lo que quedó guardándose al salir', async () => {

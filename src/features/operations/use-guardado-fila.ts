@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import { quitarFila, registrarFila, registrarGuardadoAlSalir } from './guardados-pendientes'
+import {
+  descartarPendientesDeTodosLosDias,
+  guardarPendientesDeTodosLosDias,
+  hayPendientesEnAlgunDia,
+  quitarFila,
+  registrarFila,
+  registrarGuardadoAlSalir,
+} from './guardados-pendientes'
 
 // Guardado automático de una fila de la grilla de Operación.
 //
@@ -185,11 +192,29 @@ function retomarHuerfana(filaId: string, diaId: string): { esperar: Promise<void
   return { esperar: h.enviando ?? h.previo }
 }
 
-/** Solo para tests: descarta lo pendiente de filas desmontadas. */
+/** Descarta lo pendiente de filas desmontadas (al cerrar sesión igual, y en los tests). */
 export function descartarHuerfanas() {
   for (const h of huerfanas.values()) h.retomada = true
   huerfanas.clear()
   actualizarReintentoHuerfanas()
+}
+
+// Antes de cerrar sesión: sin sesión ya no se puede guardar, y lo que quede se
+// guardaría después con la sesión de otra persona.
+export function hayAlgoSinGuardar(): boolean {
+  return huerfanas.size > 0 || hayPendientesEnAlgunDia()
+}
+
+/** Guarda lo de la pantalla y lo de filas que ya no están. Devuelve lo que no se pudo guardar. */
+export async function guardarTodoLoPendiente(): Promise<string[]> {
+  const enPantalla = await guardarPendientesDeTodosLosDias()
+  await Promise.allSettled([...huerfanas.keys()].map((id) => intentarHuerfana(id)))
+  return [...enPantalla, ...[...huerfanas.values()].map((h) => h.nombre + delDia(h))]
+}
+
+export function descartarTodoLoPendiente() {
+  descartarPendientesDeTodosLosDias()
+  descartarHuerfanas()
 }
 
 // ---------------------------------------------------------------------------
@@ -330,6 +355,10 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, diaFecha = ''
       guardar: () => guardar(false),
       pendiente: () => dirtyRef.current.size > 0 || enVueloRef.current !== null,
       fallida: () => fallidaRef.current && dirtyRef.current.size > 0,
+      descartar: () => {
+        clearTimeout(timer.current)
+        dirtyRef.current.clear()
+      },
     })
     retomar(filaId, diaId)
     return () => {
