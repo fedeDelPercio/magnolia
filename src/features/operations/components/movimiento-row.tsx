@@ -18,8 +18,11 @@ type LocalState = {
   ventas: number
   desperdicio: number
   almuerzo: number
-  conteo_fisico: number
+  // null = no se contó (el arrastre usa el teórico); 0 = se contó y no quedó nada.
+  conteo_fisico: number | null
 }
+
+type Campo = keyof LocalState
 
 function numInput(v: number | null | undefined): string {
   if (v === null || v === undefined) return ''
@@ -40,10 +43,15 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
     ventas: mov.ventas,
     desperdicio: mov.desperdicio,
     almuerzo: mov.almuerzo,
-    conteo_fisico: mov.conteo_fisico ?? 0,
+    conteo_fisico: mov.conteo_fisico,
   })
   const [saving, setSaving] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Solo se guardan los campos que la persona tocó. Si se mandara la fila
+  // entera, una pestaña abierta desde antes pisaría con valores viejos lo que
+  // cambió mientras tanto (una reasignación de ventas, el sync de Bistro) y un
+  // conteo vacío se grabaría como 0.
+  const dirtyRef = useRef<Set<Campo>>(new Set())
   // Una vez que el usuario edita el stock anterior, queda "manual" para este día
   // y el arrastre automático deja de pisarlo.
   const stockManualRef = useRef(mov.stock_anterior_manual)
@@ -51,32 +59,39 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
   const stockTeorico =
     local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
 
-  const diferencia = local.conteo_fisico - stockTeorico
+  const diferencia = (local.conteo_fisico ?? 0) - stockTeorico
 
   const schedulesSave = useCallback(
     (updated: LocalState) => {
       clearTimeout(timer.current)
       timer.current = setTimeout(async () => {
+        const dirty = dirtyRef.current
+        const payload: Parameters<typeof saveMovimiento>[1] = {}
+        if (dirty.has('stock_anterior')) {
+          payload.stock_anterior = updated.stock_anterior
+          payload.stock_anterior_manual = stockManualRef.current
+        }
+        if (dirty.has('produccion')) payload.produccion = updated.produccion
+        if (dirty.has('ventas')) payload.ventas = updated.ventas
+        if (dirty.has('desperdicio')) payload.desperdicio = updated.desperdicio
+        if (dirty.has('almuerzo')) payload.almuerzo = updated.almuerzo
+        if (dirty.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
+        if (Object.keys(payload).length === 0) return
         setSaving(true)
-        await saveMovimiento(mov.id, {
-          stock_anterior: updated.stock_anterior,
-          stock_anterior_manual: stockManualRef.current,
-          produccion: updated.produccion,
-          ventas: updated.ventas,
-          desperdicio: updated.desperdicio,
-          almuerzo: updated.almuerzo,
-          conteo_fisico: updated.conteo_fisico,
-        })
+        await saveMovimiento(mov.id, payload)
         setSaving(false)
       }, 700)
     },
     [mov.id],
   )
 
-  function handleChange(field: keyof LocalState, raw: string) {
+  function handleChange(field: Campo, raw: string) {
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
-    const value = isNaN(parsed) ? 0 : Math.max(0, parsed)
+    const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
+    // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
+    const value = field === 'conteo_fisico' && raw.trim() === '' ? null : num
     if (field === 'stock_anterior') stockManualRef.current = true
+    dirtyRef.current.add(field)
     const updated = { ...local, [field]: value }
     setLocal(updated)
     schedulesSave(updated)
@@ -124,7 +139,11 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
                   inputMode="numeric"
                   disabled={readonly}
                   className={inputCls}
-                  value={numInput(local[field])}
+                  value={
+                    field === 'conteo_fisico'
+                      ? local.conteo_fisico === null ? '' : String(local.conteo_fisico)
+                      : numInput(local[field])
+                  }
                   placeholder="0"
                   onChange={(e) => handleChange(field, e.target.value)}
                   title={

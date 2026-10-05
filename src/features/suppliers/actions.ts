@@ -13,6 +13,8 @@ import type {
   PagoServicioFormValues,
   SaldarPagoServicioFormValues,
 } from './schemas'
+import { hoyISO } from '@/lib/fecha'
+import { formatCurrency } from '@/lib/format'
 
 // ---- Proveedores -------------------------------------------
 
@@ -352,6 +354,11 @@ export async function updateCompra(
   await activateTrackingForItems(supabase, items, compraId)
   await deactivateTrackingForItems(supabase, items)
 
+  // El total pudo cambiar: una compra pagada a la que se le sumó un ítem pasa
+  // a "pago parcial" (y al revés). Caso real: Papelera 11/08 quedó "Pagada"
+  // con $13.636,70 sin pagar.
+  await recalcularEstadoCompra(supabase, compraId)
+
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
   revalidatePath('/catalogo/insumos')
@@ -440,7 +447,7 @@ export async function updateCompraStatus(
         const { error: pagoErr } = await supabase.from('pagos_proveedor').insert({
           tenant_id: tenantId,
           proveedor_id: proveedorId,
-          fecha: new Date().toISOString().slice(0, 10),
+          fecha: hoyISO(),
           monto: faltante,
           metodo: 'otro',
           descripcion: 'Marcada como pagada sin detalle',
@@ -469,6 +476,14 @@ export async function createPago(
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
+  // Un pago vinculado a una compra no puede pasarse de lo que falta pagar.
+  // Caso real: 5 compras con el mismo pago cargado dos veces (pantalla vieja o
+  // recarga para corregir el vencimiento), con egresos y cheques de más.
+  if (compraId) {
+    const check = await chequearTopeCompra(supabase, compraId, values.monto)
+    if (check.error) return { error: check.error }
+  }
+
   const { error } = await supabase.from('pagos_proveedor').insert({
     tenant_id: tenantId,
     proveedor_id: proveedorId,
@@ -482,23 +497,8 @@ export async function createPago(
 
   if (error) return { error: error.message }
 
-  if (compraId) {
-    // El estado depende de cuánto se cubrió: sumamos TODOS los pagos linkeados
-    // a la compra (incluido el recién insertado) contra el total. Antes se
-    // marcaba 'pagada' siempre y un pago parcial figuraba como pago completo.
-    const [{ data: compra }, { data: pagosCompra }] = await Promise.all([
-      supabase.from('compras').select('total').eq('id', compraId).single(),
-      supabase.from('pagos_proveedor').select('monto').eq('compra_id', compraId),
-    ])
-    const totalPagado = (pagosCompra ?? []).reduce((s, p) => s + Number(p.monto), 0)
-    const status =
-      compra && totalPagado < Number(compra.total) - 0.01 ? 'pagada_parcial' : 'pagada'
-    await supabase
-      .from('compras')
-      .update({ status })
-      .eq('id', compraId)
-      .eq('proveedor_id', proveedorId)
-  }
+  // El estado depende de cuánto se cubrió (pago parcial o completo).
+  if (compraId) await recalcularEstadoCompra(supabase, compraId)
 
   revalidatePath('/proveedores')
   revalidatePath(`/proveedores/${proveedorId}`)
@@ -527,6 +527,37 @@ async function recalcularEstadoCompra(
   await supabase.from('compras').update({ status }).eq('id', compraId)
 }
 
+// Lo que falta pagar de una compra, sin contar el pago que se está editando.
+// Devuelve error si `monto` se pasa de eso (con un margen de centavos).
+async function chequearTopeCompra(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  compraId: string,
+  monto: number,
+  excluirPagoId?: string,
+): Promise<{ error?: string }> {
+  const [{ data: compra }, { data: pagosCompra }] = await Promise.all([
+    supabase.from('compras').select('total, fecha').eq('id', compraId).maybeSingle(),
+    supabase.from('pagos_proveedor').select('id, monto').eq('compra_id', compraId),
+  ])
+  if (!compra) return { error: 'La compra ya no existe. Recargá la página.' }
+  const pagado = (pagosCompra ?? [])
+    .filter((p) => p.id !== excluirPagoId)
+    .reduce((s, p) => s + Number(p.monto), 0)
+  const falta = Math.round((Number(compra.total) - pagado) * 100) / 100
+  if (falta <= 0.01) {
+    return {
+      error:
+        'Esta compra ya está pagada. Si es otro pago al proveedor, registralo con "Registrar pago" (sin compra); si se cargó dos veces, anulá el que sobra.',
+    }
+  }
+  if (monto > falta + 0.01) {
+    return {
+      error: `El pago (${formatCurrency(monto)}) es mayor a lo que falta pagar de esta compra (${formatCurrency(falta)}).`,
+    }
+  }
+  return {}
+}
+
 // Edita un pago a proveedor (por ejemplo, se cargó mal el monto o el método).
 // El egreso en caja lo creó el trigger pago_proveedor_to_caja al insertar; acá
 // lo mantenemos alineado (fecha, monto, descripción). El método no vive en
@@ -543,7 +574,12 @@ export async function updatePago(
     .eq('id', pagoId)
     .maybeSingle()
   if (prevErr) return { error: prevErr.message }
-  if (!previo) return { error: 'Pago no encontrado' }
+  if (!previo) return { error: 'Este pago ya no existe (quizás lo anuló otra persona). Recargá la página.' }
+
+  if (previo.compra_id) {
+    const check = await chequearTopeCompra(supabase, previo.compra_id, values.monto, pagoId)
+    if (check.error) return { error: check.error }
+  }
 
   const esCheque = values.metodo === 'cheque'
   const { error } = await supabase
@@ -561,16 +597,32 @@ export async function updatePago(
   if (error) return { error: error.message }
 
   const nombre = (previo.proveedores as { name: string } | null)?.name ?? ''
-  const { error: cajaErr } = await supabase
+  const cajaValores = {
+    fecha: values.fecha,
+    monto: values.monto,
+    descripcion: values.descripcion || `Pago a ${nombre}`,
+  }
+  const { data: cajaFilas, error: cajaUpdErr } = await supabase
     .from('caja_movimientos')
-    .update({
-      fecha: values.fecha,
-      monto: values.monto,
-      descripcion: values.descripcion || `Pago a ${nombre}`,
-    })
+    .update(cajaValores)
     .eq('tenant_id', previo.tenant_id)
     .eq('ref_kind', 'pago_proveedor')
     .eq('ref_id', pagoId)
+    .select('id')
+  let cajaErr = cajaUpdErr
+  // Si el egreso no estaba (quedó desfasado por un corte), se vuelve a crear:
+  // todo pago tiene que tener su egreso en caja.
+  if (!cajaErr && (!cajaFilas || cajaFilas.length === 0)) {
+    const { error: insErr } = await supabase.from('caja_movimientos').insert({
+      tenant_id: previo.tenant_id,
+      tipo: 'egreso',
+      categoria: 'Pago proveedor',
+      ref_kind: 'pago_proveedor',
+      ref_id: pagoId,
+      ...cajaValores,
+    })
+    cajaErr = insErr
+  }
   if (cajaErr) {
     // Volvemos el pago a como estaba para no dejar caja y proveedor distintos.
     await supabase
@@ -584,7 +636,7 @@ export async function updatePago(
         cleared_at: previo.cleared_at,
       })
       .eq('id', pagoId)
-    return { error: `No se pudo actualizar la caja: ${cajaErr.message}` }
+    return { error: 'No se pudo guardar el cambio. Probá de nuevo en un momento.' }
   }
 
   if (previo.compra_id) await recalcularEstadoCompra(supabase, previo.compra_id)
@@ -606,22 +658,32 @@ export async function deletePago(pagoId: string): Promise<{ error?: string }> {
     .select('id, tenant_id, compra_id')
     .eq('id', pagoId)
     .maybeSingle()
-  if (!pago) return { error: 'Pago no encontrado' }
+  if (!pago) return { error: 'Este pago ya no existe (quizás lo anuló otra persona). Recargá la página.' }
+
+  // Orden seguro: primero el egreso de caja y después el pago. Si el segundo
+  // paso falla, el egreso se vuelve a crear tal cual estaba, así caja y
+  // proveedor nunca quedan distintos (un egreso huérfano no se puede borrar
+  // desde /caja).
+  const { data: cajaPrevia, error: cajaErr } = await supabase
+    .from('caja_movimientos')
+    .delete()
+    .eq('tenant_id', pago.tenant_id)
+    .eq('ref_kind', 'pago_proveedor')
+    .eq('ref_id', pagoId)
+    .select('tenant_id, fecha, tipo, categoria, monto, descripcion, ref_kind, ref_id')
+  if (cajaErr) return { error: 'No se pudo anular el pago. Probá de nuevo en un momento.' }
 
   const { data: borrado, error } = await supabase
     .from('pagos_proveedor')
     .delete()
     .eq('id', pagoId)
     .select('id')
-  if (error) return { error: error.message }
-  if (!borrado || borrado.length !== 1) return { error: 'No se pudo anular el pago' }
-
-  const { error: cajaErr } = await supabase
-    .from('caja_movimientos')
-    .delete()
-    .eq('tenant_id', pago.tenant_id)
-    .eq('ref_kind', 'pago_proveedor')
-    .eq('ref_id', pagoId)
+  if (error || !borrado || borrado.length !== 1) {
+    if (cajaPrevia && cajaPrevia.length > 0) {
+      await supabase.from('caja_movimientos').insert(cajaPrevia)
+    }
+    return { error: 'No se pudo anular el pago. Probá de nuevo en un momento.' }
+  }
 
   if (pago.compra_id) await recalcularEstadoCompra(supabase, pago.compra_id)
 
@@ -629,7 +691,6 @@ export async function deletePago(pagoId: string): Promise<{ error?: string }> {
   revalidatePath('/caja')
   revalidatePath('/alertas')
   revalidatePath('/dashboard')
-  if (cajaErr) return { error: `El pago se anuló pero no se pudo borrar de caja: ${cajaErr.message}` }
   return {}
 }
 

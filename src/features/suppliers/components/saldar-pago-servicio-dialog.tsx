@@ -12,13 +12,14 @@ import { formatCurrency, formatDate } from '@/lib/format'
 import { saldarPagoServicio } from '../actions'
 import { PAGO_METODOS, METODO_LABELS, type PagoMetodo } from '../schemas'
 import type { PagoServicio } from '../queries'
+import { hoyISO } from '@/lib/fecha'
 
 function isPagoMetodo(v: string | null): v is PagoMetodo {
   return !!v && (PAGO_METODOS as readonly string[]).includes(v)
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  return hoyISO()
 }
 
 type Props = {

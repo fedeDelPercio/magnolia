@@ -40,8 +40,11 @@ type LocalState = {
   ventas: number
   desperdicio: number
   almuerzo: number
-  conteo_fisico: number
+  // null = no se contó (el arrastre usa el teórico); 0 = se contó y no quedó nada.
+  conteo_fisico: number | null
 }
+
+type Campo = keyof LocalState
 
 function numInput(v: number | null | undefined): string {
   if (v === null || v === undefined) return ''
@@ -76,8 +79,13 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
     ventas: sum('ventas'),
     desperdicio: sum('desperdicio'),
     almuerzo: sum('almuerzo'),
-    conteo_fisico: all.reduce((s, m) => s + (m.conteo_fisico ?? 0), 0),
+    conteo_fisico: all.every((m) => m.conteo_fisico === null)
+      ? null
+      : all.reduce((s, m) => s + (m.conteo_fisico ?? 0), 0),
   })
+  // Solo se guardan los campos que la persona tocó (ver movimiento-row): así
+  // una pestaña vieja no pisa ventas reasignadas ni graba un conteo vacío como 0.
+  const dirtyRef = useRef<Set<Campo>>(new Set())
   const [saving, setSaving] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // Las secundarias solo se ceran una vez (idempotente igual, pero evita
@@ -101,58 +109,76 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
 
   const stockTeorico =
     local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
-  const diferencia = local.conteo_fisico - stockTeorico
+  const diferencia = (local.conteo_fisico ?? 0) - stockTeorico
 
   function schedulesSave(updated: LocalState) {
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
+      // Datos viejos cargados en una variante secundaria: la primera vez que se
+      // guarda el grupo se pasan a la primaria (stock, desperdicio, almuerzo,
+      // conteo, producción) y la secundaria queda en 0 / sin contar. Las ventas
+      // de las secundarias no se tocan nunca: son el dato de Bistro del canal.
+      const aConsolidar = consolidatedRef.current
+        ? []
+        : secondaries.filter((sec) => {
+            const esFilaProduccion = sec.id === filaProduccion.id
+            return (
+              sec.stock_anterior !== 0 ||
+              (!esFilaProduccion && sec.produccion !== 0) ||
+              sec.desperdicio !== 0 ||
+              sec.almuerzo !== 0 ||
+              sec.conteo_fisico !== null
+            )
+          })
+      const campos = new Set<Campo>(dirtyRef.current)
+      if (aConsolidar.length > 0) {
+        for (const c of ['stock_anterior', 'produccion', 'desperdicio', 'almuerzo', 'conteo_fisico'] as const) {
+          campos.add(c)
+        }
+      }
+      if (campos.size === 0) return
+
       setSaving(true)
-      // Primaria: lleva todos los ajustes + sus ventas = total editado menos
-      // lo que quedó en las secundarias (así el grupo suma exactamente el total).
-      await saveMovimiento(primary.id, {
-        stock_anterior: updated.stock_anterior,
-        stock_anterior_manual: stockManualRef.current,
-        produccion: filaProduccion.id === primary.id ? updated.produccion : 0,
-        ventas: Math.max(0, updated.ventas - ventasSecundarias),
-        desperdicio: updated.desperdicio,
-        almuerzo: updated.almuerzo,
-        conteo_fisico: updated.conteo_fisico,
-      })
-      if (filaProduccion.id !== primary.id) {
+      // Primaria: lleva los ajustes + sus ventas = total editado menos lo que
+      // quedó en las secundarias (así el grupo suma exactamente el total).
+      const payload: Parameters<typeof saveMovimiento>[1] = {}
+      if (campos.has('stock_anterior')) {
+        payload.stock_anterior = updated.stock_anterior
+        payload.stock_anterior_manual = stockManualRef.current
+      }
+      if (campos.has('produccion')) {
+        payload.produccion = filaProduccion.id === primary.id ? updated.produccion : 0
+      }
+      if (campos.has('ventas')) payload.ventas = Math.max(0, updated.ventas - ventasSecundarias)
+      if (campos.has('desperdicio')) payload.desperdicio = updated.desperdicio
+      if (campos.has('almuerzo')) payload.almuerzo = updated.almuerzo
+      if (campos.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
+      await saveMovimiento(primary.id, payload)
+      if (campos.has('produccion') && filaProduccion.id !== primary.id) {
         await saveMovimiento(filaProduccion.id, { produccion: updated.produccion })
       }
-      // Secundarias (Barra, Menú): ceramos los campos de stock/produccion pero
-      // preservamos sus ventas (dato de Bistrosoft del canal).
-      if (!consolidatedRef.current) {
-        for (const sec of secondaries) {
-          const esFilaProduccion = sec.id === filaProduccion.id
-          const needsReset =
-            sec.stock_anterior !== 0 ||
-            (!esFilaProduccion && sec.produccion !== 0) ||
-            sec.desperdicio !== 0 ||
-            sec.almuerzo !== 0 ||
-            (sec.conteo_fisico ?? 0) !== 0
-          if (needsReset) {
-            await saveMovimiento(sec.id, {
-              stock_anterior: 0,
-              ...(esFilaProduccion ? {} : { produccion: 0 }),
-              ventas: sec.ventas,
-              desperdicio: 0,
-              almuerzo: 0,
-              conteo_fisico: 0,
-            })
-          }
-        }
-        consolidatedRef.current = true
+      for (const sec of aConsolidar) {
+        const esFilaProduccion = sec.id === filaProduccion.id
+        await saveMovimiento(sec.id, {
+          stock_anterior: 0,
+          ...(esFilaProduccion ? {} : { produccion: 0 }),
+          desperdicio: 0,
+          almuerzo: 0,
+          conteo_fisico: null,
+        })
       }
+      consolidatedRef.current = true
       setSaving(false)
     }, 700)
   }
 
-  function handleChange(field: keyof LocalState, raw: string) {
+  function handleChange(field: Campo, raw: string) {
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
-    const value = isNaN(parsed) ? 0 : Math.max(0, parsed)
+    const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
+    // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
+    const value = field === 'conteo_fisico' && raw.trim() === '' ? null : num
     if (field === 'stock_anterior') stockManualRef.current = true
+    dirtyRef.current.add(field)
     const updated = { ...local, [field]: value }
     setLocal(updated)
     schedulesSave(updated)
@@ -263,7 +289,11 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
             inputMode="numeric"
             disabled={readonly}
             className={inputCls}
-            value={numInput(local[field])}
+            value={
+              field === 'conteo_fisico'
+                ? local.conteo_fisico === null ? '' : String(local.conteo_fisico)
+                : numInput(local[field])
+            }
             placeholder="0"
             onChange={(e) => handleChange(field, e.target.value)}
           />

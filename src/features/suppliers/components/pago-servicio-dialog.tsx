@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { createPagoServicio } from '../actions'
 import { PAGO_METODOS, METODO_LABELS, type PagoMetodo, type PagoServicioEstado } from '../schemas'
 import type { ConceptoServicio, SaldoProveedor } from '../queries'
+import { hoyISO } from '@/lib/fecha'
 
 function isPagoMetodo(v: string | null): v is PagoMetodo {
   return !!v && (PAGO_METODOS as readonly string[]).includes(v)
@@ -28,7 +29,7 @@ type Props = {
 const NONE_CONCEPT = '__none__'
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  return hoyISO()
 }
 
 export function PagoServicioDialog({ open, onOpenChange, proveedor, conceptos }: Props) {

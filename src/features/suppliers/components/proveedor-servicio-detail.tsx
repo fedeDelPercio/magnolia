@@ -36,6 +36,7 @@ import { ConceptoServicioDialog } from './concepto-servicio-dialog'
 import { ProveedorDialog } from './proveedor-dialog'
 import type { SaldoProveedor, ConceptoServicio, PagoServicio } from '../queries'
 import type { Tables } from '@/types/database'
+import { hoyISO } from '@/lib/fecha'
 
 type Props = {
   proveedor: SaldoProveedor
@@ -162,7 +163,7 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
   // no salió de la caja.
   const totalPagado = pagados.reduce((s, p) => s + Number(p.monto), 0)
   const ultimoPago = pagados[0] ?? null
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyISO()
 
   return (
     <>

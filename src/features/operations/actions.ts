@@ -169,3 +169,18 @@ export async function reasignarVentas(input: {
   revalidatePath(`/operacion/${diaId}`)
   return {}
 }
+
+// Ventas actuales de un día, para que el diálogo de reasignar muestre lo que
+// hay ahora en la base y no lo que había al abrir la página (la grilla pudo
+// haberlas corregido mientras tanto).
+export async function getVentasDelDia(
+  diaId: string,
+): Promise<{ data?: { id: string; ventas: number }[]; error?: string }> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('movimientos_diarios')
+    .select('id, ventas')
+    .eq('dia_id', diaId)
+  if (error) return { error: error.message }
+  return { data: (data ?? []).map((m) => ({ id: m.id, ventas: Number(m.ventas) || 0 })) }
+}

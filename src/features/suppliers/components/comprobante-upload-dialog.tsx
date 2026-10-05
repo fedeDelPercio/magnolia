@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { CameraIcon, Loader2Icon, TrashIcon, CheckCircleIcon, AlertTriangleIcon, PencilIcon, PackageIcon, TrendingUpIcon, TrendingDownIcon } from 'lucide-react'
+import { CameraIcon, Loader2Icon, TrashIcon, CheckCircleIcon, AlertTriangleIcon, PencilIcon, PackageIcon } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -23,6 +23,8 @@ import { computePricing } from '../pricing'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ItemConMatch } from '../comprobantes/schemas'
 import type { Tables } from '@/types/database'
+import { hoyISO } from '@/lib/fecha'
+import { VariacionPrecio } from './variacion-precio'
 
 type InsumoOpt = Pick<
   Tables<'insumos'>,
@@ -70,7 +72,7 @@ type LineDraft = {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  return hoyISO()
 }
 
 export function ComprobanteUploadDialog({
@@ -455,7 +457,7 @@ export function ComprobanteUploadDialog({
               <CameraIcon className="mx-auto size-10 text-muted-foreground" />
               <p className="mt-3 text-sm font-medium">Subí la foto o PDF del comprobante</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                JPG, PNG, WebP o PDF · hasta 15 MB
+                JPG, PNG, WebP o PDF · hasta 30 MB
               </p>
               <Input
                 type="file"
@@ -476,7 +478,7 @@ export function ComprobanteUploadDialog({
         {stage === 'parsing' && (
           <div className="flex flex-col items-center justify-center gap-3 py-12">
             <Loader2Icon className="size-10 animate-spin text-primary" />
-            <p className="text-sm">Procesando con IA — esto puede tardar 10-30 segundos.</p>
+            <p className="text-sm">Procesando con IA: puede tardar hasta un minuto.</p>
           </div>
         )}
 
@@ -647,9 +649,11 @@ export function ComprobanteUploadDialog({
 
                       {!line.discarded && (
                         <div className="mt-2 grid grid-cols-12 items-end gap-2">
-                          <div className="col-span-6 space-y-1">
+                          {/* En celular el insumo ocupa toda la fila: a media fila se
+                              montaba sobre Cantidad y Precio total. */}
+                          <div className="col-span-12 space-y-1 sm:col-span-6">
                             <label className="text-[11px] text-muted-foreground">Insumo a vincular</label>
-                            <div className="flex items-center gap-1">
+                            <div className="flex min-w-0 items-center gap-1">
                               <SearchableSelect
                                 options={localInsumos.map((i) => ({ value: i.id, label: i.name }))}
                                 value={line.assignedInsumoId ?? ''}
@@ -688,7 +692,7 @@ export function ComprobanteUploadDialog({
                               </p>
                             )}
                           </div>
-                          <div className="col-span-2 space-y-1">
+                          <div className="col-span-4 space-y-1 sm:col-span-2">
                             <label className="text-[11px] text-muted-foreground">Cant. ({unidadLabel})</label>
                             <Input
                               type="number"
@@ -699,7 +703,7 @@ export function ComprobanteUploadDialog({
                               onChange={(e) => updateLine(idx, { qtyInput: e.target.value })}
                             />
                           </div>
-                          <div className="col-span-3 space-y-1">
+                          <div className="col-span-6 space-y-1 sm:col-span-3">
                             <label className="text-[11px] text-muted-foreground">Precio total</label>
                             <CurrencyInput
                               className="h-8 text-xs"
@@ -707,7 +711,7 @@ export function ComprobanteUploadDialog({
                               onValueChange={(v) => updateLine(idx, { totalInput: v })}
                             />
                           </div>
-                          <div className="col-span-1 flex flex-col items-center gap-0.5">
+                          <div className="col-span-2 flex flex-col items-center gap-0.5 sm:col-span-1">
                             {insumo ? (
                               <CheckCircleIcon className="size-4 text-emerald-600" />
                             ) : (
@@ -774,12 +778,14 @@ export function ComprobanteUploadDialog({
                             const conIvaMul = (1 - descuentoPct / 100) * (1 + ivaEff / 100)
                             const hijos = line.assignedInsumoId ? despieces[line.assignedInsumoId] : null
                             if (hijos && hijos.length > 0) {
+                              // Igual que al guardar (expandDespiece): cantidad en
+                              // unidad base × qty_por_unidad de cada hijo.
                               const sumQty = hijos.reduce((s, h) => s + h.qty_por_unidad, 0)
-                              const unitPriceHijo = sumQty > 0 ? total / (qty * sumQty) : 0
+                              const unitPriceHijo = sumQty > 0 ? total / (qtyBase * sumQty) : 0
                               return (
                                 <p className="col-span-12 text-[10px] text-emerald-700">
-                                  Va a sumar stock a: {hijos.map((h) => `${(qty * h.qty_por_unidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${h.hijo_name}`).join(' · ')} · {formatCurrency(unitPriceHijo)} por unidad hija
-                                  {conIvaMul !== 1 && ` (${formatCurrency(unitPriceHijo * conIvaMul)} c/IVA)`}
+                                  Va a sumar stock a: {hijos.map((h) => `${(qtyBase * h.qty_por_unidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${h.hijo_name}`).join(' · ')} · {formatCurrency(unitPriceHijo)} por unidad hija
+                                  {conIvaMul !== 1 && ` (${formatCurrency(unitPriceHijo * conIvaMul)} ${descuentoPct > 0 ? 'c/desc. e IVA' : 'c/IVA'})`}
                                 </p>
                               )
                             }
@@ -789,8 +795,6 @@ export function ComprobanteUploadDialog({
                             // mismo criterio que la carga manual (compra-dialog).
                             const nuevoBruto = unitPriceBase * conIvaMul
                             const prevPrice = Number(insumo.current_price) || 0
-                            const changePct = prevPrice > 0 ? ((nuevoBruto - prevPrice) / prevPrice) * 100 : null
-                            const isLarge = changePct !== null && changePct >= 20
                             return (
                               <div className="col-span-12 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px]">
                                 <p className="text-muted-foreground">
@@ -801,16 +805,7 @@ export function ComprobanteUploadDialog({
                                     </span>
                                   )}
                                 </p>
-                                {changePct !== null && (
-                                  <span
-                                    className={`flex items-center gap-1 tabular-nums ${isLarge ? 'font-semibold text-red-600' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}
-                                    title="Último precio pagado por este insumo, con el descuento e IVA de esa compra"
-                                  >
-                                    {isLarge && <AlertTriangleIcon className="size-3" />}
-                                    {changePct > 0 ? <TrendingUpIcon className="size-3" /> : <TrendingDownIcon className="size-3" />}
-                                    Último c/desc. e IVA: {formatCurrency(prevPrice)} · {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
-                                  </span>
-                                )}
+                                <VariacionPrecio anterior={prevPrice} nuevo={nuevoBruto} />
                               </div>
                             )
                           })()}

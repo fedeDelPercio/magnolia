@@ -104,6 +104,9 @@ export async function getPagosByProveedor(proveedorId: string): Promise<PagoProv
     .select('*')
     .eq('proveedor_id', proveedorId)
     .order('fecha', { ascending: false })
+    // Desempate estable entre pagos del mismo día (si no, cambian de lugar
+    // al editarlos).
+    .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
   return data ?? []
