@@ -17,6 +17,7 @@ import { MovimientoGroupRow } from './movimiento-group-row'
 import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
 import { leerAvisoPendiente } from '../aviso-pendiente'
+import { guardarPendientes } from '../guardados-pendientes'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
 import { ImportCierreDialog } from '@/features/cierres/components/import-cierre-dialog'
@@ -157,6 +158,8 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   function handleCerrar() {
     setLoading(true)
     startTransition(async () => {
+      // Lo último que se tipeó tiene que entrar antes del cierre.
+      await guardarPendientes()
       const result = await cerrarDia(dia.id)
       setLoading(false)
       if (result.error) {
@@ -182,6 +185,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       return
     setLoading(true)
     startTransition(async () => {
+      await guardarPendientes()
       const result = await traerStockDiaAnterior(dia.id)
       if (result.error) {
         setLoading(false)

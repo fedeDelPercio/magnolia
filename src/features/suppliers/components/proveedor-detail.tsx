@@ -355,15 +355,22 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
   // vencimiento = 0-30).
   const aging = useMemo(() => {
     const tramos = { d0_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 }
+    // "Sueltos" = plata pagada que no está cubriendo ninguna compra: pagos sin
+    // compra + lo pagado de más en cada compra (pagos duplicados, redondeos).
     let sueltos = pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0)
+    for (const c of compras) {
+      sueltos += Math.max(0, (pagadoPorCompra.get(c.id) ?? 0) - Number(c.total))
+    }
     const hoy = hoyISO()
     const diasDesde = (iso: string) => {
       const [y1, m1, d1] = iso.split('-').map(Number)
       const [y2, m2, d2] = hoy.split('-').map(Number)
       return Math.round((Date.UTC(y2!, m2! - 1, d2!) - Date.UTC(y1!, m1! - 1, d1!)) / 86400000)
     }
+    // Por lo que falta pagar, no por el estado (una compra editada puede
+    // figurar "pagada" con faltante).
     const impagas = compras
-      .filter((c) => c.status !== 'pagada')
+      .filter((c) => Number(c.total) - (pagadoPorCompra.get(c.id) ?? 0) > 0.009)
       .sort((a, b) => a.fecha.localeCompare(b.fecha))
     for (const c of impagas) {
       let falta = Math.max(0, Number(c.total) - (pagadoPorCompra.get(c.id) ?? 0))

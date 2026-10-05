@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useRef, memo } from 'react'
+import { toast } from 'sonner'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { saveMovimiento } from '../actions'
 import { filaDeProduccion, varianteLabel } from '../grupos'
+import { quitarPendiente, registrarPendiente } from '../guardados-pendientes'
 import type { MovimientoConProducto } from '../queries'
 
 // Fila unificada: agrupa las variantes (salón, barra, menú) de un mismo
@@ -51,7 +53,9 @@ function numInput(v: number | null | undefined): string {
   return v === 0 ? '' : String(v)
 }
 
-function DiferenciaCell({ diferencia }: { diferencia: number }) {
+// Sin conteo no hay diferencia que mostrar (al cerrar el día también queda vacía).
+function DiferenciaCell({ diferencia }: { diferencia: number | null }) {
+  if (diferencia === null) return <span className="text-muted-foreground">—</span>
   const rounded = Math.round(diferencia)
   if (rounded === 0) return <span className="tabular-nums text-green-700">0</span>
   if (rounded > 0) return <span className="tabular-nums text-blue-700">+{rounded}</span>
@@ -85,7 +89,9 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   })
   // Solo se guardan los campos que la persona tocó (ver movimiento-row): así
   // una pestaña vieja no pisa ventas reasignadas ni graba un conteo vacío como 0.
+  // Se vacía cuando el guardado sale bien (ver movimiento-row).
   const dirtyRef = useRef<Set<Campo>>(new Set())
+  const pendingRef = useRef<LocalState | null>(null)
   const [saving, setSaving] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // Las secundarias solo se ceran una vez (idempotente igual, pero evita
@@ -109,11 +115,15 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
 
   const stockTeorico =
     local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
-  const diferencia = (local.conteo_fisico ?? 0) - stockTeorico
+  const diferencia = local.conteo_fisico === null ? null : local.conteo_fisico - stockTeorico
 
-  function schedulesSave(updated: LocalState) {
+  async function guardar() {
     clearTimeout(timer.current)
-    timer.current = setTimeout(async () => {
+    quitarPendiente(primary.id)
+    const updated = pendingRef.current
+    pendingRef.current = null
+    if (!updated) return
+    {
       // Datos viejos cargados en una variante secundaria: la primera vez que se
       // guarda el grupo se pasan a la primaria (stock, desperdicio, almuerzo,
       // conteo, producción) y la secundaria queda en 0 / sin contar. Las ventas
@@ -130,12 +140,20 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
               sec.conteo_fisico !== null
             )
           })
-      const campos = new Set<Campo>(dirtyRef.current)
+      // Producción vieja cargada en la base cuando la receta vive en otra
+      // variante (platos del día): se pasa a esa variante, que es la que
+      // descuenta insumos.
+      const moverProduccion =
+        !consolidatedRef.current && filaProduccion.id !== primary.id && primary.produccion !== 0
+      const editados = new Set<Campo>(dirtyRef.current)
+      dirtyRef.current.clear()
+      const campos = new Set<Campo>(editados)
       if (aConsolidar.length > 0) {
         for (const c of ['stock_anterior', 'produccion', 'desperdicio', 'almuerzo', 'conteo_fisico'] as const) {
           campos.add(c)
         }
       }
+      if (moverProduccion) campos.add('produccion')
       if (campos.size === 0) return
 
       setSaving(true)
@@ -153,26 +171,49 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
       if (campos.has('desperdicio')) payload.desperdicio = updated.desperdicio
       if (campos.has('almuerzo')) payload.almuerzo = updated.almuerzo
       if (campos.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
-      await saveMovimiento(primary.id, payload)
-      if (campos.has('produccion') && filaProduccion.id !== primary.id) {
-        await saveMovimiento(filaProduccion.id, { produccion: updated.produccion })
+      const errores: string[] = []
+      const r1 = await saveMovimiento(primary.id, payload)
+      if (r1.error) errores.push(r1.error)
+      if (!r1.error && campos.has('produccion') && filaProduccion.id !== primary.id) {
+        const r2 = await saveMovimiento(filaProduccion.id, { produccion: updated.produccion })
+        if (r2.error) errores.push(r2.error)
       }
-      for (const sec of aConsolidar) {
-        const esFilaProduccion = sec.id === filaProduccion.id
-        await saveMovimiento(sec.id, {
-          stock_anterior: 0,
-          ...(esFilaProduccion ? {} : { produccion: 0 }),
-          desperdicio: 0,
-          almuerzo: 0,
-          conteo_fisico: null,
-        })
+      if (errores.length === 0) {
+        for (const sec of aConsolidar) {
+          const esFilaProduccion = sec.id === filaProduccion.id
+          const r3 = await saveMovimiento(sec.id, {
+            stock_anterior: 0,
+            ...(esFilaProduccion ? {} : { produccion: 0 }),
+            desperdicio: 0,
+            almuerzo: 0,
+            conteo_fisico: null,
+          })
+          if (r3.error) errores.push(r3.error)
+        }
+      }
+      setSaving(false)
+      if (errores.length > 0) {
+        // Quedan pendientes para el próximo guardado (la consolidación se
+        // reintenta porque consolidatedRef sigue en false).
+        for (const c of editados) dirtyRef.current.add(c)
+        toast.error(`No se guardó ${name}: ${errores[0]}`)
+        return
       }
       consolidatedRef.current = true
-      setSaving(false)
-    }, 700)
+    }
+  }
+
+  function schedulesSave(updated: LocalState) {
+    pendingRef.current = updated
+    clearTimeout(timer.current)
+    registrarPendiente(primary.id, guardar)
+    timer.current = setTimeout(() => void guardar(), 700)
   }
 
   function handleChange(field: Campo, raw: string) {
+    // Las cantidades no pueden ser negativas: un "-" tipeado se ignora (antes
+    // se guardaba como 0, que en el conteo es "contado 0").
+    if (raw.trim().startsWith('-')) return
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
     const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
     // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
