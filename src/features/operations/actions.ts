@@ -197,9 +197,6 @@ export async function reasignarVentas(input: {
   return {}
 }
 
-// Ventas actuales de un día, para que el diálogo de reasignar muestre lo que
-// hay ahora en la base y no lo que había al abrir la página (la grilla pudo
-// haberlas corregido mientras tanto).
 export type EstadoDia = {
   status: string
   filas: {
@@ -241,6 +238,9 @@ export async function getEstadoDia(diaId: string): Promise<{ data?: EstadoDia; e
   }
 }
 
+// Ventas actuales de un día, para que el diálogo de reasignar muestre lo que
+// hay ahora en la base y no lo que había al abrir la página (la grilla pudo
+// haberlas corregido mientras tanto).
 export async function getVentasDelDia(
   diaId: string,
 ): Promise<{ data?: { id: string; ventas: number }[]; error?: string }> {

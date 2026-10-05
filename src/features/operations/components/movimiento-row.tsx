@@ -9,6 +9,9 @@ import type { MovimientoConProducto } from '../queries'
 type Props = {
   mov: MovimientoConProducto
   readonly: boolean
+  // Fecha corta del día ("25/05"), para avisar si un guardado falla después
+  // de salir de la pantalla.
+  diaFecha?: string
   // Oculta por el buscador. Se esconde con CSS en vez de desmontar: la fila
   // guarda su estado local (y un guardado pendiente) que se perdería.
   hidden?: boolean
@@ -35,7 +38,7 @@ function DiferenciaCell({ diferencia }: { diferencia: number | null }) {
   return <span className="tabular-nums text-red-600">{formatoCantidad(rounded)}</span>
 }
 
-export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden = false }: Props) {
+export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, diaFecha, hidden = false }: Props) {
   // Una vez que el usuario edita el stock anterior, queda "manual" para este día
   // y el arrastre automático deja de pisarlo.
   const stockManualRef = useRef(mov.stock_anterior_manual)
@@ -57,6 +60,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
   const { local, cambiar, saving, sinGuardar } = useGuardadoFila<LocalState>({
     filaId: mov.id,
     diaId: mov.dia_id,
+    diaFecha,
     nombre: mov.productos.name,
     inicial: {
       stock_anterior: Number(mov.stock_anterior) || 0,

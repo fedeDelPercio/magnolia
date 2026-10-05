@@ -57,6 +57,9 @@ export function CantidadInput({
     const el = inputRef.current
     if (!el) return
     function antesDeInsertar(e: InputEvent) {
+      // Lo pegado se deja pasar: onChange lo limpia (espacios, tabulación de
+      // una planilla) y descarta lo que no es un número.
+      if (e.inputType === 'insertFromPaste' || e.inputType === 'insertFromDrop') return
       if (e.data && /[^\d.,]/.test(e.data)) e.preventDefault()
     }
     el.addEventListener('beforeinput', antesDeInsertar)
@@ -85,6 +88,12 @@ export function CantidadInput({
           e.preventDefault()
         }
         rest.onKeyDown?.(e)
+      }}
+      onBlur={(e) => {
+        // Al salir se muestra el número como quedó: "2.500" pasa a "2500", así
+        // se ve que se tomó como dos mil quinientos.
+        setTexto(aTexto(value, mostrarCero))
+        rest.onBlur?.(e)
       }}
       onChange={(e) => {
         const raw = e.target.value.trim()

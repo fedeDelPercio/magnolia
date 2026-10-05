@@ -35,6 +35,9 @@ type Props = {
   secondaries: MovimientoConProducto[]
   name: string
   readonly: boolean
+  // Fecha corta del día ("25/05"), para avisar si un guardado falla después
+  // de salir de la pantalla.
+  diaFecha?: string
   // Oculta por el buscador. Se esconde con CSS en vez de desmontar: la fila
   // guarda su estado local (y un guardado pendiente) que se perdería.
   hidden?: boolean
@@ -68,6 +71,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   secondaries,
   name,
   readonly,
+  diaFecha,
   hidden = false,
 }: Props) {
   const [open, setOpen] = useState(false)
@@ -90,7 +94,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   // las secundarias conservan sus ventas (dato de Bistro del canal) y la
   // diferencia va a la variante base.
   const ventasBistroSum = all.reduce((s, m) => s + (Number(m.ventas_bistro) || 0), 0)
-  const ventasSecundarias = secondaries.reduce((s, m) => s + (Number(m.ventas) || 0), 0)
+  const ventasSecundarias = r3(secondaries.reduce((s, m) => s + (Number(m.ventas) || 0), 0))
   const ventasBreakdown = all
     .map((m) => `${varianteLabel(m.productos)}: ${Number(m.ventas_bistro) || 0}`)
     .join(' · ')
@@ -166,6 +170,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   const { local, cambiar, saving, sinGuardar } = useGuardadoFila<LocalState>({
     filaId: primary.id,
     diaId: primary.dia_id,
+    diaFecha,
     nombre: name,
     // Estado inicial: sumamos entre variantes para absorber datos viejos que
     // hayan quedado cargados en otra variante.

@@ -7,9 +7,13 @@ const KEY = 'magnolia:operacion:aviso'
 
 type Tipo = 'success' | 'error'
 
+// Un aviso que no se mostró enseguida (la recarga no ocurrió) ya no
+// corresponde: no aparece después en otro día.
+const VIGENCIA_MS = 60000
+
 export function guardarAvisoPendiente(msg: string, tipo: Tipo = 'success') {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify({ msg, tipo }))
+    sessionStorage.setItem(KEY, JSON.stringify({ msg, tipo, at: Date.now() }))
   } catch {
     // sin aviso
   }
@@ -20,8 +24,9 @@ export function leerAvisoPendiente(): { msg: string; tipo: Tipo } | null {
     const raw = sessionStorage.getItem(KEY)
     if (!raw) return null
     sessionStorage.removeItem(KEY)
-    const parsed = JSON.parse(raw) as { msg?: unknown; tipo?: unknown }
+    const parsed = JSON.parse(raw) as { msg?: unknown; tipo?: unknown; at?: unknown }
     if (typeof parsed.msg !== 'string') return null
+    if (typeof parsed.at === 'number' && Date.now() - parsed.at > VIGENCIA_MS) return null
     return { msg: parsed.msg, tipo: parsed.tipo === 'error' ? 'error' : 'success' }
   } catch {
     return null

@@ -12,6 +12,10 @@ type Fila = {
   guardar: () => Promise<boolean>
   // Hay algo tipeado que todavía no confirmó la base (o un guardado en curso).
   pendiente: () => boolean
+  // El último intento de guardar falló (y sigue pendiente).
+  fallida: () => boolean
+  // Olvida lo pendiente (la persona eligió cerrar sesión igual).
+  descartar: () => void
 }
 
 const porDia = new Map<string, Map<string, Fila>>()
@@ -69,6 +73,27 @@ export async function esperarGuardadosAlSalir(maxMs = 25000): Promise<void> {
     }),
   ])
   clearTimeout(t)
+}
+
+/** Reintenta solo las filas cuyo guardado falló (no corta lo que se está tipeando). */
+export async function reintentarFallidas(diaId: string): Promise<void> {
+  const filas = [...(porDia.get(diaId)?.values() ?? [])].filter((f) => f.fallida())
+  await Promise.allSettled(filas.map((f) => f.guardar()))
+}
+
+/** Fuerza el guardado de las filas en pantalla de cualquier día (antes de cerrar sesión). */
+export async function guardarPendientesDeTodosLosDias(): Promise<string[]> {
+  const resultados = await Promise.all([...porDia.keys()].map((d) => guardarPendientes(d)))
+  return resultados.flat()
+}
+
+export function hayPendientesEnAlgunDia(): boolean {
+  for (const d of porDia.keys()) if (hayPendientes(d)) return true
+  return false
+}
+
+export function descartarPendientesDeTodosLosDias() {
+  for (const filas of porDia.values()) for (const f of filas.values()) f.descartar()
 }
 
 export function hayPendientes(diaId: string): boolean {
