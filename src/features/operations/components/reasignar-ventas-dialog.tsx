@@ -11,6 +11,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 
 import { getVentasDelDia, reasignarVentas } from '../actions'
 import { guardarAvisoPendiente } from '../aviso-pendiente'
+import { guardarPendientes } from '../guardados-pendientes'
 import type { MovimientoConProducto } from '../queries'
 
 type Props = {
@@ -47,10 +48,16 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
   const [haciaId, setHaciaId] = useState('')
   const [cantidadStr, setCantidadStr] = useState('')
   const [saving, setSaving] = useState(false)
+  // Hubo un corte al enviar: no sabemos si se aplicó. No se deja repetir sin recargar.
+  const [incierto, setIncierto] = useState(false)
 
   useEffect(() => {
     let cancelado = false
-    getVentasDelDia(diaId)
+    // Lo tipeado en la grilla se guarda antes de leer, así el diálogo muestra
+    // lo mismo que la pantalla.
+    guardarPendientes(diaId)
+      .catch(() => [])
+      .then(() => getVentasDelDia(diaId))
       .then((r) => {
         if (cancelado) return
         if (r.error || !r.data) {
@@ -90,7 +97,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
 
   const desdeOptions = conVentas.map((f) => ({
     value: f.id,
-    label: `${f.name} (${f.ventas} vendid${f.ventas === 1 ? 'o' : 'os'})`,
+    label: `${f.name} (${f.ventas.toLocaleString('es-AR', { maximumFractionDigits: 3 })} vendid${f.ventas === 1 ? 'o' : 'os'})`,
   }))
   const haciaOptions = filas
     .filter((f) => f.id !== desdeEfectivo)
@@ -99,12 +106,29 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
   async function handleSubmit() {
     if (!desde || !hacia || !cantidadValida || cantidad === null) return
     setSaving(true)
-    const result = await reasignarVentas({
-      diaId,
-      desdeMovId: desde.id,
-      haciaMovId: hacia.id,
-      cantidad,
-    })
+    // Lo tipeado en la grilla tiene que estar en la base antes: si no, al
+    // recargar, un valor viejo de ventas pisaría la reasignación.
+    const fallidos = await guardarPendientes(diaId).catch(() => ['algunos productos'])
+    if (fallidos.length > 0) {
+      setSaving(false)
+      toast.error(`Primero tiene que guardarse ${fallidos.join(', ')}. Revisá la conexión y probá de nuevo.`)
+      return
+    }
+    let result: Awaited<ReturnType<typeof reasignarVentas>>
+    try {
+      result = await reasignarVentas({
+        diaId,
+        desdeMovId: desde.id,
+        haciaMovId: hacia.id,
+        cantidad,
+        ventasDesdeEsperadas: desde.ventas,
+      })
+    } catch {
+      setSaving(false)
+      setIncierto(true)
+      toast.error('Sin conexión: no sabemos si se reasignó. Recargá la página para ver cómo quedó antes de repetirlo.')
+      return
+    }
     if (result.error) {
       setSaving(false)
       toast.error(result.error)
@@ -193,7 +217,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
             />
             {desde && (
               <p className="text-xs text-muted-foreground">
-                Máximo {maxCantidad} (lo vendido como {desde.name} ese día).
+                Máximo {maxCantidad.toLocaleString('es-AR', { maximumFractionDigits: 3 })} (lo vendido como {desde.name} ese día).
               </p>
             )}
             {cantidadStr.trim() !== '' && !cantidadValida && desde && (
@@ -210,7 +234,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || sinDatos || !desde || !hacia || !cantidadValida}
+            disabled={saving || incierto || sinDatos || !desde || !hacia || !cantidadValida}
           >
             {saving ? 'Guardando...' : 'Reasignar'}
           </Button>

@@ -10,6 +10,9 @@ export type SaldoProveedor = {
   // 'insumo' (default) o 'servicio'. Los servicios usan un flow distinto en
   // el detalle: conceptos + pagos puntuales en vez de compras.
   tipo: 'insumo' | 'servicio'
+  // Plazo de pago habitual (días). Sirve de vencimiento para la antigüedad de
+  // la deuda cuando la compra no tiene uno cargado.
+  payment_terms_days: number | null
   total_compras: number
   total_pagado: number
   saldo: number
@@ -91,6 +94,9 @@ export async function getComprasByProveedor(proveedorId: string): Promise<Compra
     `)
     .eq('proveedor_id', proveedorId)
     .order('fecha', { ascending: false })
+    // Desempate estable entre compras del mismo día (la antigüedad y el aviso
+    // de plata sin compra las recorren en orden).
+    .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
   return data as unknown as CompraWithItems[]

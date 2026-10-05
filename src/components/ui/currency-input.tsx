@@ -67,14 +67,31 @@ export function CurrencyInput({
   decimals = 2,
   onFocus,
   onBlur,
+  onPointerDown,
   ...rest
 }: Props) {
   const [focused, setFocused] = React.useState(false)
+  // El foco vino de un clic con el mouse (no de Tab): ahí se respeta dónde se hizo clic.
+  const porPuntero = React.useRef(false)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  const seleccionarRef = React.useRef(false)
+
+  // Al enfocar cambia el texto mostrado ("3.500,00" -> "3.500") y el navegador
+  // pierde la selección que hace al entrar con Tab. Se vuelve a seleccionar
+  // todo apenas se actualiza el campo y antes de la próxima tecla (con
+  // requestAnimationFrame, un tipeo rápido perdía el primer dígito).
+  React.useLayoutEffect(() => {
+    if (focused && seleccionarRef.current) {
+      seleccionarRef.current = false
+      inputRef.current?.select()
+    }
+  }, [focused])
 
   const display = focused ? groupFocused(value) : formatES(value, decimals)
 
   return (
     <Input
+      ref={inputRef}
       type="text"
       inputMode="decimal"
       value={display}
@@ -84,19 +101,20 @@ export function CurrencyInput({
         onValueChange(normalize(raw))
       }}
       onFocus={(e) => {
+        seleccionarRef.current = !porPuntero.current
+        porPuntero.current = false
         setFocused(true)
-        // Al enfocar cambia el texto mostrado ("3.500,00" -> "3.500") y el
-        // navegador pierde la selección que hace al entrar con Tab: tipear
-        // agregaba dígitos al final ("3.500" + "140"). Se vuelve a seleccionar
-        // todo después del cambio. Con el mouse, el clic ubica el cursor igual.
-        const el = e.currentTarget
-        requestAnimationFrame(() => {
-          if (document.activeElement === el) el.select()
-        })
         onFocus?.(e)
+      }}
+      onPointerDown={(e) => {
+        // Solo el mouse: en el celular, tocar un monto y tipear tiene que
+        // reemplazarlo (ahí "seleccionar todo" cuesta).
+        porPuntero.current = e.pointerType === 'mouse'
+        onPointerDown?.(e)
       }}
       onBlur={(e) => {
         setFocused(false)
+        porPuntero.current = false
         onBlur?.(e)
       }}
       {...rest}

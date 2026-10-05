@@ -83,3 +83,34 @@ Veredictos: `corregir` · `corregido` · `pendiente (motivo)` · `por diseño` �
 
 ### Control de Magnolia Demo
 Foto 14:30 y 15:25 UTC idénticas. Después aparecieron 5 compras nuevas (Luchador ×2, Aguas Medina, Carrefour ×2, 15:56–16:00 UTC) y un comprobante: es la clienta trabajando; el navegador compartido siguió quieto en la ficha de FEMSA (solo recargas de código en su consola).
+
+## Retest 2 y verificaciones (commits f88c09f, d0c2e74, 3c59f2a, 3f4b5b8)
+
+Resumen de lo que salió y cómo se resolvió (detalle en los reportes de los agentes):
+
+| Id | Sev. | Título | Veredicto |
+|----|------|--------|-----------|
+| H-A1/H-A2, R2-1, R2-2, R2-3 | alta | La grilla perdía lo tipeado si un guardado fallaba (sin aviso, o la página se rompía al cerrar) | corregido (f88c09f) y rehecho (3c59f2a) |
+| Sim-1 | alta | Un guardado fallido mientras salía otro reenviaba una versión vieja al cerrar el día (simulación del agente de código) | corregido (3c59f2a): `useGuardadoFila` manda siempre lo último y solo da por guardado lo que la base confirmó; test con el escenario exacto |
+| Sim-2 | media | Cerrar día no esperaba un guardado en curso | corregido (3c59f2a): `guardarPendientes(diaId)` espera los envíos en curso; test |
+| F-1 / Sim-3 | alta | Un pendiente de otro día bloqueaba o alteraba el cierre de este | corregido (3c59f2a): registro por día, se limpia al desmontar; error permanente se descarta |
+| Sim-4 | media | Reasignar no guardaba antes lo pendiente de la grilla | corregido (3c59f2a) |
+| Sim-5 / F-3 / F-7 | media | Decimales deformados ("2.5" → 25), "-5" sobre selección → 45, números largos truncados sin aviso | corregido (3c59f2a, 3f4b5b8): `CantidadInput` con texto propio, decimales, bloqueo de caracteres al tipear y aviso del tope; tests |
+| F-2 / F-6 | media | Recargar o cerrar la pestaña perdía lo pendiente | corregido (3c59f2a, 3f4b5b8): pagehide manda lo pendiente y beforeunload pregunta |
+| F-4 | media | Mensajes contradictorios cuando otra pestaña cerró el día | corregido (3f4b5b8): mensaje claro y la pantalla se refresca |
+| F-5 | media | Cierre con respuesta perdida decía "no se cerró" | corregido (3f4b5b8): "no sabemos si se cerró, recargá" |
+| H-M1/R2-4, Sim-11 | media | Reasignar sin red al enviar quedaba trabado; un reintento podía aplicar dos veces | corregido: try/catch, control de concurrencia contra lo que vio el diálogo, no deja repetir tras un corte |
+| H-M2/N-6, Sim-6 | media | Aviso de plata sin compra por centavos o pagos viejos; "Marcar como pagada" sin aviso | corregido: cobertura FIFO por compra, umbral $100, aviso también en "Marcar como pagada" |
+| H-M3 | media | La antigüedad de la deuda nunca se mostraba (compras sin vencimiento) | corregido (f88c09f): fecha + plazo del proveedor |
+| Sim-7, R2-7, F-9 | media | Montos: toque en celular, clic con mouse y Tab rápido | corregido: selección solo por teclado o toque, en `useLayoutEffect` |
+| F-10 | media | Eliminar compra sin confirmación (preexistente) | corregido (3f4b5b8) |
+| H-B2/R2-6/F-8, Sim-13 | baja | Mensaje de tope contradictorio | corregido (3f4b5b8) |
+| H-B3 | baja | Editar un pago anulado en otra pestaña recreaba su egreso | corregido (f88c09f) |
+| H-B5/R2-8 | baja | Orden por Diferencia mezclaba los sin contar | corregido (f88c09f) |
+| R2-5 | baja | Error técnico en inglés en la grilla | corregido: errores traducidos y logueados en el servidor |
+| R2-9, R2-10 | baja | Celular: aviso de baja partido; precio total ilegible en compra manual | corregido (d0c2e74) |
+| F-11, F-12, Sim-12, Sim-14 | baja | Toasts largos y dobles; "overridear"; orden de compras del mismo día; porcentaje con punto | corregido |
+| Sim-15, Sim-16 | mejora | `payment_terms_days` no se puede cargar en la ficha; la cobertura no prioriza coincidencia exacta de monto | pendiente |
+| R2-11 | mejora | Una pestaña vieja que edita "ventas" sobrescribe (última escritura gana) | pendiente: control de concurrencia por campo |
+| M-4 (código) | media | Importar o remapear un cierre desde el día no refresca la grilla (preexistente) | pendiente |
+| N-3 | media | Dos pestañas saldando la misma compra a la vez crean dos pagos | pendiente: requiere bloqueo en la base (migración) |

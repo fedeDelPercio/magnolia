@@ -43,7 +43,7 @@ export async function saveMovimiento(
     almuerzo?: number
     conteo_fisico?: number | null
   },
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; permanente?: boolean }> {
   const supabase = await createClient()
 
   // Un día cerrado no se edita (una pestaña vieja o un guardado demorado podía
@@ -55,7 +55,10 @@ export async function saveMovimiento(
     .maybeSingle()
   const status = (fila as unknown as { dias_operativos: { status: string } | null } | null)?.dias_operativos?.status
   if (status === 'cerrado') {
-    return { error: 'el día está cerrado (reabrilo para editarlo). Recargá la página.' }
+    return {
+      error: 'el día ya está cerrado. Para corregirlo, reabrilo.',
+      permanente: true,
+    }
   }
 
   const { error } = await supabase
@@ -63,7 +66,13 @@ export async function saveMovimiento(
     .update(fields)
     .eq('id', id)
 
-  if (error) return { error: error.message }
+  if (error) {
+    // Mensajes de la base en castellano para la usuaria; el error real queda
+    // en el log del servidor para diagnosticarlo.
+    console.error('saveMovimiento', id, error)
+    if (error.code === '22003') return { error: 'el número es demasiado grande', permanente: true }
+    return { error: 'no se pudo guardar, probá de nuevo' }
+  }
   return {}
 }
 
@@ -121,6 +130,9 @@ export async function reasignarVentas(input: {
   desdeMovId: string
   haciaMovId: string
   cantidad: number
+  // Ventas del origen que mostraba el diálogo. Si en la base hay otra cosa
+  // (otra pestaña, un reintento después de un corte), no se aplica.
+  ventasDesdeEsperadas: number
 }): Promise<{ error?: string }> {
   const { diaId, desdeMovId, haciaMovId } = input
   const cantidad = Number(input.cantidad)
@@ -150,6 +162,9 @@ export async function reasignarVentas(input: {
     return { error: 'Los productos no corresponden a este día' }
   }
   const ventasDesde = Number(desde.ventas) || 0
+  if (Math.abs(ventasDesde - Number(input.ventasDesdeEsperadas)) > 0.0005) {
+    return { error: 'Las ventas cambiaron desde que abriste este diálogo. Cerralo y abrilo de nuevo para ver los valores actuales.' }
+  }
   if (cantidad > ventasDesde) {
     return { error: `Solo hay ${ventasDesde} venta${ventasDesde === 1 ? '' : 's'} para reasignar` }
   }
@@ -185,6 +200,47 @@ export async function reasignarVentas(input: {
 // Ventas actuales de un día, para que el diálogo de reasignar muestre lo que
 // hay ahora en la base y no lo que había al abrir la página (la grilla pudo
 // haberlas corregido mientras tanto).
+export type EstadoDia = {
+  status: string
+  filas: {
+    id: string
+    stock_anterior: number
+    produccion: number
+    ventas: number
+    desperdicio: number
+    almuerzo: number
+    conteo_fisico: number | null
+  }[]
+}
+
+/** Lo que la base tiene hoy del día: la pantalla lo compara con lo que muestra. */
+export async function getEstadoDia(diaId: string): Promise<{ data?: EstadoDia; error?: string }> {
+  const supabase = await createClient()
+  const [dia, movs] = await Promise.all([
+    supabase.from('dias_operativos').select('status').eq('id', diaId).maybeSingle(),
+    supabase
+      .from('movimientos_diarios')
+      .select('id, stock_anterior, produccion, ventas, desperdicio, almuerzo, conteo_fisico')
+      .eq('dia_id', diaId),
+  ])
+  if (dia.error || movs.error) return { error: (dia.error ?? movs.error)!.message }
+  if (!dia.data) return { error: 'El día no existe' }
+  return {
+    data: {
+      status: dia.data.status,
+      filas: (movs.data ?? []).map((m) => ({
+        id: m.id,
+        stock_anterior: Number(m.stock_anterior) || 0,
+        produccion: Number(m.produccion) || 0,
+        ventas: Number(m.ventas) || 0,
+        desperdicio: Number(m.desperdicio) || 0,
+        almuerzo: Number(m.almuerzo) || 0,
+        conteo_fisico: m.conteo_fisico === null ? null : Number(m.conteo_fisico),
+      })),
+    },
+  }
+}
+
 export async function getVentasDelDia(
   diaId: string,
 ): Promise<{ data?: { id: string; ventas: number }[]; error?: string }> {

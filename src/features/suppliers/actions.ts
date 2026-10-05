@@ -557,7 +557,7 @@ async function chequearTopeCompra(
   if (monto > falta + tolerancia) {
     return {
       error: excluirPagoId
-        ? `Este pago no puede superar ${formatCurrency(falta)}, lo que falta pagar de la compra (${formatCurrency(Number(compra.total))}). Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`
+        ? `Este pago supera lo que falta pagar de la compra: es de ${formatCurrency(Number(compra.total))}${pagado > 0.009 ? ` y ya hay ${formatCurrency(Math.round(pagado * 100) / 100)} en otros pagos` : ''}, así que faltan ${formatCurrency(falta)}. Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`
         : `El pago (${formatCurrency(monto)}) es mayor a lo que falta pagar de esta compra (${formatCurrency(falta)}). Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`,
     }
   }
@@ -588,7 +588,7 @@ export async function updatePago(
   }
 
   const esCheque = values.metodo === 'cheque'
-  const { error } = await supabase
+  const { data: editados, error } = await supabase
     .from('pagos_proveedor')
     .update({
       fecha: values.fecha,
@@ -600,7 +600,12 @@ export async function updatePago(
       cleared_at: esCheque ? previo.cleared_at : null,
     })
     .eq('id', pagoId)
+    .select('id')
   if (error) return { error: error.message }
+  // Lo anularon mientras tanto (otra pestaña): no se recrea su egreso.
+  if (!editados || editados.length === 0) {
+    return { error: 'Este pago ya no existe (quizás lo anuló otra persona). Recargá la página.' }
+  }
 
   const nombre = (previo.proveedores as { name: string } | null)?.name ?? ''
   const cajaValores = {

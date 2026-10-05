@@ -49,10 +49,15 @@ export function VariacionPrecio({
           : 'Último precio pagado por este insumo, con el descuento e IVA de esa compra'
       }
     >
-      {(subaFuerte || bajaFuerte) && <AlertTriangleIcon className="size-3" />}
-      <Icono className="size-3" />
-      Último c/desc. e IVA: {formatCurrency(anterior)} · {neutro ? '0.0' : `${suba ? '+' : ''}${pct.toFixed(1)}`}%
-      {bajaFuerte && <span className="font-normal"> · revisá cantidad y unidad</span>}
+      {(subaFuerte || bajaFuerte) && <AlertTriangleIcon className="size-3 shrink-0" />}
+      <Icono className="size-3 shrink-0" />
+      {/* Un solo bloque de texto: como hijos sueltos del flex, en celular el
+          aviso quedaba en otra columna. */}
+      <span>
+        Último c/desc. e IVA: {formatCurrency(anterior)} ·{' '}
+        {neutro ? '0,0' : `${suba ? '+' : ''}${pct.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`}%
+        {bajaFuerte && <span className="font-normal"> · revisá cantidad y unidad</span>}
+      </span>
     </span>
   )
 }

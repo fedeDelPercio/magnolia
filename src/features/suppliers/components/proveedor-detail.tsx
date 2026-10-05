@@ -291,11 +291,21 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
     return Math.max(0, Number(compra.total) - (pagadoPorCompra.get(compra.id) ?? 0))
   }
 
-  async function handleDeleteCompra(compraId: string) {
-    setDeletingCompraId(compraId)
-    const result = await deleteCompra(compraId, proveedor.id)
+  async function handleDeleteCompra(compra: CompraWithItems) {
+    const pagosDeLaCompra = pagos.filter((p) => p.compra_id === compra.id).length
+    const ok = window.confirm(
+      `¿Eliminar la compra del ${formatDate(compra.fecha)} por ${formatCurrency(Number(compra.total))}? No se puede deshacer.${
+        pagosDeLaCompra > 0
+          ? `\n\nTiene ${pagosDeLaCompra} pago${pagosDeLaCompra === 1 ? '' : 's'}: no se borra${pagosDeLaCompra === 1 ? '' : 'n'}, queda${pagosDeLaCompra === 1 ? '' : 'n'} como pago sin compra.`
+          : ''
+      }`,
+    )
+    if (!ok) return
+    setDeletingCompraId(compra.id)
+    const result = await deleteCompra(compra.id, proveedor.id)
     setDeletingCompraId(null)
     if (result.error) toast.error(result.error)
+    else toast.success('Compra eliminada')
   }
 
   async function handleDeleteProveedor() {
@@ -315,8 +325,13 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   async function handleMarkPagada(compra: CompraWithItems) {
     const falta = faltanteDeCompra(compra)
     if (falta > 0.01) {
+      const cubierto = aging.cobertura.get(compra.id) ?? 0
+      const avisoCobertura =
+        cubierto >= 100
+          ? `\n\nOjo: ${proveedor.name} tiene pagos sin compra (o pagados de más en otra compra) que alcanzan para cubrir ${formatCurrency(cubierto)} de esta compra. Si ya se pagó con eso, no la marques así: se registraría otro pago.`
+          : ''
       const ok = window.confirm(
-        `¿Marcar como pagada la compra del ${formatDate(compra.fecha)}?\n\nSe registra un pago de ${formatCurrency(falta)} (método "otro", con fecha de hoy) y su egreso en caja. Si sabés cómo y cuándo se pagó, mejor usá "Saldar".`,
+        `¿Marcar como pagada la compra del ${formatDate(compra.fecha)}?\n\nSe registra un pago de ${formatCurrency(falta)} (método "otro", con fecha de hoy) y su egreso en caja. Si sabés cómo y cuándo se pagó, mejor usá "Saldar".${avisoCobertura}`,
       )
       if (!ok) return
     }
@@ -355,6 +370,8 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
   // vencimiento = 0-30).
   const aging = useMemo(() => {
     const tramos = { d0_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 }
+    // Cuánto de la plata suelta le toca a cada compra (para avisar al saldarla).
+    const cobertura = new Map<string, number>()
     // "Sueltos" = plata pagada que no está cubriendo ninguna compra: pagos sin
     // compra + lo pagado de más en cada compra (pagos duplicados, redondeos).
     let sueltos = pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0)
@@ -375,27 +392,31 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
     for (const c of impagas) {
       let falta = Math.max(0, Number(c.total) - (pagadoPorCompra.get(c.id) ?? 0))
       const aplicado = Math.min(falta, sueltos)
+      if (aplicado > 0) cobertura.set(c.id, aplicado)
       falta -= aplicado
       sueltos -= aplicado
       if (falta <= 0.009) continue
-      const dias = c.due_date ? diasDesde(c.due_date) : 0
+      // Vencimiento: el de la compra; si no tiene, fecha + plazo habitual del
+      // proveedor (sin plazo, la fecha de la compra). Antes "sin vencimiento"
+      // contaba siempre como 0-30 días y la deuda vieja no se veía nunca.
+      const plazo = Number(proveedor.payment_terms_days) || 0
+      const dias = c.due_date ? diasDesde(c.due_date) : diasDesde(c.fecha) - plazo
       if (dias <= 30) tramos.d0_30 += falta
       else if (dias <= 60) tramos.d31_60 += falta
       else if (dias <= 90) tramos.d61_90 += falta
       else tramos.d90plus += falta
     }
-    return tramos
+    return { ...tramos, cobertura }
     // pagadoPorCompra se deriva de `pagos` en cada render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compras, pagos])
+  }, [compras, pagos, proveedor.payment_terms_days])
   const hasAging = aging.d31_60 > 0 || aging.d61_90 > 0 || aging.d90plus > 0
   // Saldo a favor: se pagó más de lo comprado (la vista lo muestra como 0).
   const saldoAFavor = Math.max(0, Number(proveedor.total_pagado) - Number(proveedor.total_compras))
-  // Plata pagada que no cubre ninguna compra (pagos sin compra + lo pagado de
-  // más en alguna): al saldar una compra se avisa, puede estar ya pagada con eso.
-  const plataSinCompra =
-    pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0) +
-    compras.reduce((s, c) => s + Math.max(0, (pagadoPorCompra.get(c.id) ?? 0) - Number(c.total)), 0)
+  // Plata pagada sin compra (o de más en otra compra) que, aplicada a las
+  // compras más viejas, alcanza a la que se está saldando: puede estar ya
+  // pagada con eso. Por debajo de $100 no se avisa (redondeos).
+  const coberturaSaldar = pagoCompraId ? (aging.cobertura.get(pagoCompraId) ?? 0) : 0
   const compraPorId = new Map(compras.map((c) => [c.id, c]))
 
   // Filtros de tiempo aplican a compras y al historial de precios derivado.
@@ -638,7 +659,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           disabled={deletingCompraId === c.id}
-                          onClick={() => handleDeleteCompra(c.id)}
+                          onClick={() => handleDeleteCompra(c)}
                         >
                           <TrashIcon className="size-3.5 mr-2" />
                           Eliminar
@@ -950,7 +971,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
         defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
         pago={editingPago}
-        saldoAFavor={plataSinCompra}
+        saldoAFavor={coberturaSaldar >= 100 ? coberturaSaldar : 0}
         compraLabel={(() => {
           const id = editingPago?.compra_id ?? pagoCompraId
           const compra = id ? compraPorId.get(id) : undefined
