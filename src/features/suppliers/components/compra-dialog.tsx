@@ -558,9 +558,10 @@ export function CompraDialog({
               </div>
             )}
 
-            {/* Add item row */}
-            <div className="flex gap-2 items-end">
-              <div className="flex-1 space-y-1">
+            {/* Add item row. En celular el insumo va en su propia línea: a lo
+                ancho no entraba y "Precio total" mostraba 2 dígitos. */}
+            <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
+              <div className="min-w-0 basis-full space-y-1 sm:flex-1 sm:basis-auto">
                 <label className="text-xs text-muted-foreground">Insumo</label>
                 <SearchableSelect
                   options={localInsumos.map((i) => ({ value: i.id, label: i.name }))}
@@ -589,7 +590,7 @@ export function CompraDialog({
                   onChange={(e) => setNewQty(e.target.value)}
                 />
               </div>
-              <div className="w-28 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1 sm:w-28 sm:flex-none">
                 <label className="text-xs text-muted-foreground">Precio total</label>
                 <Input
                   id="compra-total-input"

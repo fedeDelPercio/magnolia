@@ -67,9 +67,12 @@ export function CurrencyInput({
   decimals = 2,
   onFocus,
   onBlur,
+  onPointerDown,
   ...rest
 }: Props) {
   const [focused, setFocused] = React.useState(false)
+  // El foco vino de un clic/toque (no de Tab): ahí se respeta dónde se tocó.
+  const porPuntero = React.useRef(false)
 
   const display = focused ? groupFocused(value) : formatES(value, decimals)
 
@@ -90,13 +93,21 @@ export function CurrencyInput({
         // agregaba dígitos al final ("3.500" + "140"). Se vuelve a seleccionar
         // todo después del cambio. Con el mouse, el clic ubica el cursor igual.
         const el = e.currentTarget
-        requestAnimationFrame(() => {
-          if (document.activeElement === el) el.select()
-        })
+        if (!porPuntero.current) {
+          requestAnimationFrame(() => {
+            if (document.activeElement === el) el.select()
+          })
+        }
+        porPuntero.current = false
         onFocus?.(e)
+      }}
+      onPointerDown={(e) => {
+        porPuntero.current = true
+        onPointerDown?.(e)
       }}
       onBlur={(e) => {
         setFocused(false)
+        porPuntero.current = false
         onBlur?.(e)
       }}
       {...rest}

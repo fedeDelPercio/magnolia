@@ -63,7 +63,11 @@ export async function saveMovimiento(
     .update(fields)
     .eq('id', id)
 
-  if (error) return { error: error.message }
+  if (error) {
+    // Mensajes de la base en castellano para la usuaria.
+    if (error.code === '22003') return { error: 'el número es demasiado grande' }
+    return { error: 'no se pudo guardar, probá de nuevo' }
+  }
   return {}
 }
 

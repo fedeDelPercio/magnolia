@@ -234,6 +234,9 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
     if (invalido || raw.trim().startsWith('-')) return
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
     const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
+    // Tope razonable para una cantidad del día: más que esto es un error de
+    // tipeo y la base lo rechazaría (y trabaría el guardado de toda la fila).
+    if (num > 99999) return
     // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
     const value = field === 'conteo_fisico' && raw.trim() === '' ? null : num
     if (field === 'stock_anterior') stockManualRef.current = true
