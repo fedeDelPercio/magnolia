@@ -103,12 +103,24 @@ function groupValue(g: MovimientoGroup, field: Exclude<SortField, 'name'>): numb
   return sum(field)
 }
 
+// Sin conteo no hay diferencia (la grilla muestra "—"): al ordenar por
+// Diferencia esos productos van al final, en cualquier sentido.
+function sinContar(g: MovimientoGroup): boolean {
+  return [g.primary, ...g.secondaries].every((m) => m.conteo_fisico === null)
+}
+
 function sortGroups(groups: MovimientoGroup[], sort: Sort): MovimientoGroup[] {
   const byName = (a: MovimientoGroup, b: MovimientoGroup) => a.name.localeCompare(b.name, 'es')
   const sign = sort.dir === 'asc' ? 1 : -1
   const field = sort.field
   return [...groups].sort((a, b) => {
     if (field === 'name') return sign * byName(a, b)
+    if (field === 'diferencia') {
+      const na = sinContar(a)
+      const nb = sinContar(b)
+      if (na !== nb) return na ? 1 : -1
+      if (na && nb) return byName(a, b)
+    }
     return sign * (groupValue(a, field) - groupValue(b, field)) || byName(a, b)
   })
 }
@@ -159,12 +171,46 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     )
   }
 
+  // Lo tipeado tiene que llegar a la base antes de cerrar o traer stock. Si
+  // algo no se pudo guardar, la acción se frena.
+  async function asegurarGuardado(accion: string): Promise<boolean> {
+    const fallidos = await guardarPendientes()
+    if (fallidos.length === 0) return true
+    toast.error(
+      `No se pudo guardar ${fallidos.join(', ')}. Revisá la conexión: ${accion}.`,
+    )
+    return false
+  }
+
+  // Si se oculta la página (cambiar de app, bloquear el celular, cerrar la
+  // pestaña) se manda lo pendiente en vez de esperar el debounce.
+  useEffect(() => {
+    function alOcultar() {
+      if (document.visibilityState === 'hidden') void guardarPendientes()
+    }
+    document.addEventListener('visibilitychange', alOcultar)
+    window.addEventListener('pagehide', alOcultar)
+    return () => {
+      document.removeEventListener('visibilitychange', alOcultar)
+      window.removeEventListener('pagehide', alOcultar)
+    }
+  }, [])
+
   function handleCerrar() {
     setLoading(true)
     startTransition(async () => {
-      // Lo último que se tipeó tiene que entrar antes del cierre.
-      await guardarPendientes()
-      const result = await cerrarDia(dia.id)
+      if (!(await asegurarGuardado('el día no se cerró'))) {
+        setLoading(false)
+        return
+      }
+      let result: Awaited<ReturnType<typeof cerrarDia>>
+      try {
+        result = await cerrarDia(dia.id)
+      } catch {
+        setLoading(false)
+        toast.error('Sin conexión: el día no se cerró. Probá de nuevo.')
+        return
+      }
       setLoading(false)
       if (result.error) {
         toast.error(result.error)
@@ -189,8 +235,18 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       return
     setLoading(true)
     startTransition(async () => {
-      await guardarPendientes()
-      const result = await traerStockDiaAnterior(dia.id)
+      if (!(await asegurarGuardado('no se trajo el stock'))) {
+        setLoading(false)
+        return
+      }
+      let result: Awaited<ReturnType<typeof traerStockDiaAnterior>>
+      try {
+        result = await traerStockDiaAnterior(dia.id)
+      } catch {
+        setLoading(false)
+        toast.error('Sin conexión: no se trajo el stock. Probá de nuevo.')
+        return
+      }
       if (result.error) {
         setLoading(false)
         toast.error(result.error)

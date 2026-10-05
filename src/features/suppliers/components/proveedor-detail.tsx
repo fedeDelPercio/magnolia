@@ -355,6 +355,8 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
   // vencimiento = 0-30).
   const aging = useMemo(() => {
     const tramos = { d0_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 }
+    // Cuánto de la plata suelta le toca a cada compra (para avisar al saldarla).
+    const cobertura = new Map<string, number>()
     // "Sueltos" = plata pagada que no está cubriendo ninguna compra: pagos sin
     // compra + lo pagado de más en cada compra (pagos duplicados, redondeos).
     let sueltos = pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0)
@@ -375,27 +377,31 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
     for (const c of impagas) {
       let falta = Math.max(0, Number(c.total) - (pagadoPorCompra.get(c.id) ?? 0))
       const aplicado = Math.min(falta, sueltos)
+      if (aplicado > 0) cobertura.set(c.id, aplicado)
       falta -= aplicado
       sueltos -= aplicado
       if (falta <= 0.009) continue
-      const dias = c.due_date ? diasDesde(c.due_date) : 0
+      // Vencimiento: el de la compra; si no tiene, fecha + plazo habitual del
+      // proveedor (sin plazo, la fecha de la compra). Antes "sin vencimiento"
+      // contaba siempre como 0-30 días y la deuda vieja no se veía nunca.
+      const plazo = Number(proveedor.payment_terms_days) || 0
+      const dias = c.due_date ? diasDesde(c.due_date) : diasDesde(c.fecha) - plazo
       if (dias <= 30) tramos.d0_30 += falta
       else if (dias <= 60) tramos.d31_60 += falta
       else if (dias <= 90) tramos.d61_90 += falta
       else tramos.d90plus += falta
     }
-    return tramos
+    return { ...tramos, cobertura }
     // pagadoPorCompra se deriva de `pagos` en cada render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compras, pagos])
+  }, [compras, pagos, proveedor.payment_terms_days])
   const hasAging = aging.d31_60 > 0 || aging.d61_90 > 0 || aging.d90plus > 0
   // Saldo a favor: se pagó más de lo comprado (la vista lo muestra como 0).
   const saldoAFavor = Math.max(0, Number(proveedor.total_pagado) - Number(proveedor.total_compras))
-  // Plata pagada que no cubre ninguna compra (pagos sin compra + lo pagado de
-  // más en alguna): al saldar una compra se avisa, puede estar ya pagada con eso.
-  const plataSinCompra =
-    pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0) +
-    compras.reduce((s, c) => s + Math.max(0, (pagadoPorCompra.get(c.id) ?? 0) - Number(c.total)), 0)
+  // Plata pagada sin compra (o de más en otra compra) que, aplicada a las
+  // compras más viejas, alcanza a la que se está saldando: puede estar ya
+  // pagada con eso. Por debajo de $100 no se avisa (redondeos).
+  const coberturaSaldar = pagoCompraId ? (aging.cobertura.get(pagoCompraId) ?? 0) : 0
   const compraPorId = new Map(compras.map((c) => [c.id, c]))
 
   // Filtros de tiempo aplican a compras y al historial de precios derivado.
@@ -950,7 +956,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
         defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
         pago={editingPago}
-        saldoAFavor={plataSinCompra}
+        saldoAFavor={coberturaSaldar >= 100 ? coberturaSaldar : 0}
         compraLabel={(() => {
           const id = editingPago?.compra_id ?? pagoCompraId
           const compra = id ? compraPorId.get(id) : undefined

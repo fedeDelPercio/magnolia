@@ -50,6 +50,8 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
     conteo_fisico: mov.conteo_fisico,
   })
   const [saving, setSaving] = useState(false)
+  // Hubo un guardado que falló y todavía no se pudo reintentar.
+  const [sinGuardar, setSinGuardar] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // Solo se guardan los campos que la persona tocó. Si se mandara la fila
   // entera, una pestaña abierta desde antes pisaría con valores viejos lo que
@@ -69,12 +71,12 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
 
   const diferencia = local.conteo_fisico === null ? null : local.conteo_fisico - stockTeorico
 
-  async function guardar() {
+  async function guardar(): Promise<boolean> {
     clearTimeout(timer.current)
     quitarPendiente(mov.id)
     const updated = pendingRef.current
     pendingRef.current = null
-    if (!updated) return
+    if (!updated) return true
     const campos = new Set(dirtyRef.current)
     dirtyRef.current.clear()
     const payload: Parameters<typeof saveMovimiento>[1] = {}
@@ -87,28 +89,44 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
     if (campos.has('desperdicio')) payload.desperdicio = updated.desperdicio
     if (campos.has('almuerzo')) payload.almuerzo = updated.almuerzo
     if (campos.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
-    if (Object.keys(payload).length === 0) return
+    if (Object.keys(payload).length === 0) return true
     setSaving(true)
-    const res = await saveMovimiento(mov.id, payload)
-    setSaving(false)
-    if (res.error) {
-      // Quedan pendientes para el próximo guardado.
-      for (const c of campos) dirtyRef.current.add(c)
-      toast.error(`No se guardó ${mov.productos.name}: ${res.error}`)
+    let error: string | null = null
+    try {
+      const res = await saveMovimiento(mov.id, payload)
+      if (res.error) error = res.error
+    } catch {
+      error = 'sin conexión'
+    } finally {
+      setSaving(false)
     }
+    if (error) {
+      // No se pierde nada: los campos y el valor vuelven a quedar pendientes
+      // (si mientras tanto se tipeó algo más, se manda lo más nuevo) y el
+      // cierre del día lo reintenta antes de cerrar.
+      for (const c of campos) dirtyRef.current.add(c)
+      if (!pendingRef.current) pendingRef.current = updated
+      registrarPendiente(mov.id, mov.productos.name, guardar)
+      setSinGuardar(true)
+      toast.error(`No se guardó ${mov.productos.name} (${error}). Se vuelve a intentar al seguir editando o al cerrar el día.`)
+      return false
+    }
+    setSinGuardar(false)
+    return true
   }
 
   function schedulesSave(updated: LocalState) {
     pendingRef.current = updated
     clearTimeout(timer.current)
-    registrarPendiente(mov.id, guardar)
+    registrarPendiente(mov.id, mov.productos.name, guardar)
     timer.current = setTimeout(() => void guardar(), 700)
   }
 
-  function handleChange(field: Campo, raw: string) {
+  function handleChange(field: Campo, raw: string, invalido = false) {
     // Las cantidades no pueden ser negativas: un "-" tipeado se ignora (antes
-    // se guardaba como 0, que en el conteo es "contado 0").
-    if (raw.trim().startsWith('-')) return
+    // se guardaba como 0, que en el conteo es "contado 0"). En un input
+    // numérico el "-" solo llega como valor vacío con badInput.
+    if (invalido || raw.trim().startsWith('-')) return
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
     const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
     // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
@@ -128,6 +146,11 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
       <td className="py-2 pl-4 pr-2 font-medium text-sm">
         {mov.productos.name}
         {saving && <span className="ml-1 text-xs text-muted-foreground">·</span>}
+        {sinGuardar && !saving && (
+          <span className="ml-1.5 rounded bg-red-50 px-1 py-0.5 text-[10px] font-normal text-red-700 ring-1 ring-red-200">
+            sin guardar
+          </span>
+        )}
       </td>
       <td className="px-2 py-2 text-right">
         <input
@@ -139,7 +162,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
           className={inputCls}
           value={numInput(local.stock_anterior)}
           placeholder="0"
-          onChange={(e) => handleChange('stock_anterior', e.target.value)}
+          onChange={(e) => handleChange('stock_anterior', e.target.value, e.target.validity.badInput)}
           title="Por defecto viene del cierre del día anterior. Editalo si necesitás ajustar."
         />
       </td>
@@ -169,7 +192,7 @@ export const MovimientoRow = memo(function MovimientoRow({ mov, readonly, hidden
                   }
                   // Conteo vacío = no se contó: se ve "—", distinto de un 0 contado.
                   placeholder={field === 'conteo_fisico' ? '—' : '0'}
-                  onChange={(e) => handleChange(field, e.target.value)}
+                  onChange={(e) => handleChange(field, e.target.value, e.target.validity.badInput)}
                   title={
                     field === 'ventas'
                       ? `Bistro registró ${ventasBistro}. Si vendés por fuera del POS, editá el total — la diferencia se conserva aunque se re-sincronice.`

@@ -119,8 +119,9 @@ export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, def
         </DialogHeader>
         {!pago && compraId && saldoAFavor > 0.009 && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
-            {proveedorName} tiene {formatCurrency(saldoAFavor)} pagados que no están asociados a
-            ninguna compra. Si esta compra ya se pagó con eso, no registres otro pago.
+            {proveedorName} tiene pagos sin compra asociada (o pagados de más en otra compra) que
+            alcanzan para cubrir {formatCurrency(saldoAFavor)} de esta compra. Si ya se pagó con
+            eso, no registres otro pago.
           </p>
         )}
         <Form {...form}>

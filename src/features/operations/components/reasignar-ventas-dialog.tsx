@@ -99,12 +99,19 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
   async function handleSubmit() {
     if (!desde || !hacia || !cantidadValida || cantidad === null) return
     setSaving(true)
-    const result = await reasignarVentas({
-      diaId,
-      desdeMovId: desde.id,
-      haciaMovId: hacia.id,
-      cantidad,
-    })
+    let result: Awaited<ReturnType<typeof reasignarVentas>>
+    try {
+      result = await reasignarVentas({
+        diaId,
+        desdeMovId: desde.id,
+        haciaMovId: hacia.id,
+        cantidad,
+      })
+    } catch {
+      setSaving(false)
+      toast.error('Sin conexión: no sabemos si se reasignó. Recargá la página para ver cómo quedó antes de repetirlo.')
+      return
+    }
     if (result.error) {
       setSaving(false)
       toast.error(result.error)

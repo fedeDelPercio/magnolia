@@ -93,6 +93,8 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
   const dirtyRef = useRef<Set<Campo>>(new Set())
   const pendingRef = useRef<LocalState | null>(null)
   const [saving, setSaving] = useState(false)
+  // Hubo un guardado que falló y todavía no se pudo reintentar.
+  const [sinGuardar, setSinGuardar] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // Las secundarias solo se ceran una vez (idempotente igual, pero evita
   // reescrituras en cada tecla).
@@ -117,12 +119,12 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
     local.stock_anterior + local.produccion - local.ventas - local.desperdicio - local.almuerzo
   const diferencia = local.conteo_fisico === null ? null : local.conteo_fisico - stockTeorico
 
-  async function guardar() {
+  async function guardar(): Promise<boolean> {
     clearTimeout(timer.current)
     quitarPendiente(primary.id)
     const updated = pendingRef.current
     pendingRef.current = null
-    if (!updated) return
+    if (!updated) return true
     {
       // Datos viejos cargados en una variante secundaria: la primera vez que se
       // guarda el grupo se pasan a la primaria (stock, desperdicio, almuerzo,
@@ -154,7 +156,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
         }
       }
       if (moverProduccion) campos.add('produccion')
-      if (campos.size === 0) return
+      if (campos.size === 0) return true
 
       setSaving(true)
       // Primaria: lleva los ajustes + sus ventas = total editado menos lo que
@@ -171,49 +173,65 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
       if (campos.has('desperdicio')) payload.desperdicio = updated.desperdicio
       if (campos.has('almuerzo')) payload.almuerzo = updated.almuerzo
       if (campos.has('conteo_fisico')) payload.conteo_fisico = updated.conteo_fisico
-      const errores: string[] = []
-      const r1 = await saveMovimiento(primary.id, payload)
-      if (r1.error) errores.push(r1.error)
-      if (!r1.error && campos.has('produccion') && filaProduccion.id !== primary.id) {
-        const r2 = await saveMovimiento(filaProduccion.id, { produccion: updated.produccion })
-        if (r2.error) errores.push(r2.error)
-      }
-      if (errores.length === 0) {
-        for (const sec of aConsolidar) {
-          const esFilaProduccion = sec.id === filaProduccion.id
-          const r3 = await saveMovimiento(sec.id, {
-            stock_anterior: 0,
-            ...(esFilaProduccion ? {} : { produccion: 0 }),
-            desperdicio: 0,
-            almuerzo: 0,
-            conteo_fisico: null,
-          })
-          if (r3.error) errores.push(r3.error)
+      let error: string | null = null
+      try {
+        const r1 = await saveMovimiento(primary.id, payload)
+        if (r1.error) error = r1.error
+        if (!error && campos.has('produccion') && filaProduccion.id !== primary.id) {
+          const r2 = await saveMovimiento(filaProduccion.id, { produccion: updated.produccion })
+          if (r2.error) error = r2.error
         }
+        if (!error) {
+          for (const sec of aConsolidar) {
+            const esFilaProduccion = sec.id === filaProduccion.id
+            const r3 = await saveMovimiento(sec.id, {
+              stock_anterior: 0,
+              ...(esFilaProduccion ? {} : { produccion: 0 }),
+              desperdicio: 0,
+              almuerzo: 0,
+              conteo_fisico: null,
+            })
+            if (r3.error) {
+              error = r3.error
+              break
+            }
+          }
+        }
+      } catch {
+        error = 'sin conexión'
+      } finally {
+        setSaving(false)
       }
-      setSaving(false)
-      if (errores.length > 0) {
-        // Quedan pendientes para el próximo guardado (la consolidación se
-        // reintenta porque consolidatedRef sigue en false).
+      if (error) {
+        // No se pierde nada: los campos y el valor vuelven a quedar pendientes
+        // (si mientras tanto se tipeó algo más, se manda lo más nuevo), la
+        // consolidación se reintenta (consolidatedRef sigue en false) y el
+        // cierre del día lo reintenta antes de cerrar.
         for (const c of editados) dirtyRef.current.add(c)
-        toast.error(`No se guardó ${name}: ${errores[0]}`)
-        return
+        if (!pendingRef.current) pendingRef.current = updated
+        registrarPendiente(primary.id, name, guardar)
+        setSinGuardar(true)
+        toast.error(`No se guardó ${name} (${error}). Se vuelve a intentar al seguir editando o al cerrar el día.`)
+        return false
       }
       consolidatedRef.current = true
+      setSinGuardar(false)
+      return true
     }
   }
 
   function schedulesSave(updated: LocalState) {
     pendingRef.current = updated
     clearTimeout(timer.current)
-    registrarPendiente(primary.id, guardar)
+    registrarPendiente(primary.id, name, guardar)
     timer.current = setTimeout(() => void guardar(), 700)
   }
 
-  function handleChange(field: Campo, raw: string) {
+  function handleChange(field: Campo, raw: string, invalido = false) {
     // Las cantidades no pueden ser negativas: un "-" tipeado se ignora (antes
-    // se guardaba como 0, que en el conteo es "contado 0").
-    if (raw.trim().startsWith('-')) return
+    // se guardaba como 0, que en el conteo es "contado 0"). En un input
+    // numérico el "-" solo llega como valor vacío con badInput.
+    if (invalido || raw.trim().startsWith('-')) return
     const parsed = raw === '' ? 0 : parseInt(raw, 10)
     const num = isNaN(parsed) ? 0 : Math.max(0, parsed)
     // Borrar el conteo lo vuelve a "no contado", no a "contado 0".
@@ -261,6 +279,11 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
           </span>
         </button>
         {saving && <span className="ml-1 text-xs text-muted-foreground">·</span>}
+        {sinGuardar && !saving && (
+          <span className="ml-1.5 rounded bg-red-50 px-1 py-0.5 text-[10px] font-normal text-red-700 ring-1 ring-red-200">
+            sin guardar
+          </span>
+        )}
       </td>
       <td className="px-2 py-2 text-right">
         <input
@@ -272,7 +295,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
           className={inputCls}
           value={numInput(local.stock_anterior)}
           placeholder="0"
-          onChange={(e) => handleChange('stock_anterior', e.target.value)}
+          onChange={(e) => handleChange('stock_anterior', e.target.value, e.target.validity.badInput)}
           title="Por defecto viene del cierre del día anterior. Editalo si necesitás ajustar."
         />
       </td>
@@ -287,7 +310,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
             className={inputCls}
             value={numInput(local[field])}
             placeholder="0"
-            onChange={(e) => handleChange(field, e.target.value)}
+            onChange={(e) => handleChange(field, e.target.value, e.target.validity.badInput)}
           />
         </td>
       ))}
@@ -306,7 +329,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
             className={inputCls}
             value={numInput(local.ventas)}
             placeholder="0"
-            onChange={(e) => handleChange('ventas', e.target.value)}
+            onChange={(e) => handleChange('ventas', e.target.value, e.target.validity.badInput)}
             title={`Bistro por canal — ${ventasBreakdown}. Si vendés por fuera del POS, editá el total: la diferencia se conserva aunque se re-sincronice.`}
           />
           {ventasBistroSum > 0 && (
@@ -337,7 +360,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
             }
             // Conteo vacío = no se contó: se ve "—", distinto de un 0 contado.
             placeholder={field === 'conteo_fisico' ? '—' : '0'}
-            onChange={(e) => handleChange(field, e.target.value)}
+            onChange={(e) => handleChange(field, e.target.value, e.target.validity.badInput)}
           />
         </td>
       ))}

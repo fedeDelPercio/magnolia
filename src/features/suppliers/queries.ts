@@ -10,6 +10,9 @@ export type SaldoProveedor = {
   // 'insumo' (default) o 'servicio'. Los servicios usan un flow distinto en
   // el detalle: conceptos + pagos puntuales en vez de compras.
   tipo: 'insumo' | 'servicio'
+  // Plazo de pago habitual (días). Sirve de vencimiento para la antigüedad de
+  // la deuda cuando la compra no tiene uno cargado.
+  payment_terms_days: number | null
   total_compras: number
   total_pagado: number
   saldo: number
