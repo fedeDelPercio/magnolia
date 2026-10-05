@@ -281,7 +281,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       recargandoRef.current = true
       const msg = (e as CustomEvent<string>).detail
       guardarAvisoPendiente(
-        `${msg ?? 'Hay cambios que no se guardaron'}. La pantalla se actualizó para mostrar lo que quedó guardado.`,
+        `${(msg ?? 'Hay cambios que no se guardaron').replace(/\.+$/, '')}. La pantalla se actualizó para mostrar lo que quedó guardado.`,
         'error',
       )
       window.location.reload()
