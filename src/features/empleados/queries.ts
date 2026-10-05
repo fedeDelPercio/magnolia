@@ -7,6 +7,12 @@ export type EmpleadoHorario = Tables<'empleado_horarios'>
 export type EmpleadoVacacion = Tables<'empleado_vacaciones'>
 export type EmpleadoAusencia = Tables<'empleado_ausencias'>
 export type EmpleadoLiquidacion = Tables<'empleado_liquidaciones'>
+export type EmpleadoDescuento = Tables<'empleado_descuentos'> & {
+  productos: { name: string } | null
+  // Fecha de la liquidación en que se descontó (si ya se aplicó).
+  liquidacion: { fecha_desde: string } | null
+}
+export type EmpleadoTardanza = Tables<'empleado_tardanzas'>
 
 export type EmpleadoListItem = Empleado & {
   dias_vacaciones_tomados: number
@@ -19,6 +25,8 @@ export type EmpleadoDetalle = {
   vacaciones: EmpleadoVacacion[]
   ausencias: EmpleadoAusencia[]
   liquidaciones: EmpleadoLiquidacion[]
+  descuentos: EmpleadoDescuento[]
+  tardanzas: EmpleadoTardanza[]
   dias_vacaciones_tomados: number
   dias_vacaciones_restantes: number
 }
@@ -79,7 +87,10 @@ export async function getEmpleado(id: string): Promise<EmpleadoDetalle | null> {
     .single()
   if (error || !empleado) return null
 
-  const [horariosRes, vacacionesRes, ausenciasRes, liquidacionesRes] = await Promise.all([
+  // Descuentos y llegadas tarde: todo lo pendiente + lo resuelto de los últimos
+  // 120 días (el historial viejo no aporta en la ficha).
+  const desde120 = isoDaysAgo(120)
+  const [horariosRes, vacacionesRes, ausenciasRes, liquidacionesRes, descuentosRes, tardanzasRes] = await Promise.all([
     supabase.from('empleado_horarios').select('*').eq('empleado_id', id).order('dow'),
     supabase
       .from('empleado_vacaciones')
@@ -98,7 +109,23 @@ export async function getEmpleado(id: string): Promise<EmpleadoDetalle | null> {
       .eq('empleado_id', id)
       .order('fecha_desde', { ascending: false })
       .limit(6),
+    supabase
+      .from('empleado_descuentos')
+      .select('*, productos(name), liquidacion:empleado_liquidaciones!empleado_descuentos_liquidacion_id_fkey(fecha_desde)')
+      .eq('empleado_id', id)
+      .or(`liquidacion_id.is.null,fecha.gte.${desde120}`)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('empleado_tardanzas')
+      .select('*')
+      .eq('empleado_id', id)
+      .or(`recuperada.eq.false,fecha.gte.${desde120}`)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false }),
   ])
+  if (descuentosRes.error) throw new Error(descuentosRes.error.message)
+  if (tardanzasRes.error) throw new Error(tardanzasRes.error.message)
 
   const año = new Date().getFullYear()
   const vacaciones = vacacionesRes.data ?? []
@@ -111,6 +138,8 @@ export async function getEmpleado(id: string): Promise<EmpleadoDetalle | null> {
     vacaciones,
     ausencias: ausenciasRes.data ?? [],
     liquidaciones: liquidacionesRes.data ?? [],
+    descuentos: (descuentosRes.data ?? []) as unknown as EmpleadoDescuento[],
+    tardanzas: tardanzasRes.data ?? [],
     dias_vacaciones_tomados: tomados,
     dias_vacaciones_restantes: restantes,
   }
@@ -289,4 +318,55 @@ export async function getEmpleadosNamesByIds(
     if (emp) out.set((r as { id: string }).id, emp.name)
   }
   return out
+}
+
+// ---- Descuentos y llegadas tarde ------------------------------------------
+
+/** Productos para el selector del descuento por desperdicio, con su costo por
+ *  unidad (para sugerir el monto). Solo la variante base de cada producto. */
+export type ProductoConCosto = { id: string; name: string; costo: number }
+
+export async function getProductosConCosto(): Promise<ProductoConCosto[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const [prodRes, costRes] = await Promise.all([
+    supabase
+      .from('productos')
+      .select('id, name, canal, formato')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .order('name'),
+    supabase.from('product_costs').select('id, total_cost').eq('tenant_id', tenantId),
+  ])
+  if (prodRes.error) throw new Error(prodRes.error.message)
+  const costos = new Map((costRes.data ?? []).map((c) => [c.id as string, Number(c.total_cost) || 0]))
+  return (prodRes.data ?? [])
+    .filter((p) => p.canal === null && p.formato !== 'menu')
+    .map((p) => ({ id: p.id, name: p.name, costo: costos.get(p.id) ?? 0 }))
+}
+
+export type TardanzaConEmpleado = EmpleadoTardanza & { empleado_name: string }
+
+/** Llegadas tarde de un mes ('YYYY-MM') + las pendientes de recuperar de antes. */
+export async function getTardanzasMes(month: string): Promise<TardanzaConEmpleado[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const from = `${month}-01`
+  const [year, mon] = month.split('-').map(Number)
+  const nextMonth = mon === 12 ? `${year! + 1}-01-01` : `${year}-${String(mon! + 1).padStart(2, '0')}-01`
+
+  const { data, error } = await supabase
+    .from('empleado_tardanzas')
+    .select('*, empleados!inner(name)')
+    .eq('tenant_id', tenantId)
+    .lt('fecha', nextMonth)
+    .or(`fecha.gte.${from},recuperada.eq.false`)
+    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((r) => {
+    const row = r as unknown as EmpleadoTardanza & { empleados: { name: string } | null }
+    return { ...row, empleado_name: row.empleados?.name ?? '—' } as TardanzaConEmpleado
+  })
 }
