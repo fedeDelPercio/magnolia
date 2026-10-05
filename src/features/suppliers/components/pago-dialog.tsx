@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { formatCurrency } from '@/lib/format'
 
 import { pagoSchema, METODO_LABELS, type PagoFormValues, type PagoMetodo } from '../schemas'
 import { createPago, updatePago } from '../actions'
@@ -31,6 +32,9 @@ type Props = {
   pago?: PagoProveedor | null
   // "Compra del dd/mm por $X" cuando el pago está (o va a quedar) vinculado.
   compraLabel?: string
+  // Plata pagada al proveedor que no cubre ninguna compra. Si hay, la compra
+  // que se está saldando puede estar ya pagada con eso.
+  saldoAFavor?: number
 }
 
 function todayStr() {
@@ -51,7 +55,7 @@ function addMonths(isoDate: string, months: number): string {
 
 type Plazo = '30' | '60' | 'otro'
 
-export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, defaultMetodo, compraId, pago, compraLabel }: Props) {
+export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, defaultMetodo, compraId, pago, compraLabel, saldoAFavor = 0 }: Props) {
   const initialMetodo: PagoMetodo = defaultMetodo ?? 'transferencia'
   const form = useForm<PagoFormValues>({
     resolver: zodResolver(pagoSchema) as Resolver<PagoFormValues>,
@@ -113,6 +117,12 @@ export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, def
           <DialogTitle>{pago ? 'Editar pago a' : 'Pago a'} {proveedorName}</DialogTitle>
           {compraLabel && <p className="text-xs text-muted-foreground">{compraLabel}</p>}
         </DialogHeader>
+        {!pago && compraId && saldoAFavor > 0.009 && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+            {proveedorName} tiene {formatCurrency(saldoAFavor)} pagados que no están asociados a
+            ninguna compra. Si esta compra ya se pagó con eso, no registres otro pago.
+          </p>
+        )}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

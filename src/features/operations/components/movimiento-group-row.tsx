@@ -335,7 +335,8 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
                 ? local.conteo_fisico === null ? '' : String(local.conteo_fisico)
                 : numInput(local[field])
             }
-            placeholder="0"
+            // Conteo vacío = no se contó: se ve "—", distinto de un 0 contado.
+            placeholder={field === 'conteo_fisico' ? '—' : '0'}
             onChange={(e) => handleChange(field, e.target.value)}
           />
         </td>

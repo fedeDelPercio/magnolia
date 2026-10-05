@@ -132,7 +132,11 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   // mostrarlo acá, después de la recarga.
   useEffect(() => {
     const msg = leerAvisoPendiente()
-    if (msg) toast.success(msg)
+    if (!msg) return
+    // El <Toaster> se monta después que la página y descarta lo que llega
+    // antes de suscribirse: se emite en el siguiente ciclo.
+    const t = setTimeout(() => toast.success(msg), 150)
+    return () => clearTimeout(t)
   }, [])
 
   const [search, setSearch] = useState('')

@@ -85,6 +85,14 @@ export function CurrencyInput({
       }}
       onFocus={(e) => {
         setFocused(true)
+        // Al enfocar cambia el texto mostrado ("3.500,00" -> "3.500") y el
+        // navegador pierde la selección que hace al entrar con Tab: tipear
+        // agregaba dígitos al final ("3.500" + "140"). Se vuelve a seleccionar
+        // todo después del cambio. Con el mouse, el clic ubica el cursor igual.
+        const el = e.currentTarget
+        requestAnimationFrame(() => {
+          if (document.activeElement === el) el.select()
+        })
         onFocus?.(e)
       }}
       onBlur={(e) => {

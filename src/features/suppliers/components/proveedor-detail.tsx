@@ -391,6 +391,11 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
   const hasAging = aging.d31_60 > 0 || aging.d61_90 > 0 || aging.d90plus > 0
   // Saldo a favor: se pagó más de lo comprado (la vista lo muestra como 0).
   const saldoAFavor = Math.max(0, Number(proveedor.total_pagado) - Number(proveedor.total_compras))
+  // Plata pagada que no cubre ninguna compra (pagos sin compra + lo pagado de
+  // más en alguna): al saldar una compra se avisa, puede estar ya pagada con eso.
+  const plataSinCompra =
+    pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0) +
+    compras.reduce((s, c) => s + Math.max(0, (pagadoPorCompra.get(c.id) ?? 0) - Number(c.total)), 0)
   const compraPorId = new Map(compras.map((c) => [c.id, c]))
 
   // Filtros de tiempo aplican a compras y al historial de precios derivado.
@@ -945,6 +950,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
         defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
         pago={editingPago}
+        saldoAFavor={plataSinCompra}
         compraLabel={(() => {
           const id = editingPago?.compra_id ?? pagoCompraId
           const compra = id ? compraPorId.get(id) : undefined

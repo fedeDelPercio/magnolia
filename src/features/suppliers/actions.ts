@@ -556,7 +556,9 @@ async function chequearTopeCompra(
   }
   if (monto > falta + tolerancia) {
     return {
-      error: `El pago (${formatCurrency(monto)}) es mayor a lo que falta pagar de esta compra (${formatCurrency(falta)}).`,
+      error: excluirPagoId
+        ? `Este pago no puede superar ${formatCurrency(falta)}, lo que falta pagar de la compra (${formatCurrency(Number(compra.total))}). Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`
+        : `El pago (${formatCurrency(monto)}) es mayor a lo que falta pagar de esta compra (${formatCurrency(falta)}). Si se pagó más, registrá la diferencia con "Registrar pago" (sin compra).`,
     }
   }
   return {}
