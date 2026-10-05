@@ -188,7 +188,15 @@ function LiquidacionBody({
                             {formatCurrency(i.monto_sueldo)}
                           </td>
                           <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
-                            {i.monto_plus > 0 ? formatCurrency(i.monto_plus) : '—'}
+                            {i.monto_plus > 0 || i.monto_descuentos > 0 ? formatCurrency(i.monto_plus) : '—'}
+                            {i.monto_descuentos > 0 && (
+                              <span
+                                className="block text-[10px] text-rose-700"
+                                title="Descuentos por desperdicio u otros faltantes, restados del plus"
+                              >
+                                − {formatCurrency(i.monto_descuentos)} desc.
+                              </span>
+                            )}
                           </td>
                           <td className="px-2 py-1.5 text-right tabular-nums font-medium">
                             {formatCurrency(i.monto_total)}

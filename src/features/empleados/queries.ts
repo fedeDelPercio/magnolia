@@ -332,7 +332,7 @@ export async function getProductosConCosto(): Promise<ProductoConCosto[]> {
   const [prodRes, costRes] = await Promise.all([
     supabase
       .from('productos')
-      .select('id, name, canal, formato')
+      .select('id, name, canal, formato, concepto_id')
       .eq('tenant_id', tenantId)
       .eq('active', true)
       .order('name'),
@@ -340,9 +340,22 @@ export async function getProductosConCosto(): Promise<ProductoConCosto[]> {
   ])
   if (prodRes.error) throw new Error(prodRes.error.message)
   const costos = new Map((costRes.data ?? []).map((c) => [c.id as string, Number(c.total_cost) || 0]))
-  return (prodRes.data ?? [])
+  const productos = prodRes.data ?? []
+  // Si la base no tiene costo (platos del día: la receta está en la variante
+  // Menú), se usa el de otra variante del mismo producto.
+  const costoVariante = new Map<string, number>()
+  for (const p of productos) {
+    if (!p.concepto_id) continue
+    const c = costos.get(p.id) ?? 0
+    if (c > (costoVariante.get(p.concepto_id) ?? 0)) costoVariante.set(p.concepto_id, c)
+  }
+  return productos
     .filter((p) => p.canal === null && p.formato !== 'menu')
-    .map((p) => ({ id: p.id, name: p.name, costo: costos.get(p.id) ?? 0 }))
+    .map((p) => {
+      const propio = costos.get(p.id) ?? 0
+      const costo = propio > 0 ? propio : p.concepto_id ? (costoVariante.get(p.concepto_id) ?? 0) : 0
+      return { id: p.id, name: p.name, costo }
+    })
 }
 
 export type TardanzaConEmpleado = EmpleadoTardanza & { empleado_name: string }

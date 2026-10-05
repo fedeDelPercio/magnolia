@@ -6,14 +6,23 @@
 -- por PRODUCCIÓN, y en Operación casi nunca se carga producción de reventa.
 -- Caso real (ajuste del 22/09 a 5/10): se vendieron 182 gaseosas y el stock
 -- no bajó ninguna (368 en vez de ~186); Helado quedó en -9; Paleta Helada en 20
--- con 64 en la heladera.
+-- con 64 en la heladera. Simulado con esta regla: Gaseosa 186, Helado 16,
+-- Paleta Helada 82, Muffins 22, Pote 500 g 17, Pastelitos 14, Vino 0. Los
+-- insumos que no son de reventa no cambian.
 --
 -- Regla: un insumo es "de reventa" si es el insumo de la receta de algún
--- producto marcado es_reventa. Ese insumo se descuenta por las VENTAS de
--- cualquier producto cuya receta lo lleve (el producto suelto, su variante
--- barra, un menú o una promo) y deja de descontarse por producción. El resto
--- de los ingredientes sigue igual (por producción) y los descartables también
--- (por venta).
+-- producto marcado es_reventa. Ese insumo sale del stock cuando el producto
+-- sale del local: VENTAS + DESPERDICIO + ALMUERZO de cualquier producto cuya
+-- receta lo lleve (el producto suelto, su variante barra, un menú o una promo),
+-- y deja de descontarse por producción. El resto de los ingredientes sigue
+-- igual (por producción) y los descartables también (por venta).
+--
+-- Variantes sin receta: si un producto de reventa tiene la receta vacía (pasa
+-- con "Helado", "Muffins Delivery", "Copa Vino": la receta quedó cargada en
+-- otra variante), se usa la receta de una variante ACTIVA de reventa del mismo
+-- producto (concepto), prefiriendo la base. Sin esto sus ventas no descontaban
+-- nada. Solo para productos de reventa: un plato cocinado con receta vacía no
+-- toma la de otra variante.
 --
 -- insumo_usado_en (ficha del insumo, "Usado en") aplica la misma regla para
 -- que el desglose sume lo mismo que el stock.
@@ -35,6 +44,26 @@ with last_ajuste as (
     left join last_ajuste la_1 on la_1.insumo_id = ci.insumo_id
   where la_1.since is null or ci.created_at > la_1.since
   group by ci.insumo_id
+), receta_reventa as (
+  select p.id as producto_id,
+    coalesce(
+      case when exists (select 1 from receta_ingredientes ri where ri.receta_id = p.receta_id)
+        then p.receta_id end,
+      case when p.es_reventa and p.concepto_id is not null then (
+        select p2.receta_id
+        from productos p2
+        where p2.concepto_id = p.concepto_id
+          and p2.id <> p.id
+          and p2.active
+          and p2.es_reventa
+          and exists (select 1 from receta_ingredientes ri where ri.receta_id = p2.receta_id)
+        order by (p2.canal is null and p2.formato is distinct from 'menu') desc,
+          (p2.formato is distinct from 'menu') desc,
+          p2.id
+        limit 1
+      ) end
+    ) as receta_id
+  from productos p
 ), reventa_insumos as (
   select distinct e.insumo_id
   from productos p
@@ -55,14 +84,14 @@ with last_ajuste as (
   group by exp.insumo_id
 ), consumido_reventa as (
   select exp.insumo_id,
-    sum(md.ventas / nullif(r.yield_qty, 0::numeric) * exp.qty) as qty
+    sum((md.ventas + md.desperdicio + md.almuerzo) / nullif(r.yield_qty, 0::numeric) * exp.qty) as qty
   from movimientos_diarios md
-    join productos p on p.id = md.producto_id
-    join recetas r on r.id = p.receta_id
+    join receta_reventa rr on rr.producto_id = md.producto_id
+    join recetas r on r.id = rr.receta_id
     join dias_operativos d on d.id = md.dia_id
-    cross join lateral receta_insumos_expandido(p.receta_id) exp(insumo_id, qty)
+    cross join lateral receta_insumos_expandido(rr.receta_id) exp(insumo_id, qty)
     left join last_ajuste la_1 on la_1.insumo_id = exp.insumo_id
-  where md.ventas > 0::numeric
+  where (md.ventas + md.desperdicio + md.almuerzo) > 0::numeric
     and (la_1.since is null or d.fecha >= la_1.since::date)
     and exp.insumo_id in (select reventa_insumos.insumo_id from reventa_insumos)
   group by exp.insumo_id
@@ -109,7 +138,29 @@ with la as (
   where insumo_id = p_insumo_id
   order by created_at desc limit 1
 ),
--- Mismo criterio que insumo_stock: si es insumo de reventa, se consume por venta.
+-- Mismo criterio que insumo_stock: si es insumo de reventa, se consume por
+-- venta + desperdicio + almuerzo, con la receta efectiva (ver receta_reventa).
+receta_reventa as (
+  select p.id as producto_id,
+    coalesce(
+      case when exists (select 1 from receta_ingredientes ri where ri.receta_id = p.receta_id)
+        then p.receta_id end,
+      case when p.es_reventa and p.concepto_id is not null then (
+        select p2.receta_id
+        from productos p2
+        where p2.concepto_id = p.concepto_id
+          and p2.id <> p.id
+          and p2.active
+          and p2.es_reventa
+          and exists (select 1 from receta_ingredientes ri where ri.receta_id = p2.receta_id)
+        order by (p2.canal is null and p2.formato is distinct from 'menu') desc,
+          (p2.formato is distinct from 'menu') desc,
+          p2.id
+        limit 1
+      ) end
+    ) as receta_id
+  from productos p
+),
 es_reventa as (
   select exists (
     select 1 from productos p
@@ -120,21 +171,23 @@ es_reventa as (
 receta_uso as (
   select p.id, p.name, r.yield_qty, exp.qty
   from productos p
-  join recetas r on r.id = p.receta_id
-  cross join lateral public.receta_insumos_expandido(p.receta_id) exp
+  join receta_reventa rr on rr.producto_id = p.id
+  join recetas r on r.id = case when (select v from es_reventa) then rr.receta_id else p.receta_id end
+  cross join lateral public.receta_insumos_expandido(r.id) exp
   where exp.insumo_id = p_insumo_id
 ),
 receta_consumo as (
   select md.producto_id,
-    sum((case when (select v from es_reventa) then md.ventas else md.produccion end
+    sum((case when (select v from es_reventa) then md.ventas + md.desperdicio + md.almuerzo else md.produccion end
          / nullif(r.yield_qty, 0::numeric)) * exp.qty) as qty
   from movimientos_diarios md
+  join receta_reventa rr on rr.producto_id = md.producto_id
   join productos p on p.id = md.producto_id
-  join recetas r on r.id = p.receta_id
+  join recetas r on r.id = case when (select v from es_reventa) then rr.receta_id else p.receta_id end
   join dias_operativos d on d.id = md.dia_id
-  cross join lateral public.receta_insumos_expandido(p.receta_id) exp
+  cross join lateral public.receta_insumos_expandido(r.id) exp
   where exp.insumo_id = p_insumo_id
-    and (case when (select v from es_reventa) then md.ventas else md.produccion end) > 0::numeric
+    and (case when (select v from es_reventa) then md.ventas + md.desperdicio + md.almuerzo else md.produccion end) > 0::numeric
     and (not exists (select 1 from la) or d.fecha >= (select created_at::date from la))
   group by md.producto_id
 ),

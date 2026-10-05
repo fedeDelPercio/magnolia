@@ -57,12 +57,28 @@ export function TardanzaDialog({ open, onOpenChange, empleados, empleadoIdFijo }
         .sort()[0]
     : undefined
 
-  function onLlegada(v: string) {
-    setLlegada(v)
-    if (v && entrada) {
-      const diff = aMinutos(v) - aMinutos(entrada)
+  function entradaDe(empId: string, f: string): string | undefined {
+    const e = empleados.find((x) => x.id === empId)
+    if (!e || !f) return undefined
+    return e.horarios
+      .filter((h) => h.dow === dowDe(f))
+      .map((h) => h.hora_inicio.slice(0, 5))
+      .sort()[0]
+  }
+
+  // Minutos desde la hora de entrada de ese día. Se recalcula al cambiar la
+  // hora, la fecha o el empleado (cada día puede tener otro horario).
+  function recalcular(empId: string, f: string, hora: string) {
+    const ent = entradaDe(empId, f)
+    if (hora && ent) {
+      const diff = aMinutos(hora) - aMinutos(ent)
       setMinutosStr(diff > 0 ? String(diff) : '')
     }
+  }
+
+  function onLlegada(v: string) {
+    setLlegada(v)
+    recalcular(empleadoId, fecha, v)
   }
 
   const minutos = parseInt(minutosStr, 10)
@@ -103,7 +119,10 @@ export function TardanzaDialog({ open, onOpenChange, empleados, empleadoIdFijo }
               <select
                 id="tardanza-empleado"
                 value={empleadoId}
-                onChange={(e) => setEmpleadoId(e.target.value)}
+                onChange={(e) => {
+                  setEmpleadoId(e.target.value)
+                  recalcular(e.target.value, fecha, llegada)
+                }}
                 className="h-9 w-full rounded-md border bg-background px-2 text-sm"
               >
                 <option value="">Elegí…</option>
@@ -117,7 +136,15 @@ export function TardanzaDialog({ open, onOpenChange, empleados, empleadoIdFijo }
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label htmlFor="tardanza-fecha" className="text-sm font-medium">Fecha</label>
-              <Input id="tardanza-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+              <Input
+                id="tardanza-fecha"
+                type="date"
+                value={fecha}
+                onChange={(e) => {
+                  setFecha(e.target.value)
+                  recalcular(empleadoId, e.target.value, llegada)
+                }}
+              />
             </div>
             <div className="space-y-1">
               <label htmlFor="tardanza-llegada" className="text-sm font-medium">Llegó a las</label>
