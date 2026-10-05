@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon, RotateCcwIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon, ArrowRightLeftIcon } from 'lucide-react'
@@ -168,6 +168,9 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   const [importOpen, setImportOpen] = useState(false)
   const [selectedCierre, setSelectedCierre] = useState<CierreCajaWithProductos | null>(null)
   const [reasignarOpen, setReasignarOpen] = useState(false)
+  // Un guardado rebotó porque el día ya está cerrado y la pantalla se está
+  // recargando: no se muestran otros avisos (como "Revisá la conexión").
+  const recargandoRef = useRef(false)
 
   // Reasignar ventas recarga la página; el aviso de éxito queda guardado para
   // mostrarlo acá, después de la recarga.
@@ -246,6 +249,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       fallidos = ['algunos productos']
     }
     if (fallidos.length === 0) return true
+    if (recargandoRef.current) return false
     toast.error(
       `No se pudo guardar ${fallidos.join(', ')}: ${accion}. Revisá la conexión y probá de nuevo.`,
     )
@@ -274,6 +278,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       // muestra después de recargar.
       if (recargaProgramada) return
       recargaProgramada = true
+      recargandoRef.current = true
       const msg = (e as CustomEvent<string>).detail
       guardarAvisoPendiente(
         `${msg ?? 'Hay cambios que no se guardaron'}. La pantalla se actualizó para mostrar lo que quedó guardado.`,
