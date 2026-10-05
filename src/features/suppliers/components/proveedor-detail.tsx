@@ -291,11 +291,21 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
     return Math.max(0, Number(compra.total) - (pagadoPorCompra.get(compra.id) ?? 0))
   }
 
-  async function handleDeleteCompra(compraId: string) {
-    setDeletingCompraId(compraId)
-    const result = await deleteCompra(compraId, proveedor.id)
+  async function handleDeleteCompra(compra: CompraWithItems) {
+    const pagosDeLaCompra = pagos.filter((p) => p.compra_id === compra.id).length
+    const ok = window.confirm(
+      `¿Eliminar la compra del ${formatDate(compra.fecha)} por ${formatCurrency(Number(compra.total))}? No se puede deshacer.${
+        pagosDeLaCompra > 0
+          ? `\n\nTiene ${pagosDeLaCompra} pago${pagosDeLaCompra === 1 ? '' : 's'}: no se borra${pagosDeLaCompra === 1 ? '' : 'n'}, queda${pagosDeLaCompra === 1 ? '' : 'n'} como pago sin compra.`
+          : ''
+      }`,
+    )
+    if (!ok) return
+    setDeletingCompraId(compra.id)
+    const result = await deleteCompra(compra.id, proveedor.id)
     setDeletingCompraId(null)
     if (result.error) toast.error(result.error)
+    else toast.success('Compra eliminada')
   }
 
   async function handleDeleteProveedor() {
@@ -649,7 +659,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           disabled={deletingCompraId === c.id}
-                          onClick={() => handleDeleteCompra(c.id)}
+                          onClick={() => handleDeleteCompra(c)}
                         >
                           <TrashIcon className="size-3.5 mr-2" />
                           Eliminar

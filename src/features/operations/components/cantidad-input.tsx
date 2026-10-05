@@ -57,6 +57,15 @@ export function CantidadInput({
       inputMode="decimal"
       autoComplete="off"
       value={texto}
+      onKeyDown={(e) => {
+        // Un carácter que no puede ir ("-", letras) se frena antes de que
+        // cambie el texto: si no, el navegador perdía la selección y lo que se
+        // tipeaba después se sumaba al final (4 seleccionado + "-5" = 45).
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !/[\d.,]/.test(e.key)) {
+          e.preventDefault()
+        }
+        rest.onKeyDown?.(e)
+      }}
       onChange={(e) => {
         const raw = e.target.value.trim()
         if (!PATRON.test(raw)) return

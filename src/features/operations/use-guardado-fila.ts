@@ -36,6 +36,10 @@ type Opciones<S> = {
 
 const DEBOUNCE_MS = 700
 
+// Un guardado no se va a poder hacer nunca (día cerrado en otra pestaña): la
+// pantalla del día lo escucha para refrescarse.
+export const EVENTO_GUARDADO_IMPOSIBLE = 'magnolia:guardado-imposible'
+
 export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inicial, enviar }: Opciones<S>) {
   const [local, setLocal] = useState<S>(inicial)
   const [saving, setSaving] = useState(false)
@@ -82,12 +86,12 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
         if (res.permanente) {
           dirtyRef.current.clear()
           toast.error(`No se guardó ${nombreRef.current}: ${res.error}`)
+          // La pantalla del día se actualiza (por ejemplo, a "Cerrado").
+          window.dispatchEvent(new CustomEvent(EVENTO_GUARDADO_IMPOSIBLE))
           return false
         }
         if (avisar) {
-          toast.error(
-            `No se guardó ${nombreRef.current} (${res.error}). Queda marcado "sin guardar" y se vuelve a intentar al volver la conexión, al seguir editando y antes de cerrar el día.`,
-          )
+          toast.error(`No se guardó ${nombreRef.current} (${res.error}). Queda marcado "sin guardar" y se reintenta solo.`)
         }
         return false
       }

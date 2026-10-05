@@ -56,7 +56,7 @@ export async function saveMovimiento(
   const status = (fila as unknown as { dias_operativos: { status: string } | null } | null)?.dias_operativos?.status
   if (status === 'cerrado') {
     return {
-      error: 'el día está cerrado, no se puede editar. Reabrilo y recargá la página si hace falta corregirlo.',
+      error: 'el día ya está cerrado (quizás lo cerró otra persona). Para corregirlo, reabrilo.',
       permanente: true,
     }
   }

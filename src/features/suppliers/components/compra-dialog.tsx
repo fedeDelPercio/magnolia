@@ -425,7 +425,7 @@ export function CompraDialog({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-muted-foreground">Se puede overridear por ítem tocando el chip IVA de cada línea.</p>
+              <p className="text-[10px] text-muted-foreground">Se puede cambiar por ítem tocando el chip IVA de cada línea.</p>
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Descuento (%)</label>

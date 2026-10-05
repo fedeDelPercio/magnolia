@@ -71,13 +71,27 @@ export function CurrencyInput({
   ...rest
 }: Props) {
   const [focused, setFocused] = React.useState(false)
-  // El foco vino de un clic/toque (no de Tab): ahí se respeta dónde se tocó.
+  // El foco vino de un clic con el mouse (no de Tab): ahí se respeta dónde se hizo clic.
   const porPuntero = React.useRef(false)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  const seleccionarRef = React.useRef(false)
+
+  // Al enfocar cambia el texto mostrado ("3.500,00" -> "3.500") y el navegador
+  // pierde la selección que hace al entrar con Tab. Se vuelve a seleccionar
+  // todo apenas se actualiza el campo y antes de la próxima tecla (con
+  // requestAnimationFrame, un tipeo rápido perdía el primer dígito).
+  React.useLayoutEffect(() => {
+    if (focused && seleccionarRef.current) {
+      seleccionarRef.current = false
+      inputRef.current?.select()
+    }
+  }, [focused])
 
   const display = focused ? groupFocused(value) : formatES(value, decimals)
 
   return (
     <Input
+      ref={inputRef}
       type="text"
       inputMode="decimal"
       value={display}
@@ -87,18 +101,9 @@ export function CurrencyInput({
         onValueChange(normalize(raw))
       }}
       onFocus={(e) => {
-        setFocused(true)
-        // Al enfocar cambia el texto mostrado ("3.500,00" -> "3.500") y el
-        // navegador pierde la selección que hace al entrar con Tab: tipear
-        // agregaba dígitos al final ("3.500" + "140"). Se vuelve a seleccionar
-        // todo después del cambio. Con el mouse, el clic ubica el cursor igual.
-        const el = e.currentTarget
-        if (!porPuntero.current) {
-          requestAnimationFrame(() => {
-            if (document.activeElement === el) el.select()
-          })
-        }
+        seleccionarRef.current = !porPuntero.current
         porPuntero.current = false
+        setFocused(true)
         onFocus?.(e)
       }}
       onPointerDown={(e) => {

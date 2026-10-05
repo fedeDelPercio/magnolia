@@ -18,6 +18,7 @@ import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
 import { leerAvisoPendiente } from '../aviso-pendiente'
 import { guardarPendientes, hayPendientes } from '../guardados-pendientes'
+import { EVENTO_GUARDADO_IMPOSIBLE } from '../use-guardado-fila'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
 import { ImportCierreDialog } from '@/features/cierres/components/import-cierre-dialog'
@@ -182,7 +183,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     }
     if (fallidos.length === 0) return true
     toast.error(
-      `No se pudo guardar ${fallidos.join(', ')} (quedan marcados "sin guardar"). Revisá la conexión: ${accion}.`,
+      `No se pudo guardar ${fallidos.join(', ')}: ${accion}. Revisá la conexión y probá de nuevo.`,
     )
     return false
   }
@@ -198,6 +199,14 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     function alOcultar() {
       if (document.visibilityState === 'hidden') void guardarPendientes(diaId)
     }
+    // Al cerrar o recargar la pestaña, pagehide llega con la página todavía
+    // "visible": se manda igual.
+    function alSalir() {
+      void guardarPendientes(diaId)
+    }
+    function alGuardadoImposible() {
+      router.refresh()
+    }
     function alVolverConexion() {
       void guardarPendientes(diaId).then((fallidos) => {
         if (fallidos.length > 0) {
@@ -212,16 +221,18 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       e.returnValue = ''
     }
     document.addEventListener('visibilitychange', alOcultar)
-    window.addEventListener('pagehide', alOcultar)
+    window.addEventListener('pagehide', alSalir)
     window.addEventListener('online', alVolverConexion)
     window.addEventListener('beforeunload', antesDeSalir)
+    window.addEventListener(EVENTO_GUARDADO_IMPOSIBLE, alGuardadoImposible)
     return () => {
       document.removeEventListener('visibilitychange', alOcultar)
-      window.removeEventListener('pagehide', alOcultar)
+      window.removeEventListener('pagehide', alSalir)
       window.removeEventListener('online', alVolverConexion)
       window.removeEventListener('beforeunload', antesDeSalir)
+      window.removeEventListener(EVENTO_GUARDADO_IMPOSIBLE, alGuardadoImposible)
     }
-  }, [dia.id])
+  }, [dia.id, router])
 
   function handleCerrar() {
     setLoading(true)
@@ -235,7 +246,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
         result = await cerrarDia(dia.id)
       } catch {
         setLoading(false)
-        toast.error('Sin conexión: el día no se cerró. Probá de nuevo.')
+        toast.error('Sin conexión: no sabemos si el día se cerró. Recargá la página para ver cómo quedó.')
         return
       }
       setLoading(false)
@@ -271,7 +282,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
         result = await traerStockDiaAnterior(dia.id)
       } catch {
         setLoading(false)
-        toast.error('Sin conexión: no se trajo el stock. Probá de nuevo.')
+        toast.error('Sin conexión: no sabemos si se trajo el stock. Recargá la página para ver cómo quedó.')
         return
       }
       if (result.error) {
