@@ -35,6 +35,9 @@ type Opciones<S> = {
 }
 
 const DEBOUNCE_MS = 700
+// Un envío que no responde en este tiempo se trata como fallido (queda
+// pendiente y se reintenta): si no, "Cerrar día" esperaba sin límite.
+const TIMEOUT_MS = 20000
 
 // Un guardado no se va a poder hacer nunca (día cerrado en otra pestaña): la
 // pantalla del día lo escucha para refrescarse.
@@ -70,10 +73,18 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
       let res: ResultadoEnvio = {}
       setSaving(true)
       const envio = (async () => {
+        let t: ReturnType<typeof setTimeout> | undefined
         try {
-          res = await enviarRef.current(enviado, campos)
+          res = await Promise.race([
+            enviarRef.current(enviado, campos),
+            new Promise<ResultadoEnvio>((resolve) => {
+              t = setTimeout(() => resolve({ error: 'sin respuesta del servidor' }), TIMEOUT_MS)
+            }),
+          ])
         } catch {
           res = { error: 'sin conexión' }
+        } finally {
+          clearTimeout(t)
         }
       })()
       enVueloRef.current = envio
@@ -84,14 +95,21 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
       if (res.error) {
         setSinGuardar(true)
         if (res.permanente) {
+          // No se va a poder guardar (día cerrado): la pantalla del día se
+          // recarga para mostrar lo que de verdad hay en la base, en vez de
+          // dejar a la vista valores que no se guardaron.
           dirtyRef.current.clear()
-          toast.error(`No se guardó ${nombreRef.current}: ${res.error}`)
-          // La pantalla del día se actualiza (por ejemplo, a "Cerrado").
-          window.dispatchEvent(new CustomEvent(EVENTO_GUARDADO_IMPOSIBLE))
+          window.dispatchEvent(
+            new CustomEvent(EVENTO_GUARDADO_IMPOSIBLE, {
+              detail: `No se guardó ${nombreRef.current}: ${res.error}`,
+            }),
+          )
           return false
         }
         if (avisar) {
-          toast.error(`No se guardó ${nombreRef.current} (${res.error}). Queda marcado "sin guardar" y se reintenta solo.`)
+          toast.error(
+            `No se guardó ${nombreRef.current} (${res.error}). Queda marcado "sin guardar" y se reintenta solo cada medio minuto y antes de cerrar el día.`,
+          )
         }
         return false
       }
@@ -123,8 +141,9 @@ export function useGuardadoFila<S extends object>({ filaId, diaId, nombre, inici
     const dirty = dirtyRef.current
     return () => {
       quitarFila(diaId, filaId)
-      // Al salir de la pantalla, lo que quedaba se intenta mandar igual.
-      if (dirty.size > 0) void guardar(false)
+      // Al salir de la pantalla, lo que quedaba se intenta mandar igual; si
+      // falla, se avisa (la pantalla del día ya intenta frenar la salida antes).
+      if (dirty.size > 0) void guardar(true)
     }
   }, [diaId, filaId, guardar])
 

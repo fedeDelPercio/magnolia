@@ -56,7 +56,7 @@ export async function saveMovimiento(
   const status = (fila as unknown as { dias_operativos: { status: string } | null } | null)?.dias_operativos?.status
   if (status === 'cerrado') {
     return {
-      error: 'el día ya está cerrado (quizás lo cerró otra persona). Para corregirlo, reabrilo.',
+      error: 'el día ya está cerrado. Para corregirlo, reabrilo.',
       permanente: true,
     }
   }
@@ -163,7 +163,7 @@ export async function reasignarVentas(input: {
   }
   const ventasDesde = Number(desde.ventas) || 0
   if (Math.abs(ventasDesde - Number(input.ventasDesdeEsperadas)) > 0.0005) {
-    return { error: 'Las ventas cambiaron mientras tanto (¿ya se reasignó?). Recargá la página para ver cómo quedó.' }
+    return { error: 'Las ventas cambiaron desde que abriste este diálogo. Cerralo y abrilo de nuevo para ver los valores actuales.' }
   }
   if (cantidad > ventasDesde) {
     return { error: `Solo hay ${ventasDesde} venta${ventasDesde === 1 ? '' : 's'} para reasignar` }

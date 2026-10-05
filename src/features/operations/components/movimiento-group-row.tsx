@@ -2,6 +2,7 @@
 
 import { useState, useRef, memo } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { saveMovimiento } from '../actions'
 import { filaDeProduccion, varianteLabel } from '../grupos'
@@ -71,8 +72,11 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
 }: Props) {
   const [open, setOpen] = useState(false)
   const all = [primary, ...secondaries]
+  // Redondeo a 3 decimales (como la columna): las sumas en coma flotante de
+  // valores con decimales daban colas como 0,30000000000000004.
+  const r3 = (n: number) => Math.round(n * 1000) / 1000
   const sum = (f: keyof MovimientoConProducto) =>
-    all.reduce((s, m) => s + (Number(m[f]) || 0), 0)
+    r3(all.reduce((s, m) => s + (Number(m[f]) || 0), 0))
 
   // Las secundarias se consolidan una sola vez (después de un guardado exitoso).
   const consolidatedRef = useRef(false)
@@ -173,7 +177,7 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
       almuerzo: sum('almuerzo'),
       conteo_fisico: all.every((m) => m.conteo_fisico === null)
         ? null
-        : all.reduce((s, m) => s + (Number(m.conteo_fisico) || 0), 0),
+        : r3(all.reduce((s, m) => s + (Number(m.conteo_fisico) || 0), 0)),
     },
     enviar,
   })
@@ -262,6 +266,17 @@ export const MovimientoGroupRow = memo(function MovimientoGroupRow({
             value={local.ventas}
             placeholder="0"
             onValueChange={(v) => setCampo('ventas', v)}
+            onBlur={() => {
+              // El total no puede quedar por debajo de lo que Bistro registró en
+              // Barra o Menú (esas ventas viven en sus variantes y no se tocan
+              // desde acá): la base guardaría otro número que el que se ve.
+              if (local.ventas < ventasSecundarias) {
+                toast.error(
+                  `Las ventas de ${name} no pueden ser menos de ${formatoCantidad(ventasSecundarias)}: es lo que Bistro registró en ${apertura.filter((a) => a.id !== primary.id && a.ventas > 0).map((a) => a.label.toLowerCase()).join(' y ')}. Para moverlas a otro producto usá "Reasignar ventas".`,
+                )
+                cambiar('ventas', ventasSecundarias)
+              }
+            }}
             title={`Bistro por canal — ${ventasBreakdown}. Si vendés por fuera del POS, editá el total: la diferencia se conserva aunque se re-sincronice.`}
           />
           {ventasBistroSum > 0 && (

@@ -53,7 +53,11 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
 
   useEffect(() => {
     let cancelado = false
-    getVentasDelDia(diaId)
+    // Lo tipeado en la grilla se guarda antes de leer, así el diálogo muestra
+    // lo mismo que la pantalla.
+    guardarPendientes(diaId)
+      .catch(() => [])
+      .then(() => getVentasDelDia(diaId))
       .then((r) => {
         if (cancelado) return
         if (r.error || !r.data) {
@@ -93,7 +97,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
 
   const desdeOptions = conVentas.map((f) => ({
     value: f.id,
-    label: `${f.name} (${f.ventas} vendid${f.ventas === 1 ? 'o' : 'os'})`,
+    label: `${f.name} (${f.ventas.toLocaleString('es-AR', { maximumFractionDigits: 3 })} vendid${f.ventas === 1 ? 'o' : 'os'})`,
   }))
   const haciaOptions = filas
     .filter((f) => f.id !== desdeEfectivo)
@@ -213,7 +217,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
             />
             {desde && (
               <p className="text-xs text-muted-foreground">
-                Máximo {maxCantidad} (lo vendido como {desde.name} ese día).
+                Máximo {maxCantidad.toLocaleString('es-AR', { maximumFractionDigits: 3 })} (lo vendido como {desde.name} ese día).
               </p>
             )}
             {cantidadStr.trim() !== '' && !cantidadValida && desde && (

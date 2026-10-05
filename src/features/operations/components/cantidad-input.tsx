@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 // Input de cantidades de la grilla de Operación.
@@ -26,7 +26,9 @@ type Props = Omit<React.ComponentProps<'input'>, 'value' | 'onChange' | 'type'> 
 function aTexto(v: number | null, mostrarCero: boolean): string {
   if (v === null) return ''
   if (v === 0 && !mostrarCero) return ''
-  return String(v).replace('.', ',')
+  // Redondeo a 3 decimales: las sumas entre variantes en coma flotante daban
+  // "0,30000000000000004" (y no se podía borrar con el patrón de 3 decimales).
+  return String(Math.round(v * 1000) / 1000).replace('.', ',')
 }
 
 function aNumero(texto: string, vacioEsNull: boolean): number | null {
@@ -43,6 +45,21 @@ export function CantidadInput({
   ...rest
 }: Props) {
   const [texto, setTexto] = useState(() => aTexto(value, mostrarCero))
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Teclados virtuales (Android) mandan keydown con key "Unidentified": el
+  // filtro de onKeyDown no los frena. beforeinput sí trae el texto que se va
+  // a insertar y se puede cancelar antes de que cambie el campo (y se pierda
+  // la selección).
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    function antesDeInsertar(e: InputEvent) {
+      if (e.data && /[^\d.,]/.test(e.data)) e.preventDefault()
+    }
+    el.addEventListener('beforeinput', antesDeInsertar)
+    return () => el.removeEventListener('beforeinput', antesDeInsertar)
+  }, [])
   // Si el valor cambia desde afuera (no por lo que se tipeó acá), se refleja.
   const [valorPrevio, setValorPrevio] = useState(value)
   if (!Object.is(value, valorPrevio)) {
@@ -53,6 +70,7 @@ export function CantidadInput({
   return (
     <input
       {...rest}
+      ref={inputRef}
       type="text"
       inputMode="decimal"
       autoComplete="off"

@@ -3,7 +3,8 @@ import { act, renderHook } from '@testing-library/react'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
-import { useGuardadoFila, type ResultadoEnvio } from './use-guardado-fila'
+import { toast } from 'sonner'
+import { useGuardadoFila, EVENTO_GUARDADO_IMPOSIBLE, type ResultadoEnvio } from './use-guardado-fila'
 import { guardarPendientes, hayPendientes } from './guardados-pendientes'
 
 type S = { conteo: number | null; produccion: number }
@@ -112,20 +113,33 @@ describe('useGuardadoFila', () => {
     const cierre = act(async () => { fallidos = await guardarPendientes('dia-1') })
     await act(async () => base.envios[0]!.resolver({ error: 'no se pudo guardar, probá de nuevo' }))
     await flushMicrotasks()
-    // El cierre reintenta lo pendiente: falla de nuevo → el día no se cierra.
-    if (base.envios[1]) await act(async () => base.envios[1]!.resolver({ error: 'no se pudo guardar, probá de nuevo' }))
+    // El cierre esperó el guardado en curso y reintenta lo pendiente.
+    expect(base.envios).toHaveLength(2)
+    expect(base.envios[1]!.payload).toEqual({ conteo: 9 })
+    await act(async () => base.envios[1]!.resolver({ error: 'no se pudo guardar, probá de nuevo' }))
     await cierre
+    // Falló de nuevo → el día no se cierra.
     expect(fallidos).toEqual(['Empanada'])
     expect(base.db.conteo).toBeNull()
   })
 
-  it('un error permanente (día cerrado) descarta lo pendiente y no frena otros días', async () => {
+  it('un error permanente (día cerrado) pide recargar la pantalla, aunque se haya seguido editando, y no frena otros días', async () => {
     const base = crearBase({ conteo: null, produccion: 10 })
     const { result, unmount } = montar(base, 'dia-cerrado')
+    const eventos: string[] = []
+    const escuchar = (e: Event) => eventos.push((e as CustomEvent<string>).detail)
+    window.addEventListener(EVENTO_GUARDADO_IMPOSIBLE, escuchar)
     act(() => result.current.cambiar('conteo', 3))
     await act(async () => { vi.advanceTimersByTime(700) })
-    await act(async () => base.envios[0]!.resolver({ error: 'el día está cerrado', permanente: true }))
+    // Mientras vuelve el rechazo, se edita otra celda.
+    act(() => result.current.cambiar('produccion', 8))
+    await act(async () => base.envios[0]!.resolver({ error: 'el día ya está cerrado', permanente: true }))
     await flushMicrotasks()
+    window.removeEventListener(EVENTO_GUARDADO_IMPOSIBLE, escuchar)
+    // La pantalla del día recibe el aviso para recargarse (no quedan valores
+    // a la vista que la base no tiene).
+    expect(eventos).toHaveLength(1)
+    expect(eventos[0]).toContain('día ya está cerrado')
     expect(hayPendientes('dia-cerrado')).toBe(false)
     unmount()
     let fallidos: string[] = ['x']
@@ -141,5 +155,32 @@ describe('useGuardadoFila', () => {
     let fallidos: string[] = ['x']
     await act(async () => { fallidos = await guardarPendientes('dia-x') })
     expect(fallidos).toEqual([])
+  })
+
+  it('al desmontarse con algo pendiente lo intenta guardar y, si falla, avisa', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const { result, unmount } = montar(base, 'dia-nav')
+    act(() => result.current.cambiar('conteo', 12))
+    vi.mocked(toast.error).mockClear()
+    unmount()
+    await flushMicrotasks()
+    expect(base.envios.at(-1)!.payload).toEqual({ conteo: 12 })
+    await act(async () => base.envios.at(-1)!.fallar())
+    await flushMicrotasks()
+    expect(vi.mocked(toast.error)).toHaveBeenCalled()
+    expect(String(vi.mocked(toast.error).mock.calls.at(-1)![0])).toContain('No se guardó Empanada')
+  })
+
+  it('un guardado que no responde se corta por tiempo y queda pendiente', async () => {
+    const base = crearBase({ conteo: null, produccion: 10 })
+    const { result } = montar(base, 'dia-lento')
+    act(() => result.current.cambiar('conteo', 4))
+    await act(async () => { vi.advanceTimersByTime(700) })
+    expect(result.current.saving).toBe(true)
+    await act(async () => { vi.advanceTimersByTime(20000) })
+    await flushMicrotasks()
+    expect(result.current.saving).toBe(false)
+    expect(result.current.sinGuardar).toBe(true)
+    expect(hayPendientes('dia-lento')).toBe(true)
   })
 })

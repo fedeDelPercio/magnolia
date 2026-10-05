@@ -16,7 +16,7 @@ import { MovimientoRow } from './movimiento-row'
 import { MovimientoGroupRow } from './movimiento-group-row'
 import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
-import { leerAvisoPendiente } from '../aviso-pendiente'
+import { guardarAvisoPendiente, leerAvisoPendiente } from '../aviso-pendiente'
 import { guardarPendientes, hayPendientes } from '../guardados-pendientes'
 import { EVENTO_GUARDADO_IMPOSIBLE } from '../use-guardado-fila'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
@@ -144,11 +144,14 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   // Reasignar ventas recarga la página; el aviso de éxito queda guardado para
   // mostrarlo acá, después de la recarga.
   useEffect(() => {
-    const msg = leerAvisoPendiente()
-    if (!msg) return
+    const aviso = leerAvisoPendiente()
+    if (!aviso) return
     // El <Toaster> se monta después que la página y descarta lo que llega
     // antes de suscribirse: se emite en el siguiente ciclo.
-    const t = setTimeout(() => toast.success(msg), 150)
+    const t = setTimeout(() => {
+      if (aviso.tipo === 'error') toast.error(aviso.msg, { duration: 10000 })
+      else toast.success(aviso.msg)
+    }, 150)
     return () => clearTimeout(t)
   }, [])
 
@@ -204,13 +207,48 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     function alSalir() {
       void guardarPendientes(diaId)
     }
-    function alGuardadoImposible() {
-      router.refresh()
+    let recargaProgramada = false
+    function alGuardadoImposible(e: Event) {
+      // Una sola recarga aunque varias filas reboten a la vez; el aviso se
+      // muestra después de recargar.
+      if (recargaProgramada) return
+      recargaProgramada = true
+      const msg = (e as CustomEvent<string>).detail
+      guardarAvisoPendiente(
+        `${msg ?? 'Hay cambios que no se guardaron'}. La pantalla se actualizó para mostrar lo que quedó guardado.`,
+        'error',
+      )
+      window.location.reload()
+    }
+    // Reintento automático de lo que quedó "sin guardar".
+    const reintento = setInterval(() => {
+      if (hayPendientes(diaId)) void guardarPendientes(diaId)
+    }, 30000)
+    // Navegación dentro de la app (menú, flecha atrás, links) con algo sin
+    // guardar: primero se intenta guardar y, si no se puede, se pregunta.
+    function alHacerClic(e: MouseEvent) {
+      if (!hayPendientes(diaId)) return
+      const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (!a || a.target === '_blank' || e.ctrlKey || e.metaKey || e.shiftKey) return
+      const destino = new URL(a.href, window.location.href)
+      if (destino.origin !== window.location.origin || destino.pathname === window.location.pathname) return
+      e.preventDefault()
+      e.stopPropagation()
+      void guardarPendientes(diaId).then((fallidos) => {
+        if (
+          fallidos.length === 0 ||
+          window.confirm(
+            `No se pudo guardar ${fallidos.join(', ')}. Si salís ahora se pierde. ¿Salir igual?`,
+          )
+        ) {
+          router.push(destino.pathname + destino.search)
+        }
+      })
     }
     function alVolverConexion() {
       void guardarPendientes(diaId).then((fallidos) => {
         if (fallidos.length > 0) {
-          toast.error(`Todavía no se pudo guardar ${fallidos.join(', ')}. Se vuelve a intentar al seguir editando.`)
+          toast.error(`Todavía no se pudo guardar ${fallidos.join(', ')}. Se vuelve a intentar solo en un rato.`)
         }
       })
     }
@@ -225,7 +263,10 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
     window.addEventListener('online', alVolverConexion)
     window.addEventListener('beforeunload', antesDeSalir)
     window.addEventListener(EVENTO_GUARDADO_IMPOSIBLE, alGuardadoImposible)
+    document.addEventListener('click', alHacerClic, true)
     return () => {
+      clearInterval(reintento)
+      document.removeEventListener('click', alHacerClic, true)
       document.removeEventListener('visibilitychange', alOcultar)
       window.removeEventListener('pagehide', alSalir)
       window.removeEventListener('online', alVolverConexion)
@@ -233,6 +274,21 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       window.removeEventListener(EVENTO_GUARDADO_IMPOSIBLE, alGuardadoImposible)
     }
   }, [dia.id, router])
+
+  // La flecha "atrás" es un botón (no un link): pasa por el mismo control de
+  // pendientes que la navegación por links.
+  async function volverAlCalendario() {
+    if (hayPendientes(dia.id)) {
+      const fallidos = await guardarPendientes(dia.id)
+      if (
+        fallidos.length > 0 &&
+        !window.confirm(`No se pudo guardar ${fallidos.join(', ')}. Si salís ahora se pierde. ¿Salir igual?`)
+      ) {
+        return
+      }
+    }
+    router.push('/operacion')
+  }
 
   function handleCerrar() {
     setLoading(true)
@@ -316,7 +372,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/operacion')} className="size-8">
+          <Button variant="ghost" size="icon" onClick={volverAlCalendario} className="size-8" aria-label="Volver">
             <ArrowLeftIcon className="size-4" />
           </Button>
           <div>
@@ -434,14 +490,14 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
               groups.map((g) => {
                 const hidden = q !== '' && !matchesSearch(g.searchText, q)
                 return g.secondaries.length === 0 ? (
-                  <MovimientoRow key={g.primary.id} mov={g.primary} readonly={readonly} hidden={hidden} />
+                  <MovimientoRow key={g.primary.id} mov={g.primary} readonly={readonly || loading} hidden={hidden} />
                 ) : (
                   <MovimientoGroupRow
                     key={g.key}
                     primary={g.primary}
                     secondaries={g.secondaries}
                     name={g.name}
-                    readonly={readonly}
+                    readonly={readonly || loading}
                     hidden={hidden}
                   />
                 )
