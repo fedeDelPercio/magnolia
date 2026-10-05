@@ -1,15 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { ArrowDownIcon } from 'lucide-react'
+import { ArrowDownIcon, Loader2Icon } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 
-import { reasignarVentas } from '../actions'
+import { getVentasDelDia, reasignarVentas } from '../actions'
+import { guardarAvisoPendiente } from '../aviso-pendiente'
 import type { MovimientoConProducto } from '../queries'
 
 type Props = {
@@ -21,46 +22,78 @@ type Props = {
 
 // Lo más común es corregir algo cobrado como "Genérico": si ese día tiene
 // ventas, arranca preseleccionado como origen.
-function esGenerico(m: MovimientoConProducto): boolean {
-  return /^gen[eé]rico$/i.test(m.productos.name.trim())
+function esGenerico(name: string): boolean {
+  return /^gen[eé]rico$/i.test(name.trim())
 }
 
-// Se monta recién al abrirse (ver dia-client), así cada apertura arranca con
-// el estado limpio sin necesidad de resetearlo en un efecto.
-export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }: Props) {
-  const conVentas = useMemo(
-    () =>
-      movimientos
-        .filter((m) => (Number(m.ventas) || 0) > 0)
-        .sort((a, b) => a.productos.name.localeCompare(b.productos.name, 'es')),
-    [movimientos],
-  )
-  const todos = useMemo(
-    () => [...movimientos].sort((a, b) => a.productos.name.localeCompare(b.productos.name, 'es')),
-    [movimientos],
-  )
+// Solo enteros positivos escritos tal cual ("3"), sin decimales ni notación
+// científica: "1.5" o "1e1" no se aceptan en vez de truncarse en silencio.
+function parseCantidad(raw: string): number | null {
+  const t = raw.trim()
+  if (!/^\d+$/.test(t)) return null
+  const n = Number(t)
+  return Number.isSafeInteger(n) && n > 0 ? n : null
+}
 
-  const [desdeId, setDesdeId] = useState(() => conVentas.find(esGenerico)?.id ?? '')
+type Fila = { id: string; name: string; ventas: number }
+
+// Se monta recién al abrirse (ver dia-client), así cada apertura arranca con
+// el estado limpio. Las ventas se leen de nuevo de la base al abrir: la grilla
+// pudo haberlas corregido desde que se cargó la página.
+export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }: Props) {
+  const [ventasFrescas, setVentasFrescas] = useState<Map<string, number> | null>(null)
+  const [errorCarga, setErrorCarga] = useState<string | null>(null)
+  const [desdeId, setDesdeId] = useState<string | null>(null)
   const [haciaId, setHaciaId] = useState('')
   const [cantidadStr, setCantidadStr] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const desde = movimientos.find((m) => m.id === desdeId)
-  const hacia = movimientos.find((m) => m.id === haciaId)
-  const maxCantidad = Number(desde?.ventas) || 0
-  const cantidad = parseInt(cantidadStr, 10)
-  const cantidadValida = Number.isInteger(cantidad) && cantidad > 0 && cantidad <= maxCantidad
+  useEffect(() => {
+    let cancelado = false
+    getVentasDelDia(diaId).then((r) => {
+      if (cancelado) return
+      if (r.error || !r.data) {
+        setErrorCarga(r.error ?? 'No se pudieron leer las ventas del día')
+        return
+      }
+      setVentasFrescas(new Map(r.data.map((m) => [m.id, m.ventas])))
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [diaId])
 
-  const desdeOptions = conVentas.map((m) => ({
-    value: m.id,
-    label: `${m.productos.name} (${Number(m.ventas) || 0} vendid${Number(m.ventas) === 1 ? 'o' : 'os'})`,
+  const filas: Fila[] = useMemo(
+    () =>
+      movimientos
+        .map((m) => ({
+          id: m.id,
+          name: m.productos.name,
+          ventas: ventasFrescas?.get(m.id) ?? (Number(m.ventas) || 0),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'es')),
+    [movimientos, ventasFrescas],
+  )
+  const conVentas = filas.filter((f) => f.ventas > 0)
+
+  // Origen elegido, o Genérico por defecto si vendió algo ese día.
+  const desdeEfectivo = desdeId ?? conVentas.find((f) => esGenerico(f.name))?.id ?? ''
+  const desde = filas.find((f) => f.id === desdeEfectivo)
+  const hacia = filas.find((f) => f.id === haciaId)
+  const maxCantidad = desde?.ventas ?? 0
+  const cantidad = parseCantidad(cantidadStr)
+  const cantidadValida = cantidad !== null && cantidad <= maxCantidad
+
+  const desdeOptions = conVentas.map((f) => ({
+    value: f.id,
+    label: `${f.name} (${f.ventas} vendid${f.ventas === 1 ? 'o' : 'os'})`,
   }))
-  const haciaOptions = todos
-    .filter((m) => m.id !== desdeId)
-    .map((m) => ({ value: m.id, label: m.productos.name }))
+  const haciaOptions = filas
+    .filter((f) => f.id !== desdeEfectivo)
+    .map((f) => ({ value: f.id, label: f.name }))
 
   async function handleSubmit() {
-    if (!desde || !hacia || !cantidadValida) return
+    if (!desde || !hacia || !cantidadValida || cantidad === null) return
     setSaving(true)
     const result = await reasignarVentas({
       diaId,
@@ -73,13 +106,16 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
       toast.error(result.error)
       return
     }
-    toast.success(
-      `${cantidad} venta${cantidad === 1 ? '' : 's'} pasada${cantidad === 1 ? '' : 's'} de ${desde.productos.name} a ${hacia.productos.name}`,
-    )
     // Recarga dura: las filas de la grilla inicializan su estado desde los
-    // props y no se re-sincronizan con un router.refresh().
+    // props y no se re-sincronizan con un router.refresh(). El aviso se
+    // muestra después de recargar.
+    guardarAvisoPendiente(
+      `${cantidad} venta${cantidad === 1 ? '' : 's'} pasada${cantidad === 1 ? '' : 's'} de ${desde.name} a ${hacia.name}`,
+    )
     window.location.reload()
   }
+
+  const cargando = ventasFrescas === null && !errorCarga
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,18 +126,28 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             Para cuando en el POS se cobró un producto como otro (por ejemplo, como Genérico). Las
-            unidades se restan de uno y se suman al otro, y el stock de los dos se recalcula. El
-            cambio se mantiene aunque Bistrosoft vuelva a sincronizar el día.
+            unidades se restan de uno y se suman al otro, y el stock de los dos se recalcula. Corrige
+            Operación y el stock; los reportes de ventas en pesos siguen mostrando lo que cobró
+            Bistrosoft.
           </p>
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+            Si el ticket también se corrige en Bistrosoft, no lo reasignes acá: se contaría dos veces.
+          </p>
+
+          {errorCarga && <p className="text-sm text-red-600">{errorCarga}</p>}
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Se cargó como</label>
-            {desdeOptions.length === 0 ? (
+            {cargando ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2Icon className="size-3.5 animate-spin" /> Leyendo las ventas del día…
+              </p>
+            ) : desdeOptions.length === 0 ? (
               <p className="text-sm text-muted-foreground">Este día no tiene ventas cargadas.</p>
             ) : (
               <SearchableSelect
                 options={desdeOptions}
-                value={desdeId}
+                value={desdeEfectivo}
                 onValueChange={(v) => {
                   setDesdeId(v ?? '')
                   if (v === haciaId) setHaciaId('')
@@ -132,11 +178,9 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
             </label>
             <Input
               id="reasignar-cantidad"
-              type="number"
+              type="text"
               inputMode="numeric"
-              min="1"
-              step="1"
-              max={maxCantidad || undefined}
+              autoComplete="off"
               value={cantidadStr}
               onChange={(e) => setCantidadStr(e.target.value)}
               placeholder="0"
@@ -144,10 +188,10 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
             />
             {desde && (
               <p className="text-xs text-muted-foreground">
-                Máximo {maxCantidad} (lo vendido como {desde.productos.name} ese día).
+                Máximo {maxCantidad} (lo vendido como {desde.name} ese día).
               </p>
             )}
-            {cantidadStr !== '' && !cantidadValida && desde && (
+            {cantidadStr.trim() !== '' && !cantidadValida && desde && (
               <p className="text-xs text-red-600">
                 Tiene que ser un número entero entre 1 y {maxCantidad}.
               </p>
@@ -161,7 +205,7 @@ export function ReasignarVentasDialog({ open, onOpenChange, diaId, movimientos }
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || !desde || !hacia || !cantidadValida}
+            disabled={saving || cargando || !desde || !hacia || !cantidadValida}
           >
             {saving ? 'Guardando...' : 'Reasignar'}
           </Button>

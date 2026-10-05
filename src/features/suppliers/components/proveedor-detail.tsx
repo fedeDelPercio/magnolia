@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { SaldoProveedor, CompraWithItems, PagoProveedor } from '../queries'
 import type { Tables } from '@/types/database'
+import { hoyISO } from '@/lib/fecha'
 
 const STATUS_LABELS: Record<string, string> = {
   pendiente: 'Pendiente',
@@ -211,7 +212,7 @@ function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boo
   const [busy, setBusy] = useState(false)
   async function handleClick() {
     setBusy(true)
-    const today = new Date().toISOString().slice(0, 10)
+    const today = hoyISO()
     const res = await setChequeCleared(pagoId, cleared ? null : today)
     setBusy(false)
     if (res.error) toast.error(res.error)
@@ -311,14 +312,23 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
     router.push('/proveedores')
   }
 
-  async function handleMarkPagada(compraId: string) {
-    const result = await updateCompraStatus(compraId, 'pagada', proveedor.id)
+  async function handleMarkPagada(compra: CompraWithItems) {
+    const falta = faltanteDeCompra(compra)
+    if (falta > 0.01) {
+      const ok = window.confirm(
+        `¿Marcar como pagada la compra del ${formatDate(compra.fecha)}?\n\nSe registra un pago de ${formatCurrency(falta)} (método "otro", con fecha de hoy) y su egreso en caja. Si sabés cómo y cuándo se pagó, mejor usá "Saldar".`,
+      )
+      if (!ok) return
+    }
+    const result = await updateCompraStatus(compra.id, 'pagada', proveedor.id)
     if (result.error) toast.error(result.error)
+    else toast.success('Compra marcada como pagada')
   }
 
   async function handleAnularPago(p: PagoProveedor) {
+    const compra = p.compra_id ? compraPorId.get(p.compra_id) : undefined
     const ok = window.confirm(
-      `¿Anular el pago de ${formatCurrency(p.monto)} del ${formatDate(p.fecha)}?
+      `¿Anular el pago de ${formatCurrency(p.monto)} del ${formatDate(p.fecha)}${compra ? ` (compra del ${formatDate(compra.fecha)} por ${formatCurrency(Number(compra.total))})` : ' (sin compra asociada)'}?
 
 Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra vuelve a quedar pendiente (o con pago parcial).`,
     )
@@ -337,7 +347,44 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
     setPagoOpen(true)
   }
 
-  const hasAging = proveedor.d31_60 > 0 || proveedor.d61_90 > 0 || proveedor.d90plus > 0
+  // Antigüedad de la deuda. La vista suma el total de cada compra impaga sin
+  // restar pagos parciales ni pagos sueltos, y podía mostrar "+90 d" mayor que
+  // el saldo. Acá se resta lo pagado de cada compra y los pagos sin compra se
+  // aplican a las compras más viejas, así los tramos suman lo mismo que el saldo.
+  // Mismo criterio de tramos que la vista: días desde el vencimiento (sin
+  // vencimiento = 0-30).
+  const aging = useMemo(() => {
+    const tramos = { d0_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 }
+    let sueltos = pagos.filter((p) => !p.compra_id).reduce((s, p) => s + Number(p.monto), 0)
+    const hoy = hoyISO()
+    const diasDesde = (iso: string) => {
+      const [y1, m1, d1] = iso.split('-').map(Number)
+      const [y2, m2, d2] = hoy.split('-').map(Number)
+      return Math.round((Date.UTC(y2!, m2! - 1, d2!) - Date.UTC(y1!, m1! - 1, d1!)) / 86400000)
+    }
+    const impagas = compras
+      .filter((c) => c.status !== 'pagada')
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    for (const c of impagas) {
+      let falta = Math.max(0, Number(c.total) - (pagadoPorCompra.get(c.id) ?? 0))
+      const aplicado = Math.min(falta, sueltos)
+      falta -= aplicado
+      sueltos -= aplicado
+      if (falta <= 0.009) continue
+      const dias = c.due_date ? diasDesde(c.due_date) : 0
+      if (dias <= 30) tramos.d0_30 += falta
+      else if (dias <= 60) tramos.d31_60 += falta
+      else if (dias <= 90) tramos.d61_90 += falta
+      else tramos.d90plus += falta
+    }
+    return tramos
+    // pagadoPorCompra se deriva de `pagos` en cada render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compras, pagos])
+  const hasAging = aging.d31_60 > 0 || aging.d61_90 > 0 || aging.d90plus > 0
+  // Saldo a favor: se pagó más de lo comprado (la vista lo muestra como 0).
+  const saldoAFavor = Math.max(0, Number(proveedor.total_pagado) - Number(proveedor.total_compras))
+  const compraPorId = new Map(compras.map((c) => [c.id, c]))
 
   // Filtros de tiempo aplican a compras y al historial de precios derivado.
   // Los pagos y el saldo total se mantienen completos (son acumulados, no de período).
@@ -406,42 +453,50 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
             <p className="mt-1.5 tabular-nums text-lg font-semibold text-green-700">{formatCurrency(proveedor.total_pagado)}</p>
           </div>
           <div className="px-6 py-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Saldo deudor</p>
-            {/* Saldo negativo = a favor nuestro: se muestra el monto tal cual. */}
-            <p className={`mt-1.5 tabular-nums text-lg font-semibold ${proveedor.saldo > 0 ? 'text-red-600' : proveedor.saldo === 0 ? 'text-green-700' : 'text-foreground'}`}>
-              {proveedor.saldo === 0 ? 'Al día' : formatCurrency(proveedor.saldo)}
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              {saldoAFavor > 0.009 ? 'Saldo a favor' : 'Saldo deudor'}
             </p>
+            <p className={`mt-1.5 tabular-nums text-lg font-semibold ${proveedor.saldo > 0 ? 'text-red-600' : saldoAFavor > 0.009 ? 'text-sky-700' : 'text-green-700'}`}>
+              {proveedor.saldo > 0
+                ? formatCurrency(proveedor.saldo)
+                : saldoAFavor > 0.009
+                  ? formatCurrency(saldoAFavor)
+                  : 'Al día'}
+            </p>
+            {saldoAFavor > 0.009 && (
+              <p className="mt-0.5 text-xs text-muted-foreground">Se pagó más de lo comprado.</p>
+            )}
           </div>
         </div>
 
         {hasAging && (
           <div className="border-t px-6 py-3 flex flex-wrap gap-4 text-sm">
-            {proveedor.d0_30 > 0 && (
+            {aging.d0_30 > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-muted-foreground/40 shrink-0" />
                 <span className="text-muted-foreground">0-30 d:</span>
-                <span className="tabular-nums font-medium">{formatCurrency(proveedor.d0_30)}</span>
+                <span className="tabular-nums font-medium">{formatCurrency(aging.d0_30)}</span>
               </div>
             )}
-            {proveedor.d31_60 > 0 && (
+            {aging.d31_60 > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-yellow-400 shrink-0" />
                 <span className="text-yellow-700">31-60 d:</span>
-                <span className="tabular-nums font-medium text-yellow-800">{formatCurrency(proveedor.d31_60)}</span>
+                <span className="tabular-nums font-medium text-yellow-800">{formatCurrency(aging.d31_60)}</span>
               </div>
             )}
-            {proveedor.d61_90 > 0 && (
+            {aging.d61_90 > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-orange-400 shrink-0" />
                 <span className="text-orange-700">61-90 d:</span>
-                <span className="tabular-nums font-medium text-orange-800">{formatCurrency(proveedor.d61_90)}</span>
+                <span className="tabular-nums font-medium text-orange-800">{formatCurrency(aging.d61_90)}</span>
               </div>
             )}
-            {proveedor.d90plus > 0 && (
+            {aging.d90plus > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-red-500 shrink-0" />
                 <span className="text-red-700">+90 d:</span>
-                <span className="tabular-nums font-medium text-red-800">{formatCurrency(proveedor.d90plus)}</span>
+                <span className="tabular-nums font-medium text-red-800">{formatCurrency(aging.d90plus)}</span>
               </div>
             )}
           </div>
@@ -562,7 +617,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                           Editar
                         </DropdownMenuItem>
                         {c.status !== 'pagada' && (
-                          <DropdownMenuItem onClick={() => handleMarkPagada(c.id)}>
+                          <DropdownMenuItem onClick={() => handleMarkPagada(c)}>
                             <CheckCircleIcon className="size-3.5 mr-2" />
                             Marcar como pagada
                           </DropdownMenuItem>
@@ -647,9 +702,15 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                         <ChequeClearedButton pagoId={p.id} cleared={!!p.cleared_at} />
                       )}
                     </div>
-                    {p.descripcion && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{p.descripcion}</p>
-                    )}
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {(() => {
+                        const compra = p.compra_id ? compraPorId.get(p.compra_id) : undefined
+                        const ref = compra
+                          ? `Compra del ${formatDateShort(compra.fecha)} por ${formatCurrency(Number(compra.total))}`
+                          : 'Sin compra asociada'
+                        return p.descripcion ? `${ref} · ${p.descripcion}` : ref
+                      })()}
+                    </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="tabular-nums font-semibold text-green-700">{formatCurrency(p.monto)}</span>
@@ -657,7 +718,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                       <DropdownMenuTrigger
                         aria-label="Acciones del pago"
                         disabled={anulandoPagoId === p.id}
-                        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground sm:size-6"
                       >
                         <MoreHorizontalIcon className="size-3.5" />
                       </DropdownMenuTrigger>
@@ -877,6 +938,13 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
         defaultMetodo={(proveedor.metodo_pago_default as PagoMetodo | null) ?? undefined}
         compraId={pagoCompraId}
         pago={editingPago}
+        compraLabel={(() => {
+          const id = editingPago?.compra_id ?? pagoCompraId
+          const compra = id ? compraPorId.get(id) : undefined
+          return compra
+            ? `Compra del ${formatDate(compra.fecha)} por ${formatCurrency(Number(compra.total))}`
+            : undefined
+        })()}
       />
       {/* La vista saldos_proveedores expone los campos del perfil (incl.
           ai_extraction_notes) justamente para poder abrir el dialog de edición

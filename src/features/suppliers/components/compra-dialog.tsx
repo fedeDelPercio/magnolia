@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { PlusIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon, PackageIcon } from 'lucide-react'
+import { PlusIcon, TrashIcon, PackageIcon } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { hoyISO } from '@/lib/fecha'
+import { VariacionPrecio } from './variacion-precio'
 
 type InsumoOpt = Pick<
   Tables<'insumos'>,
@@ -71,7 +73,7 @@ type Props = {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  return hoyISO()
 }
 
 const EMPTY_NEW_INSUMO: NewInsumoForm = { name: '', kind: 'ingrediente', unit: 'kg' }
@@ -707,19 +709,19 @@ export function CompraDialog({
               // proveedor con 40% de descuento mostraba un +67% falso.
               const brutoMul = (1 - descuentoPct / 100) * (1 + ivaRate / 100)
               const newBrutoPrice = newUnitPrice * brutoMul
-              const prevPrice = selectedInsumo.current_price
-              const changePct = prevPrice > 0 ? ((newBrutoPrice - prevPrice) / prevPrice) * 100 : null
-              const isLarge = changePct !== null && changePct >= 20
+              const prevPrice = Number(selectedInsumo.current_price) || 0
               const hasPresentation = factor !== 1
               const hasDespiece = selectedDespiece.length > 0
               return (
                 <div className="space-y-1">
                 {hasDespiece && (() => {
+                  // Igual que al guardar (expandDespiece): cada hijo recibe
+                  // cantidad en unidad base × qty_por_unidad.
                   const sumQty = selectedDespiece.reduce((s, h) => s + h.qty_por_unidad, 0)
-                  const unitPriceHijo = sumQty > 0 ? total / (qtyInput * sumQty) : 0
+                  const unitPriceHijo = sumQty > 0 ? total / (qtyBase * sumQty) : 0
                   return (
                     <p className="text-[11px] text-emerald-700">
-                      Va a sumar stock a: {selectedDespiece.map((h) => `${(qtyInput * h.qty_por_unidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${h.hijo_name}`).join(' · ')} · {formatCurrency(unitPriceHijo)} por unidad hija
+                      Va a sumar stock a: {selectedDespiece.map((h) => `${(qtyBase * h.qty_por_unidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${h.hijo_name}`).join(' · ')} · {formatCurrency(unitPriceHijo)} por unidad hija
                     </p>
                   )
                 })()}
@@ -730,16 +732,15 @@ export function CompraDialog({
                     )}
                     {formatCurrency(newUnitPrice)} / {baseLabel}
                     {brutoMul !== 1 && (
-                      <span className="text-foreground/70"> · {formatCurrency(newBrutoPrice)} c/desc. e IVA</span>
+                      <span className="text-foreground/70">
+                        {' '}· {formatCurrency(newBrutoPrice)} {descuentoPct > 0 ? 'c/desc. e IVA' : 'c/IVA'}
+                      </span>
                     )}
                   </span>
-                  {changePct !== null && prevPrice > 0 && (
-                    <span className={`flex items-center gap-1 tabular-nums ${isLarge ? 'font-semibold text-red-600' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                      {isLarge && <AlertTriangleIcon className="size-3" />}
-                      {changePct > 0 ? <TrendingUpIcon className="size-3" /> : <TrendingDownIcon className="size-3" />}
-                      Último c/desc. e IVA: {formatCurrency(prevPrice)} · {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
-                    </span>
-                  )}
+                  {/* Con despiece el precio que cuenta es el de los hijos (el
+                      del padre no se actualiza): no comparamos, igual que el
+                      comprobante escaneado. */}
+                  {!hasDespiece && <VariacionPrecio anterior={prevPrice} nuevo={newBrutoPrice} />}
                 </div>
                 </div>
               )

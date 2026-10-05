@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { pagoSchema, METODO_LABELS, type PagoFormValues, type PagoMetodo } from '../schemas'
 import { createPago, updatePago } from '../actions'
 import type { PagoProveedor } from '../queries'
+import { hoyISO } from '@/lib/fecha'
 
 type Props = {
   open: boolean
@@ -28,10 +29,12 @@ type Props = {
   compraId?: string
   // Si viene, el dialog edita ese pago en vez de crear uno nuevo.
   pago?: PagoProveedor | null
+  // "Compra del dd/mm por $X" cuando el pago está (o va a quedar) vinculado.
+  compraLabel?: string
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  return hoyISO()
 }
 
 function addMonths(isoDate: string, months: number): string {
@@ -48,7 +51,7 @@ function addMonths(isoDate: string, months: number): string {
 
 type Plazo = '30' | '60' | 'otro'
 
-export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, defaultMetodo, compraId, pago }: Props) {
+export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, defaultMonto, defaultMetodo, compraId, pago, compraLabel }: Props) {
   const initialMetodo: PagoMetodo = defaultMetodo ?? 'transferencia'
   const form = useForm<PagoFormValues>({
     resolver: zodResolver(pagoSchema) as Resolver<PagoFormValues>,
@@ -108,6 +111,7 @@ export function PagoDialog({ open, onOpenChange, proveedorId, proveedorName, def
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{pago ? 'Editar pago a' : 'Pago a'} {proveedorName}</DialogTitle>
+          {compraLabel && <p className="text-xs text-muted-foreground">{compraLabel}</p>}
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

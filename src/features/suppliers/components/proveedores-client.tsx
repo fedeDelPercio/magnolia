@@ -171,6 +171,10 @@ export function ProveedoresClient({ proveedores }: Props) {
           {filtered.map((p) => {
             const deuda = deudaDe(p)
             const tieneSaldo = deuda > 0
+            // Se pagó más de lo comprado: la vista lo muestra como saldo 0.
+            const aFavor = p.tipo === 'insumo'
+              ? Math.max(0, Number(p.total_pagado) - Number(p.total_compras))
+              : 0
             return (
               <div
                 key={p.id}
@@ -208,17 +212,21 @@ export function ProveedoresClient({ proveedores }: Props) {
                           // trae el espaciado apretado y pega las palabras.
                           tieneSaldo
                             ? 'num-editorial tabular-nums text-rose-700'
-                            : 'font-medium text-emerald-700',
+                            : aFavor > 0.009
+                              ? 'num-editorial tabular-nums text-sky-700'
+                              : 'font-medium text-emerald-700',
                         )}
                       >
-                        {tieneSaldo ? formatCurrency(deuda) : 'Al día'}
+                        {tieneSaldo ? formatCurrency(deuda) : aFavor > 0.009 ? formatCurrency(aFavor) : 'Al día'}
                       </p>
                       <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {!tieneSaldo
-                          ? 'sin deuda'
-                          : p.tipo === 'servicio'
+                        {tieneSaldo
+                          ? p.tipo === 'servicio'
                             ? 'pendiente de pago'
-                            : 'saldo deudor'}
+                            : 'saldo deudor'
+                          : aFavor > 0.009
+                            ? 'saldo a favor'
+                            : 'sin deuda'}
                       </p>
                     </div>
                     {!p.active && (

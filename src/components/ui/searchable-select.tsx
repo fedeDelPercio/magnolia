@@ -87,7 +87,10 @@ export function SearchableSelect({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && open) {
+      // Si el selector está dentro de un diálogo, Escape tiene que cerrar solo
+      // la lista, no el diálogo entero (se perdería lo cargado).
+      e.stopPropagation()
       setOpen(false)
       setSearch('')
     }

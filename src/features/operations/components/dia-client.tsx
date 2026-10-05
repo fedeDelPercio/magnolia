@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { LockIcon, LockOpenIcon, ArrowLeftIcon, UploadIcon, FileTextIcon, AlertTriangleIcon, RotateCcwIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon, ArrowRightLeftIcon } from 'lucide-react'
@@ -16,6 +16,7 @@ import { MovimientoRow } from './movimiento-row'
 import { MovimientoGroupRow } from './movimiento-group-row'
 import { ReasignarVentasDialog } from './reasignar-ventas-dialog'
 import { esVarianteBase, grupoKey, varianteOrden } from '../grupos'
+import { leerAvisoPendiente } from '../aviso-pendiente'
 import type { DiaConMovimientos, MovimientoConProducto } from '../queries'
 import type { CierreCajaWithProductos, ProductoBasico } from '@/features/cierres/queries'
 import { ImportCierreDialog } from '@/features/cierres/components/import-cierre-dialog'
@@ -126,6 +127,13 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
   const [selectedCierre, setSelectedCierre] = useState<CierreCajaWithProductos | null>(null)
   const [reasignarOpen, setReasignarOpen] = useState(false)
 
+  // Reasignar ventas recarga la página; el aviso de éxito queda guardado para
+  // mostrarlo acá, después de la recarga.
+  useEffect(() => {
+    const msg = leerAvisoPendiente()
+    if (msg) toast.success(msg)
+  }, [])
+
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
 
@@ -225,7 +233,7 @@ export function DiaClient({ dia, cierres, productosCatalogo, taxRate = 0 }: Prop
           </Badge>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {dia.status === 'abierto' ? (
             <>
               <Button

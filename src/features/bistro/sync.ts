@@ -726,7 +726,9 @@ async function consolidateCierreForDay(
         const ajusteManual = bistroPrevio > 0 ? (Number(existing.ventas) || 0) - bistroPrevio : 0
         await client
           .from('movimientos_diarios')
-          .update({ ventas: cantidad + ajusteManual, ventas_bistro: cantidad })
+          // Piso en 0: si se reasignaron ventas de este producto y después Bistro
+          // baja su número (ticket anulado), el ajuste no puede dejar ventas negativas.
+          .update({ ventas: Math.max(0, cantidad + ajusteManual), ventas_bistro: cantidad })
           .eq('id', existing.id)
       } else {
         await client.from('movimientos_diarios').insert({
