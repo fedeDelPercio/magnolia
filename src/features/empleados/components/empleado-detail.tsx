@@ -390,7 +390,9 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
                 return (
                   <li key={d.id} className={cn('flex items-center justify-between gap-3 px-3 py-2', aplicado && 'opacity-60')}>
                     <div className="min-w-0">
-                      <p className="truncate">
+                      {/* El motivo se parte en renglones: con truncate, un motivo largo
+                          ensanchaba toda la ficha en el celular. */}
+                      <p className="break-words">
                         <span className="tabular-nums text-muted-foreground">{fechaCorta(d.fecha)}</span>{' '}
                         {d.motivo}
                       </p>
@@ -508,7 +510,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
             <ul className="divide-y rounded-lg border bg-background/60 text-sm">
               {liquidaciones.map((l) => (
                 <li key={l.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
                     <CalendarIcon className="size-3.5 text-muted-foreground" />
                     <span className="tabular-nums">
                       {l.fecha_desde === l.fecha_hasta ? l.fecha_desde : `${l.fecha_desde} → ${l.fecha_hasta}`}
@@ -522,7 +524,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex shrink-0 items-center gap-3">
                     <span className="tabular-nums font-medium">{formatCurrency(Number(l.monto_total))}</span>
                     {l.caja_movimiento_id && (
                       <Link href="/caja" className="text-xs text-blue-600 hover:underline">

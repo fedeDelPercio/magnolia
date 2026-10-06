@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
 
 // Input de cantidades de la grilla de Operación.
 //
@@ -72,40 +75,90 @@ export function CantidadInput({
     if (!Object.is(aNumero(texto, vacioEsNull), value)) setTexto(aTexto(value, mostrarCero))
   }
 
+  // Flechitas (como las del campo numérico que había antes) y flechas del
+  // teclado: suman o restan 1, sin bajar de 0. En el conteo, desde vacío
+  // ("no contado") la de abajo deja 0 y la de arriba 1.
+  function paso(delta: number) {
+    const next = Math.min(MAXIMO, Math.max(0, Math.round(((value ?? 0) + delta) * 1000) / 1000))
+    if (Object.is(next, value)) return
+    setTexto(aTexto(next, mostrarCero))
+    onValueChange(next)
+  }
+
+  const habilitado = !rest.disabled && !rest.readOnly
+
   return (
-    <input
-      {...rest}
-      ref={inputRef}
-      type="text"
-      inputMode="decimal"
-      autoComplete="off"
-      value={texto}
-      onKeyDown={(e) => {
-        // Un carácter que no puede ir ("-", letras) se frena antes de que
-        // cambie el texto: si no, el navegador perdía la selección y lo que se
-        // tipeaba después se sumaba al final (4 seleccionado + "-5" = 45).
-        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !/[\d.,]/.test(e.key)) {
-          e.preventDefault()
-        }
-        rest.onKeyDown?.(e)
-      }}
-      onBlur={(e) => {
-        // Al salir se muestra el número como quedó: "2.500" pasa a "2500", así
-        // se ve que se tomó como dos mil quinientos.
-        setTexto(aTexto(value, mostrarCero))
-        rest.onBlur?.(e)
-      }}
-      onChange={(e) => {
-        const raw = e.target.value.trim()
-        if (!PATRON.test(raw)) return
-        const n = aNumero(raw, vacioEsNull)
-        if (n !== null && n > MAXIMO) {
-          toast.error('Máximo 99.999 por celda: revisá lo que tipeaste.')
-          return
-        }
-        setTexto(raw)
-        onValueChange(n)
-      }}
-    />
+    <span className="group/cantidad relative inline-block align-middle">
+      <input
+        {...rest}
+        ref={inputRef}
+        className={cn(
+          rest.className,
+          habilitado && 'group-focus-within/cantidad:pr-4 group-hover/cantidad:pr-4',
+        )}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        value={texto}
+        onKeyDown={(e) => {
+          // Un carácter que no puede ir ("-", letras) se frena antes de que
+          // cambie el texto: si no, el navegador perdía la selección y lo que se
+          // tipeaba después se sumaba al final (4 seleccionado + "-5" = 45).
+          if (
+            e.key.length === 1 &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            !/[\d.,]/.test(e.key)
+          ) {
+            e.preventDefault()
+          }
+          if (habilitado && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            e.preventDefault()
+            paso(e.key === 'ArrowUp' ? 1 : -1)
+          }
+          rest.onKeyDown?.(e)
+        }}
+        onBlur={(e) => {
+          // Al salir se muestra el número como quedó: "2.500" pasa a "2500", así
+          // se ve que se tomó como dos mil quinientos.
+          setTexto(aTexto(value, mostrarCero))
+          rest.onBlur?.(e)
+        }}
+        onChange={(e) => {
+          const raw = e.target.value.trim()
+          if (!PATRON.test(raw)) return
+          const n = aNumero(raw, vacioEsNull)
+          if (n !== null && n > MAXIMO) {
+            toast.error('Máximo 99.999 por celda: revisá lo que tipeaste.')
+            return
+          }
+          setTexto(raw)
+          onValueChange(n)
+        }}
+      />
+      {habilitado && (
+        <span className="absolute inset-y-px right-px hidden w-3.5 flex-col overflow-hidden rounded-r group-focus-within/cantidad:flex group-hover/cantidad:flex">
+          {([1, -1] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              tabIndex={-1}
+              aria-label={d > 0 ? 'Sumar 1' : 'Restar 1'}
+              // Sin robarle el foco al campo (si no, se dispara el guardado al salir).
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => paso(d)}
+              className="text-muted-foreground hover:bg-muted hover:text-foreground flex flex-1 items-center justify-center"
+            >
+              {d > 0 ? (
+                <ChevronUpIcon className="size-3" />
+              ) : (
+                <ChevronDownIcon className="size-3" />
+              )}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   )
 }

@@ -138,4 +138,35 @@ describe('CantidadInput', () => {
     await user.paste('hola')
     expect(onCambio).not.toHaveBeenCalled()
   })
+
+  it('las flechitas y las flechas del teclado suman y restan 1, sin bajar de 0', async () => {
+    const onCambio = vi.fn()
+    render(<Probador inicial={2} onCambio={onCambio} />)
+    const input = screen.getByLabelText('cantidad') as HTMLInputElement
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Sumar 1' }))
+    expect(onCambio).toHaveBeenLastCalledWith(3)
+    expect(input.value).toBe('3')
+    await user.click(input)
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}')
+    expect(onCambio).toHaveBeenLastCalledWith(0)
+    expect(onCambio).not.toHaveBeenCalledWith(-1)
+    await user.keyboard('{ArrowUp}')
+    expect(onCambio).toHaveBeenLastCalledWith(1)
+    await user.click(screen.getByRole('button', { name: 'Restar 1' }))
+    expect(onCambio).toHaveBeenLastCalledWith(0)
+  })
+
+  it('en el conteo vacío ("no contado") la flechita de arriba deja 1', async () => {
+    const onCambio = vi.fn()
+    render(<Probador inicial={null} vacioEsNull mostrarCero onCambio={onCambio} />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Sumar 1' }))
+    expect(onCambio).toHaveBeenLastCalledWith(1)
+  })
+
+  it('sin flechitas cuando el campo está bloqueado (día cerrado)', () => {
+    render(<CantidadInput aria-label="bloqueado" value={3} disabled onValueChange={() => {}} />)
+    expect(screen.queryByRole('button', { name: 'Sumar 1' })).toBeNull()
+  })
 })
