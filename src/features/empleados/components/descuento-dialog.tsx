@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/format'
 
 import { createDescuento } from '../actions'
 import { descuentoSchema } from '../schemas'
+import { hoyISO } from '@/lib/fecha'
 import type { ProductoConCosto } from '../queries'
 
 type Props = {
@@ -22,11 +23,6 @@ type Props = {
   plusMensual: number
   pendienteActual: number
   productos: ProductoConCosto[]
-}
-
-function hoyLocal(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const SIN_PRODUCTO = ''
@@ -41,7 +37,7 @@ export function DescuentoDialog({
   pendienteActual,
   productos,
 }: Props) {
-  const [fecha, setFecha] = useState(hoyLocal)
+  const [fecha, setFecha] = useState(hoyISO)
   const [motivo, setMotivo] = useState('')
   const [productoId, setProductoId] = useState(SIN_PRODUCTO)
   const [cantidadStr, setCantidadStr] = useState('')
@@ -106,7 +102,7 @@ export function DescuentoDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label htmlFor="descuento-fecha" className="text-sm font-medium">Fecha</label>
-              <Input id="descuento-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+              <Input id="descuento-fecha" type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Monto</label>

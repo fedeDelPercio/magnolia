@@ -14,6 +14,7 @@ import type {
   DescuentoFormValues,
   TardanzaFormValues,
 } from './schemas'
+import { descuentoSchema, tardanzaSchema } from './schemas'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -499,7 +500,7 @@ export async function generarPagosDelDia(diaId: string): Promise<{ count: number
     // pagar al día siguiente.
     let plusAPagar = 0
     if (Number(emp.plus_mensual) > 0) {
-      const { data: liqsConPlus } = await supabase
+      const { data: liqsConPlus, error: plusErr } = await supabase
         .from('empleado_liquidaciones')
         .select('id')
         .eq('empleado_id', emp.id)
@@ -507,7 +508,9 @@ export async function generarPagosDelDia(diaId: string): Promise<{ count: number
         .lt('fecha_desde', mesActual === '2099-12' ? '2999-01-01' : nextMonthFirstDay(mesActual))
         .or('monto_plus.gt.0,monto_descuentos.gt.0')
         .limit(1)
-      if ((liqsConPlus ?? []).length === 0) {
+      // Si no se puede saber si ya se pagó, no se paga ahora: se paga con el
+      // próximo día que se cierre (pagarlo dos veces sería peor).
+      if (!plusErr && (liqsConPlus ?? []).length === 0) {
         plusAPagar = Number(emp.plus_mensual)
       }
     }
@@ -671,17 +674,49 @@ async function vincularDescuentos(
       monto: aplicacion.excedente,
       origen_liquidacion_id: liquidacionId,
     })
-    if (arrErr) return { error: arrErr.message, aplicados: true }
+    if (arrErr) {
+      // Sin el arrastre, los descuentos quedarían como cobrados sin haberse
+      // cobrado: se desvinculan y esta liquidación paga el plus entero.
+      await supabase
+        .from('empleado_descuentos')
+        .update({ liquidacion_id: null })
+        .in('id', aplicacion.ids)
+        .eq('liquidacion_id', liquidacionId)
+      return { error: arrErr.message, aplicados: false }
+    }
   }
   return { aplicados: true }
+}
+
+// Fecha válida y no futura (un "2062" mal tipeado quedaría pendiente para siempre).
+function errorDeFecha(fecha: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(Date.parse(fecha))) return 'La fecha no es válida'
+  if (fecha > hoyISO()) return 'La fecha no puede ser futura'
+  if (fecha < '2020-01-01') return 'La fecha no es válida'
+  return null
+}
+
+async function empleadoDelLocal(supabase: Supabase, tenantId: string, empleadoId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('empleados')
+    .select('id')
+    .eq('id', empleadoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  return !!data
 }
 
 export async function createDescuento(
   empleadoId: string,
   values: DescuentoFormValues,
 ): Promise<{ error?: string }> {
+  const parsed = descuentoSchema.safeParse(values)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Revisá los datos' }
+  const errFecha = errorDeFecha(values.fecha)
+  if (errFecha) return { error: errFecha }
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
+  if (!(await empleadoDelLocal(supabase, tenantId, empleadoId))) return { error: 'Empleado no encontrado' }
   const { error } = await supabase.from('empleado_descuentos').insert({
     tenant_id: tenantId,
     empleado_id: empleadoId,
@@ -720,8 +755,13 @@ export async function createTardanza(
   empleadoId: string,
   values: TardanzaFormValues,
 ): Promise<{ error?: string }> {
+  const parsed = tardanzaSchema.safeParse(values)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Revisá los datos' }
+  const errFecha = errorDeFecha(values.fecha)
+  if (errFecha) return { error: errFecha }
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
+  if (!(await empleadoDelLocal(supabase, tenantId, empleadoId))) return { error: 'Empleado no encontrado' }
   const { error } = await supabase.from('empleado_tardanzas').insert({
     tenant_id: tenantId,
     empleado_id: empleadoId,

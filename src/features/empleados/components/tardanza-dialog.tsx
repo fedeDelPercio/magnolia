@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 
 import { createTardanza } from '../actions'
 import { tardanzaSchema } from '../schemas'
+import { hoyISO } from '@/lib/fecha'
 import { formatMinutos } from '../lib/descuentos-plus'
 
 type HorarioMin = { dow: number; hora_inicio: string }
@@ -20,11 +21,6 @@ type Props = {
   // Con un solo empleado (ficha) va fijo; con varios (asistencia) se elige.
   empleados: { id: string; name: string; horarios: HorarioMin[] }[]
   empleadoIdFijo?: string
-}
-
-function hoyLocal(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function dowDe(fecha: string): number {
@@ -42,7 +38,7 @@ const ATAJOS = [10, 15, 30, 60]
 // Se monta recién al abrirse: cada apertura arranca limpia.
 export function TardanzaDialog({ open, onOpenChange, empleados, empleadoIdFijo }: Props) {
   const [empleadoId, setEmpleadoId] = useState(empleadoIdFijo ?? '')
-  const [fecha, setFecha] = useState(hoyLocal)
+  const [fecha, setFecha] = useState(hoyISO)
   const [llegada, setLlegada] = useState('')
   const [minutosStr, setMinutosStr] = useState('')
   const [notas, setNotas] = useState('')
@@ -70,10 +66,11 @@ export function TardanzaDialog({ open, onOpenChange, empleados, empleadoIdFijo }
   // hora, la fecha o el empleado (cada día puede tener otro horario).
   function recalcular(empId: string, f: string, hora: string) {
     const ent = entradaDe(empId, f)
-    if (hora && ent) {
-      const diff = aMinutos(hora) - aMinutos(ent)
-      setMinutosStr(diff > 0 ? String(diff) : '')
-    }
+    if (!hora) return
+    // Sin horario ese día no hay contra qué calcular: no quedan los minutos
+    // calculados para otro empleado u otra fecha.
+    const diff = ent ? aMinutos(hora) - aMinutos(ent) : 0
+    setMinutosStr(diff > 0 ? String(diff) : '')
   }
 
   function onLlegada(v: string) {
@@ -139,6 +136,7 @@ export function TardanzaDialog({ open, onOpenChange, empleados, empleadoIdFijo }
               <Input
                 id="tardanza-fecha"
                 type="date"
+                max={hoyISO()}
                 value={fecha}
                 onChange={(e) => {
                   setFecha(e.target.value)
