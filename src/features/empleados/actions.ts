@@ -4,12 +4,18 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import { calcularLiquidacion } from './lib/calculo'
+import { hoyISO } from '@/lib/fecha'
+import { aplicarDescuentosAlPlus, type AplicacionDescuentos } from './lib/descuentos-plus'
 import type {
   EmpleadoFormValues,
   HorarioFormValues,
   VacacionFormValues,
   AusenciaFormValues,
+  DescuentoFormValues,
+  TardanzaFormValues,
 } from './schemas'
+
+type Supabase = Awaited<ReturnType<typeof createClient>>
 
 // ---- Empleados -------------------------------------------------------------
 
@@ -202,8 +208,12 @@ export type LiquidacionPreviewItem = {
   dias_trabajados: number
   dias_ausentes_pagos: number
   monto_sueldo: number
+  /** Plus neto (ya descontado). */
   monto_plus: number
+  /** Lo que se descontó del plus por desperdicio u otros faltantes. */
+  monto_descuentos: number
   monto_total: number
+  descuentos: AplicacionDescuentos
 }
 
 export type LiquidacionPreview = {
@@ -237,6 +247,10 @@ export async function previewLiquidacion(opts: {
   const { data, error } = await empQuery
   if (error) return { error: error.message }
 
+  const pendientesPorEmpleado = opts.incluir_plus
+    ? await getDescuentosPendientes(supabase, (data ?? []).map((e) => e.id))
+    : new Map<string, { id: string; fecha: string; monto: number }[]>()
+
   const items: LiquidacionPreviewItem[] = []
   let total = 0
 
@@ -263,6 +277,12 @@ export async function previewLiquidacion(opts: {
       incluir_plus: opts.incluir_plus,
     })
 
+    const descuentos = aplicarDescuentosAlPlus(
+      calc.monto_plus,
+      pendientesPorEmpleado.get(emp.id) ?? [],
+      opts.fecha_hasta,
+    )
+    const montoTotal = Math.round((calc.monto_sueldo + descuentos.plusNeto) * 100) / 100
     items.push({
       empleado_id: emp.id,
       name: emp.name,
@@ -270,10 +290,12 @@ export async function previewLiquidacion(opts: {
       dias_trabajados: calc.dias_trabajados,
       dias_ausentes_pagos: calc.dias_ausentes_pagos,
       monto_sueldo: calc.monto_sueldo,
-      monto_plus: calc.monto_plus,
-      monto_total: calc.monto_total,
+      monto_plus: descuentos.plusNeto,
+      monto_descuentos: descuentos.aplicado,
+      monto_total: montoTotal,
+      descuentos,
     })
-    total += calc.monto_total
+    total += montoTotal
   }
 
   return { data: { items, total } }
@@ -316,10 +338,25 @@ export async function confirmarLiquidacion(opts: {
         dias_ausentes_pagos: item.dias_ausentes_pagos,
         monto_sueldo: item.monto_sueldo,
         monto_plus: item.monto_plus,
+        monto_descuentos: item.monto_descuentos,
       })
       .select('id')
       .single()
     if (liqErr) return { error: `${item.name}: ${liqErr.message}` }
+
+    let montoTotal = item.monto_total
+    if (item.descuentos.ids.length > 0) {
+      const vinc = await vincularDescuentos(supabase, tenantId, item.empleado_id, liq.id, item.descuentos, opts.fecha_hasta)
+      if (vinc.error || !vinc.aplicados) {
+        // Mismo criterio que el pago diario: sin vínculo no hay descuento.
+        const plusBruto = item.monto_plus + item.monto_descuentos
+        montoTotal = Math.round((item.monto_sueldo + plusBruto) * 100) / 100
+        await supabase
+          .from('empleado_liquidaciones')
+          .update({ monto_plus: plusBruto, monto_descuentos: 0 })
+          .eq('id', liq.id)
+      }
+    }
 
     if (opts.generar_egreso) {
       const { data: mov, error: movErr } = await supabase
@@ -329,8 +366,11 @@ export async function confirmarLiquidacion(opts: {
           fecha: opts.fecha_hasta,
           tipo: 'egreso',
           categoria: 'Sueldos',
-          monto: item.monto_total,
-          descripcion: `Sueldo de ${item.name} (${opts.fecha_desde} a ${opts.fecha_hasta})`,
+          monto: montoTotal,
+          descripcion:
+            montoTotal < item.monto_sueldo + item.monto_plus + item.monto_descuentos - 0.009
+              ? `Sueldo de ${item.name} (${opts.fecha_desde} a ${opts.fecha_hasta}), plus con descuentos`
+              : `Sueldo de ${item.name} (${opts.fecha_desde} a ${opts.fecha_hasta})`,
           ref_kind: 'liquidacion_empleado',
           ref_id: liq.id,
         })
@@ -354,6 +394,23 @@ export async function confirmarLiquidacion(opts: {
 
 export async function deleteLiquidacion(id: string, empleadoId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
+
+  // Si el plus de esta liquidación generó un arrastre de descuentos y ese
+  // arrastre ya se descontó en un plus posterior, borrarla haría descontar dos
+  // veces (los originales vuelven a pendiente y el arrastre se borra, pero la
+  // otra liquidación ya lo cobró). Hay que borrar primero la posterior.
+  const { data: arrastres } = await supabase
+    .from('empleado_descuentos')
+    .select('id, liquidacion:empleado_liquidaciones!empleado_descuentos_liquidacion_id_fkey(fecha_desde)')
+    .eq('origen_liquidacion_id', id)
+    .not('liquidacion_id', 'is', null)
+  if (arrastres && arrastres.length > 0) {
+    const fecha = (arrastres[0] as unknown as { liquidacion: { fecha_desde: string } | null }).liquidacion?.fecha_desde
+    return {
+      error: `No se puede borrar: el saldo de descuentos que dejó este plus ya se descontó en el pago del ${fecha ?? 'mes siguiente'}. Borrá primero ese pago.`,
+    }
+  }
+
   // Buscar mov asociado primero para borrarlo también.
   const { data: liq } = await supabase
     .from('empleado_liquidaciones')
@@ -437,6 +494,9 @@ export async function generarPagosDelDia(diaId: string): Promise<{ count: number
     if (existing) continue
 
     // 4. ¿Va plus mensual? Solo si todavía no se pagó en este mes y el empleado lo tiene > 0.
+    // "Ya se pagó" incluye el caso en que los descuentos se comieron todo el
+    // plus (monto_plus = 0 pero monto_descuentos > 0): si no, se volvería a
+    // pagar al día siguiente.
     let plusAPagar = 0
     if (Number(emp.plus_mensual) > 0) {
       const { data: liqsConPlus } = await supabase
@@ -445,12 +505,22 @@ export async function generarPagosDelDia(diaId: string): Promise<{ count: number
         .eq('empleado_id', emp.id)
         .gte('fecha_desde', `${mesActual}-01`)
         .lt('fecha_desde', mesActual === '2099-12' ? '2999-01-01' : nextMonthFirstDay(mesActual))
-        .gt('monto_plus', 0)
+        .or('monto_plus.gt.0,monto_descuentos.gt.0')
         .limit(1)
       if ((liqsConPlus ?? []).length === 0) {
         plusAPagar = Number(emp.plus_mensual)
       }
     }
+
+    // 4b. Desperdicio u otros faltantes del empleado: se descuentan del plus.
+    const descuentos = plusAPagar > 0
+      ? aplicarDescuentosAlPlus(
+          plusAPagar,
+          (await getDescuentosPendientes(supabase, [emp.id])).get(emp.id) ?? [],
+          fecha,
+        )
+      : null
+    const plusNeto = descuentos ? descuentos.plusNeto : 0
 
     const sueldo = Number(emp.sueldo_diario)
     const trabajado = ausenciaDelDia ? 0 : enVacaciones ? 0 : 1
@@ -468,15 +538,33 @@ export async function generarPagosDelDia(diaId: string): Promise<{ count: number
         dias_trabajados: trabajado,
         dias_ausentes_pagos: ausentePago,
         monto_sueldo: sueldo,
-        monto_plus: plusAPagar,
+        monto_plus: plusNeto,
+        monto_descuentos: descuentos?.aplicado ?? 0,
       })
       .select('id')
       .single()
     if (liqErr || !liq) continue
 
+    let plusPagado = plusNeto
+    if (descuentos && descuentos.ids.length > 0) {
+      const vinc = await vincularDescuentos(supabase, tenantId, emp.id, liq.id, descuentos, fecha)
+      if (vinc.error || !vinc.aplicados) {
+        // No quedaron vinculados (error, o un cierre en paralelo los tomó):
+        // se paga el plus entero y los descuentos siguen pendientes para el
+        // próximo plus. Así nunca se descuenta sin dejar registro.
+        plusPagado = plusAPagar
+        await supabase
+          .from('empleado_liquidaciones')
+          .update({ monto_plus: plusAPagar, monto_descuentos: 0 })
+          .eq('id', liq.id)
+      }
+    }
+
     // 6. Egreso en caja
     const descripcion = plusAPagar > 0
-      ? `Sueldo de ${emp.name} + plus mensual`
+      ? plusPagado < plusAPagar
+        ? `Sueldo de ${emp.name} + plus mensual (con descuentos)`
+        : `Sueldo de ${emp.name} + plus mensual`
       : enVacaciones
         ? `Sueldo de ${emp.name} (vacaciones)`
         : ausenciaDelDia?.paga
@@ -490,7 +578,7 @@ export async function generarPagosDelDia(diaId: string): Promise<{ count: number
         fecha,
         tipo: 'egreso',
         categoria: 'Sueldos',
-        monto: sueldo + plusAPagar,
+        monto: sueldo + plusPagado,
         descripcion,
         ref_kind: 'liquidacion_empleado',
         ref_id: liq.id,
@@ -518,4 +606,156 @@ function nextMonthFirstDay(month: string): string {
   const [y, mo] = month.split('-').map(Number)
   if (mo === 12) return `${y! + 1}-01-01`
   return `${y}-${String(mo! + 1).padStart(2, '0')}-01`
+}
+
+// ---- Descuentos sobre el plus ---------------------------------------------
+
+async function getDescuentosPendientes(
+  supabase: Supabase,
+  empleadoIds: string[],
+): Promise<Map<string, { id: string; fecha: string; monto: number }[]>> {
+  const out = new Map<string, { id: string; fecha: string; monto: number }[]>()
+  if (empleadoIds.length === 0) return out
+  const { data } = await supabase
+    .from('empleado_descuentos')
+    .select('id, empleado_id, fecha, monto')
+    .in('empleado_id', empleadoIds)
+    .is('liquidacion_id', null)
+    .order('fecha')
+  for (const d of data ?? []) {
+    const arr = out.get(d.empleado_id) ?? []
+    arr.push({ id: d.id, fecha: d.fecha, monto: Number(d.monto) })
+    out.set(d.empleado_id, arr)
+  }
+  return out
+}
+
+// Vincula los descuentos aplicados a la liquidación del plus. Si superaron el
+// plus, lo que no entró queda como un descuento pendiente nuevo (arrastre),
+// atado a esta liquidación para que desaparezca si se la borra.
+async function vincularDescuentos(
+  supabase: Supabase,
+  tenantId: string,
+  empleadoId: string,
+  liquidacionId: string,
+  aplicacion: AplicacionDescuentos,
+  fecha: string,
+): Promise<{ error?: string; aplicados?: boolean }> {
+  if (aplicacion.ids.length === 0) return { aplicados: true }
+  const { data: vinculados, error } = await supabase
+    .from('empleado_descuentos')
+    .update({ liquidacion_id: liquidacionId })
+    .in('id', aplicacion.ids)
+    .is('liquidacion_id', null)
+    .select('id')
+  if (error) return { error: error.message }
+  // Si otro cierre en paralelo ya tomó alguno, deshacemos lo nuestro: esta
+  // liquidación se paga sin descuentos y no se crea un arrastre duplicado.
+  if (!vinculados || vinculados.length !== aplicacion.ids.length) {
+    if (vinculados && vinculados.length > 0) {
+      await supabase
+        .from('empleado_descuentos')
+        .update({ liquidacion_id: null })
+        .in('id', vinculados.map((v) => v.id))
+        .eq('liquidacion_id', liquidacionId)
+    }
+    return { aplicados: false }
+  }
+
+  if (aplicacion.excedente > 0) {
+    const { error: arrErr } = await supabase.from('empleado_descuentos').insert({
+      tenant_id: tenantId,
+      empleado_id: empleadoId,
+      fecha,
+      motivo: 'Saldo de descuentos que superó el plus anterior',
+      monto: aplicacion.excedente,
+      origen_liquidacion_id: liquidacionId,
+    })
+    if (arrErr) return { error: arrErr.message, aplicados: true }
+  }
+  return { aplicados: true }
+}
+
+export async function createDescuento(
+  empleadoId: string,
+  values: DescuentoFormValues,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { error } = await supabase.from('empleado_descuentos').insert({
+    tenant_id: tenantId,
+    empleado_id: empleadoId,
+    fecha: values.fecha,
+    motivo: values.motivo.trim(),
+    producto_id: values.producto_id || null,
+    cantidad: values.producto_id ? (values.cantidad ?? null) : null,
+    monto: values.monto,
+  })
+  if (error) return { error: error.message }
+  revalidatePath(`/empleados/${empleadoId}`)
+  return {}
+}
+
+/** Solo se pueden borrar los pendientes: uno ya descontado de un plus pagado
+ *  forma parte de esa liquidación. */
+export async function deleteDescuento(id: string, empleadoId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('empleado_descuentos')
+    .delete()
+    .eq('id', id)
+    .is('liquidacion_id', null)
+    .select('id')
+  if (error) return { error: error.message }
+  if (!data || data.length === 0) {
+    return { error: 'Ese descuento ya se aplicó a un plus pagado y no se puede borrar' }
+  }
+  revalidatePath(`/empleados/${empleadoId}`)
+  return {}
+}
+
+// ---- Llegadas tarde ---------------------------------------------------------
+
+export async function createTardanza(
+  empleadoId: string,
+  values: TardanzaFormValues,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { error } = await supabase.from('empleado_tardanzas').insert({
+    tenant_id: tenantId,
+    empleado_id: empleadoId,
+    fecha: values.fecha,
+    minutos: values.minutos,
+    notas: values.notas?.trim() || null,
+  })
+  if (error) return { error: error.message }
+  revalidatePath(`/empleados/${empleadoId}`)
+  revalidatePath('/empleados/asistencia')
+  return {}
+}
+
+export async function setTardanzaRecuperada(
+  id: string,
+  recuperada: boolean,
+  empleadoId: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('empleado_tardanzas')
+    .update({ recuperada, recuperada_at: recuperada ? hoyISO() : null })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath(`/empleados/${empleadoId}`)
+  revalidatePath('/empleados/asistencia')
+  return {}
+}
+
+export async function deleteTardanza(id: string, empleadoId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { error } = await supabase.from('empleado_tardanzas').delete().eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath(`/empleados/${empleadoId}`)
+  revalidatePath('/empleados/asistencia')
+  return {}
 }

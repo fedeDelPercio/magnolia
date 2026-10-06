@@ -53,3 +53,27 @@ export const TIPO_AUSENCIA_LABELS: Record<TipoAusencia, string> = {
 // 0 = domingo, 1 = lunes, ... 6 = sábado. Coincide con Date#getDay().
 export const DOW_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'] as const
 export const DOW_LABELS_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'] as const
+
+// Descuento sobre el plus mensual (desperdicio u otro faltante del empleado).
+// Producto + cantidad son opcionales: sirven para sugerir el monto con el costo
+// del producto y dejar registro de qué fue.
+export const descuentoSchema = z.object({
+  fecha: z.string().min(1, 'Requerido'),
+  motivo: z.string().trim().min(1, 'Contá qué pasó'),
+  producto_id: z.string().uuid().nullable().optional(),
+  cantidad: z.number().positive().nullable().optional(),
+  monto: z.number().positive('El monto tiene que ser mayor a 0'),
+})
+export type DescuentoFormValues = z.infer<typeof descuentoSchema>
+
+// Llegada tarde: minutos que el empleado queda debiendo hasta recuperarlos.
+export const tardanzaSchema = z.object({
+  fecha: z.string().min(1, 'Requerido'),
+  minutos: z
+    .number()
+    .int('Tienen que ser minutos enteros')
+    .positive('Tiene que ser mayor a 0')
+    .max(720, 'Máximo 12 horas'),
+  notas: z.string().optional(),
+})
+export type TardanzaFormValues = z.infer<typeof tardanzaSchema>

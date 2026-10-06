@@ -15,6 +15,9 @@ import {
   PalmtreeIcon,
   ReceiptIcon,
   UserIcon,
+  MinusCircleIcon,
+  TimerIcon,
+  LockIcon,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -22,16 +25,26 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/format'
 
-import type { EmpleadoDetalle } from '../queries'
+import type { EmpleadoDetalle, ProductoConCosto } from '../queries'
 import { DOW_LABELS_SHORT, TIPO_AUSENCIA_LABELS } from '../schemas'
 import { estadoVacacion, ESTADO_LABELS, ESTADO_TONE } from '../lib/estado-vacacion'
-import { deleteVacacion, deleteAusencia, toggleVacacionCancelada } from '../actions'
+import {
+  deleteVacacion,
+  deleteAusencia,
+  toggleVacacionCancelada,
+  deleteDescuento,
+  deleteTardanza,
+  setTardanzaRecuperada,
+} from '../actions'
+import { formatMinutos } from '../lib/descuentos-plus'
+import { DescuentoDialog } from './descuento-dialog'
+import { TardanzaDialog } from './tardanza-dialog'
 import { EmpleadoDialog } from './empleado-dialog'
 import { HorarioDialog } from './horario-dialog'
 import { VacacionDialog } from './vacacion-dialog'
 import { AusenciaDialog } from './ausencia-dialog'
 
-type Props = { detalle: EmpleadoDetalle }
+type Props = { detalle: EmpleadoDetalle; productos: ProductoConCosto[] }
 
 function antiguedad(fechaIngreso: string | null): string {
   if (!fechaIngreso) return '—'
@@ -55,12 +68,25 @@ const TIPO_AUSENCIA_TONE: Record<string, string> = {
   licencia: 'border-violet-200 bg-violet-50 text-violet-700',
 }
 
-export function EmpleadoDetail({ detalle }: Props) {
-  const { empleado, horarios, vacaciones, ausencias, liquidaciones } = detalle
+function fechaCorta(iso: string): string {
+  const [, m, d] = iso.split('-')
+  return `${d}/${m}`
+}
+
+export function EmpleadoDetail({ detalle, productos }: Props) {
+  const { empleado, horarios, vacaciones, ausencias, liquidaciones, descuentos, tardanzas } = detalle
   const [empleadoOpen, setEmpleadoOpen] = useState(false)
   const [horarioOpen, setHorarioOpen] = useState(false)
   const [vacOpen, setVacOpen] = useState(false)
   const [ausOpen, setAusOpen] = useState(false)
+  const [descuentoOpen, setDescuentoOpen] = useState(false)
+  const [tardanzaOpen, setTardanzaOpen] = useState(false)
+
+  const plusMensual = Number(empleado.plus_mensual) || 0
+  const descuentosPendientes = descuentos.filter((d) => !d.liquidacion_id)
+  const totalPendiente = descuentosPendientes.reduce((s, d) => s + Number(d.monto), 0)
+  const tardanzasPendientes = tardanzas.filter((t) => !t.recuperada)
+  const minutosDebe = tardanzasPendientes.reduce((s, t) => s + t.minutos, 0)
   const [, startTransition] = useTransition()
 
   function handleDeleteVacacion(id: string) {
@@ -80,6 +106,32 @@ export function EmpleadoDetail({ detalle }: Props) {
       const r = await toggleVacacionCancelada(id, next, empleado.id)
       if (r.error) toast.error(r.error)
       else toast.success(next ? 'Vacaciones canceladas' : 'Vacaciones reactivadas')
+    })
+  }
+
+  function handleDeleteDescuento(id: string) {
+    if (!confirm('¿Borrar este descuento? Todavía no se aplicó a ningún plus.')) return
+    startTransition(async () => {
+      const r = await deleteDescuento(id, empleado.id)
+      if (r.error) toast.error(r.error)
+      else toast.success('Descuento borrado')
+    })
+  }
+
+  function handleToggleTardanza(id: string, recuperada: boolean) {
+    startTransition(async () => {
+      const r = await setTardanzaRecuperada(id, recuperada, empleado.id)
+      if (r.error) toast.error(r.error)
+      else toast.success(recuperada ? 'Marcada como recuperada' : 'Vuelve a quedar pendiente')
+    })
+  }
+
+  function handleDeleteTardanza(id: string) {
+    if (!confirm('¿Borrar esta llegada tarde?')) return
+    startTransition(async () => {
+      const r = await deleteTardanza(id, empleado.id)
+      if (r.error) toast.error(r.error)
+      else toast.success('Llegada tarde borrada')
     })
   }
 
@@ -299,6 +351,149 @@ export function EmpleadoDetail({ detalle }: Props) {
           )}
         </div>
 
+        {/* Card: Descuentos sobre el plus */}
+        <div className="card-editorial p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-card-title">
+              <MinusCircleIcon className="size-3.5 text-muted-foreground" />
+              <span>Descuentos del plus</span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setDescuentoOpen(true)}>
+              <PlusIcon className="size-3.5" /> Registrar
+            </Button>
+          </div>
+          <div className="mb-3">
+            <div className="flex items-baseline gap-3">
+              <span className={cn('num-editorial text-3xl leading-none', totalPendiente > 0 && 'text-rose-700')}>
+                {formatCurrency(totalPendiente)}
+              </span>
+              <span className="text-sm text-muted-foreground">a descontar del próximo plus</span>
+            </div>
+            {plusMensual > 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Plus {formatCurrency(plusMensual)} → próximo pago{' '}
+                <span className="font-medium text-foreground">
+                  {formatCurrency(Math.max(0, plusMensual - totalPendiente))}
+                </span>
+                {totalPendiente > plusMensual && ' (el resto pasa al mes siguiente)'}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">Sin plus mensual cargado.</p>
+            )}
+          </div>
+          {descuentos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin descuentos registrados.</p>
+          ) : (
+            <ul className="divide-y rounded-lg border bg-background/60 text-sm">
+              {descuentos.map((d) => {
+                const aplicado = !!d.liquidacion_id
+                return (
+                  <li key={d.id} className={cn('flex items-center justify-between gap-3 px-3 py-2', aplicado && 'opacity-60')}>
+                    <div className="min-w-0">
+                      <p className="truncate">
+                        <span className="tabular-nums text-muted-foreground">{fechaCorta(d.fecha)}</span>{' '}
+                        {d.motivo}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {d.productos?.name && (
+                          <>
+                            {d.productos.name}
+                            {d.cantidad ? ` × ${Number(d.cantidad).toLocaleString('es-AR')}` : ''}
+                            {' · '}
+                          </>
+                        )}
+                        {aplicado
+                          ? `descontado del plus del ${d.liquidacion ? fechaCorta(d.liquidacion.fecha_desde) : '—'}`
+                          : 'pendiente'}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span className="tabular-nums font-medium">{formatCurrency(Number(d.monto))}</span>
+                      {aplicado ? (
+                        <span className="grid size-7 place-items-center text-muted-foreground" title="Ya se descontó de un plus pagado">
+                          <LockIcon className="size-3.5" />
+                        </span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-rose-700"
+                          onClick={() => handleDeleteDescuento(d.id)}
+                          title="Borrar"
+                        >
+                          <TrashIcon className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Card: Llegadas tarde */}
+        <div className="card-editorial p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-card-title">
+              <TimerIcon className="size-3.5 text-muted-foreground" />
+              <span>Llegadas tarde</span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setTardanzaOpen(true)}>
+              <PlusIcon className="size-3.5" /> Registrar
+            </Button>
+          </div>
+          <div className="mb-3 flex items-baseline gap-3">
+            <span className={cn('num-editorial text-3xl leading-none', minutosDebe > 0 ? 'text-amber-700' : 'text-emerald-700')}>
+              {minutosDebe > 0 ? formatMinutos(minutosDebe) : 'Al día'}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {minutosDebe > 0
+                ? `debe recuperar (${tardanzasPendientes.length} llegada${tardanzasPendientes.length === 1 ? '' : 's'} tarde)`
+                : 'no debe tiempo'}
+            </span>
+          </div>
+          {tardanzas.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin llegadas tarde registradas.</p>
+          ) : (
+            <ul className="divide-y rounded-lg border bg-background/60 text-sm">
+              {tardanzas.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <label className="flex min-w-0 cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="size-4 shrink-0 cursor-pointer accent-emerald-700"
+                      checked={t.recuperada}
+                      onChange={(e) => handleToggleTardanza(t.id, e.target.checked)}
+                      aria-label={t.recuperada ? 'Marcar como pendiente' : 'Marcar como recuperada'}
+                    />
+                    <span className={cn('min-w-0', t.recuperada && 'text-muted-foreground line-through')}>
+                      <span className="tabular-nums">{fechaCorta(t.fecha)}</span> · {formatMinutos(t.minutos)}
+                      {t.notas && <span className="text-xs text-muted-foreground"> · {t.notas}</span>}
+                    </span>
+                  </label>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {t.recuperada && (
+                      <span className="text-[10px] uppercase tracking-wider text-emerald-700">
+                        recuperado{t.recuperada_at ? ` ${fechaCorta(t.recuperada_at)}` : ''}
+                      </span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-rose-700"
+                      onClick={() => handleDeleteTardanza(t.id)}
+                      title="Borrar"
+                    >
+                      <TrashIcon className="size-3.5" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         {/* Card 5: Liquidaciones recientes */}
         <div className="card-editorial p-5 md:col-span-2">
           <div className="mb-4 flex items-center justify-between">
@@ -318,8 +513,13 @@ export function EmpleadoDetail({ detalle }: Props) {
                     <span className="tabular-nums">
                       {l.fecha_desde === l.fecha_hasta ? l.fecha_desde : `${l.fecha_desde} → ${l.fecha_hasta}`}
                     </span>
-                    {Number(l.monto_plus) > 0 && (
+                    {(Number(l.monto_plus) > 0 || Number(l.monto_descuentos) > 0) && (
                       <span className="text-[10px] uppercase tracking-wider text-amber-700">+ plus</span>
+                    )}
+                    {Number(l.monto_descuentos) > 0 && (
+                      <span className="text-[10px] uppercase tracking-wider text-rose-700">
+                        − {formatCurrency(Number(l.monto_descuentos))} descuentos
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
@@ -346,6 +546,25 @@ export function EmpleadoDetail({ detalle }: Props) {
       />
       <VacacionDialog open={vacOpen} onOpenChange={setVacOpen} empleadoId={empleado.id} />
       <AusenciaDialog open={ausOpen} onOpenChange={setAusOpen} empleadoId={empleado.id} />
+      {descuentoOpen && (
+        <DescuentoDialog
+          open={descuentoOpen}
+          onOpenChange={setDescuentoOpen}
+          empleadoId={empleado.id}
+          empleadoName={empleado.name}
+          plusMensual={plusMensual}
+          pendienteActual={totalPendiente}
+          productos={productos}
+        />
+      )}
+      {tardanzaOpen && (
+        <TardanzaDialog
+          open={tardanzaOpen}
+          onOpenChange={setTardanzaOpen}
+          empleados={[{ id: empleado.id, name: empleado.name, horarios }]}
+          empleadoIdFijo={empleado.id}
+        />
+      )}
     </div>
   )
 }

@@ -4,16 +4,18 @@ import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, TrashIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, TrashIcon, TimerIcon } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { TIPO_AUSENCIA_LABELS } from '../schemas'
-import { deleteAusencia } from '../actions'
+import { deleteAusencia, deleteTardanza, setTardanzaRecuperada } from '../actions'
 import { AusenciaQuickDialog } from './ausencia-quick-dialog'
-import type { AusenciaConEmpleado } from '../queries'
+import { TardanzaDialog } from './tardanza-dialog'
+import { formatMinutos } from '../lib/descuentos-plus'
+import type { AusenciaConEmpleado, TardanzaConEmpleado } from '../queries'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -49,11 +51,19 @@ type Props = {
   ausencias: AusenciaConEmpleado[]
   empleados: { id: string; name: string }[]
   month: string
+  tardanzas: TardanzaConEmpleado[]
+  empleadosHorarios: { id: string; name: string; horarios: { dow: number; hora_inicio: string }[] }[]
 }
 
-export function AsistenciaClient({ ausencias, empleados, month }: Props) {
+function fechaCorta(iso: string): string {
+  const [, m, d] = iso.split('-')
+  return `${d}/${m}`
+}
+
+export function AsistenciaClient({ ausencias, empleados, month, tardanzas, empleadosHorarios }: Props) {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [tardanzaOpen, setTardanzaOpen] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState<string>('todos')
   const [filtroEmpleado, setFiltroEmpleado] = useState<string>('todos')
   const [, startTransition] = useTransition()
@@ -88,6 +98,35 @@ export function AsistenciaClient({ ausencias, empleados, month }: Props) {
   }, [ausencias])
 
   const today = new Date().toISOString().slice(0, 7)
+
+  // Quién debe tiempo (todas las llegadas tarde sin recuperar, de cualquier mes).
+  const deben = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; minutos: number }>()
+    for (const t of tardanzas) {
+      if (t.recuperada) continue
+      const cur = map.get(t.empleado_id) ?? { id: t.empleado_id, name: t.empleado_name, minutos: 0 }
+      cur.minutos += t.minutos
+      map.set(t.empleado_id, cur)
+    }
+    return [...map.values()].sort((a, b) => b.minutos - a.minutos)
+  }, [tardanzas])
+
+  function handleToggleTardanza(t: TardanzaConEmpleado, recuperada: boolean) {
+    startTransition(async () => {
+      const r = await setTardanzaRecuperada(t.id, recuperada, t.empleado_id)
+      if (r.error) toast.error(r.error)
+      else toast.success(recuperada ? 'Marcada como recuperada' : 'Vuelve a quedar pendiente')
+    })
+  }
+
+  function handleDeleteTardanza(t: TardanzaConEmpleado) {
+    if (!confirm('¿Borrar esta llegada tarde?')) return
+    startTransition(async () => {
+      const r = await deleteTardanza(t.id, t.empleado_id)
+      if (r.error) toast.error(r.error)
+      else toast.success('Llegada tarde borrada')
+    })
+  }
 
   function handleDelete(id: string, empleadoId: string) {
     if (!confirm('¿Eliminar esta ausencia?')) return
@@ -216,7 +255,85 @@ export function AsistenciaClient({ ausencias, empleados, month }: Props) {
         </div>
       )}
 
+      {/* Llegadas tarde */}
+      <div className="space-y-3 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <TimerIcon className="size-4 text-muted-foreground" />
+            <h2 className="text-base font-semibold">Llegadas tarde</h2>
+          </div>
+          <Button variant="outline" onClick={() => setTardanzaOpen(true)}>
+            <PlusIcon className="size-4" />
+            Registrar llegada tarde
+          </Button>
+        </div>
+
+        {deben.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {deben.map((d) => (
+              <Link
+                key={d.id}
+                href={`/empleados/${d.id}`}
+                className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100"
+              >
+                {d.name} debe <span className="font-medium tabular-nums">{formatMinutos(d.minutos)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {tardanzas.length === 0 ? (
+          <div className="card-editorial p-6 text-center text-sm text-muted-foreground">
+            Sin llegadas tarde en {monthLabel(month)}.
+          </div>
+        ) : (
+          <ul className="divide-y rounded-xl border bg-card text-sm">
+            {tardanzas.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <label className="flex min-w-0 cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 cursor-pointer accent-emerald-700"
+                    checked={t.recuperada}
+                    onChange={(e) => handleToggleTardanza(t, e.target.checked)}
+                    aria-label={t.recuperada ? 'Marcar como pendiente' : 'Marcar como recuperada'}
+                  />
+                  <span className={cn('min-w-0', t.recuperada && 'text-muted-foreground line-through')}>
+                    <span className="tabular-nums">{fechaCorta(t.fecha)}</span> ·{' '}
+                    <span className="font-medium">{t.empleado_name}</span> · {formatMinutos(t.minutos)}
+                    {t.notas && <span className="text-xs text-muted-foreground"> · {t.notas}</span>}
+                  </span>
+                </label>
+                <div className="flex shrink-0 items-center gap-1">
+                  {t.recuperada ? (
+                    <span className="text-[10px] uppercase tracking-wider text-emerald-700">recuperado</span>
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-wider text-amber-700">debe</span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-muted-foreground hover:text-rose-700"
+                    onClick={() => handleDeleteTardanza(t)}
+                    title="Borrar"
+                  >
+                    <TrashIcon className="size-3.5" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Tildá una llegada tarde cuando el empleado recupera ese tiempo. Las pendientes de meses
+          anteriores también aparecen acá.
+        </p>
+      </div>
+
       <AusenciaQuickDialog open={dialogOpen} onOpenChange={setDialogOpen} empleados={empleados} />
+      {tardanzaOpen && (
+        <TardanzaDialog open={tardanzaOpen} onOpenChange={setTardanzaOpen} empleados={empleadosHorarios} />
+      )}
     </div>
   )
 }

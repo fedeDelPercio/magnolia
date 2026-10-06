@@ -986,6 +986,84 @@ export type Database = {
           },
         ]
       }
+      empleado_descuentos: {
+        Row: {
+          cantidad: number | null
+          created_at: string
+          empleado_id: string
+          fecha: string
+          id: string
+          liquidacion_id: string | null
+          monto: number
+          motivo: string
+          origen_liquidacion_id: string | null
+          producto_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cantidad?: number | null
+          created_at?: string
+          empleado_id: string
+          fecha?: string
+          id?: string
+          liquidacion_id?: string | null
+          monto: number
+          motivo: string
+          origen_liquidacion_id?: string | null
+          producto_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          cantidad?: number | null
+          created_at?: string
+          empleado_id?: string
+          fecha?: string
+          id?: string
+          liquidacion_id?: string | null
+          monto?: number
+          motivo?: string
+          origen_liquidacion_id?: string | null
+          producto_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleado_descuentos_empleado_id_fkey"
+            columns: ["empleado_id"]
+            isOneToOne: false
+            referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_descuentos_liquidacion_id_fkey"
+            columns: ["liquidacion_id"]
+            isOneToOne: false
+            referencedRelation: "empleado_liquidaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_descuentos_origen_liquidacion_id_fkey"
+            columns: ["origen_liquidacion_id"]
+            isOneToOne: false
+            referencedRelation: "empleado_liquidaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_descuentos_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_descuentos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empleado_horarios: {
         Row: {
           dow: number
@@ -1039,6 +1117,7 @@ export type Database = {
           fecha_desde: string
           fecha_hasta: string
           id: string
+          monto_descuentos: number
           monto_plus: number
           monto_sueldo: number
           monto_total: number | null
@@ -1055,6 +1134,7 @@ export type Database = {
           fecha_desde: string
           fecha_hasta: string
           id?: string
+          monto_descuentos?: number
           monto_plus?: number
           monto_sueldo: number
           monto_total?: number | null
@@ -1071,6 +1151,7 @@ export type Database = {
           fecha_desde?: string
           fecha_hasta?: string
           id?: string
+          monto_descuentos?: number
           monto_plus?: number
           monto_sueldo?: number
           monto_total?: number | null
@@ -1094,6 +1175,57 @@ export type Database = {
           },
           {
             foreignKeyName: "empleado_liquidaciones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      empleado_tardanzas: {
+        Row: {
+          created_at: string
+          empleado_id: string
+          fecha: string
+          id: string
+          minutos: number
+          notas: string | null
+          recuperada: boolean
+          recuperada_at: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          empleado_id: string
+          fecha?: string
+          id?: string
+          minutos: number
+          notas?: string | null
+          recuperada?: boolean
+          recuperada_at?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          empleado_id?: string
+          fecha?: string
+          id?: string
+          minutos?: number
+          notas?: string | null
+          recuperada?: boolean
+          recuperada_at?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleado_tardanzas_empleado_id_fkey"
+            columns: ["empleado_id"]
+            isOneToOne: false
+            referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_tardanzas_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
