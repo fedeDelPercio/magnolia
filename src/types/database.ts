@@ -1281,6 +1281,48 @@ export type Database = {
           },
         ]
       }
+      empleado_vacaciones_anuales: {
+        Row: {
+          anio: number
+          dias: number
+          empleado_id: string
+          id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          anio: number
+          dias: number
+          empleado_id: string
+          id?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          anio?: number
+          dias?: number
+          empleado_id?: string
+          id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleado_vacaciones_anuales_empleado_id_fkey"
+            columns: ["empleado_id"]
+            isOneToOne: false
+            referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empleado_vacaciones_anuales_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empleados: {
         Row: {
           activo: boolean

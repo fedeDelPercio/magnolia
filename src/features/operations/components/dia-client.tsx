@@ -78,8 +78,10 @@ type NumField = 'stock_anterior' | 'produccion' | 'ventas' | 'desperdicio' | 'al
 type SortField = 'name' | NumField | 'teorico' | 'diferencia'
 type Sort = { field: SortField; dir: 'asc' | 'desc' }
 
-// Por defecto, lo que tiene stock arriba: es lo que hay que mirar hoy.
-const DEFAULT_SORT: Sort = { field: 'stock_anterior', dir: 'desc' }
+// Por defecto, lo que se vendió arriba (de más a menos) y, a igual venta, lo
+// que tiene más stock. Antes de que entren las ventas de Bistro todo vende 0 y
+// queda ordenado por stock.
+const DEFAULT_SORT: Sort = { field: 'ventas', dir: 'desc' }
 
 const COLUMNAS: { field: SortField; label: string }[] = [
   { field: 'name', label: 'Producto' },
@@ -122,7 +124,11 @@ function sortGroups(groups: MovimientoGroup[], sort: Sort): MovimientoGroup[] {
       if (na !== nb) return na ? 1 : -1
       if (na && nb) return byName(a, b)
     }
-    return sign * (groupValue(a, field) - groupValue(b, field)) || byName(a, b)
+    return (
+      sign * (groupValue(a, field) - groupValue(b, field)) ||
+      (field === 'ventas' ? groupValue(b, 'stock_anterior') - groupValue(a, 'stock_anterior') : 0) ||
+      byName(a, b)
+    )
   })
 }
 

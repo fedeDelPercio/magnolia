@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useEffect, useState } from 'react'
+import { useForm, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { hoyISO } from '@/lib/fecha'
 
 import { vacacionSchema, type VacacionFormValues } from '../schemas'
 import { createVacacion } from '../actions'
@@ -16,31 +17,40 @@ import { createVacacion } from '../actions'
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  empleadoId: string
+  // Con un empleado fijo (ficha) va directo; si no (panorama), se elige de la
+  // lista. El panorama lo vuelve a montar en cada apertura (arranca sin elegir).
+  empleadoId?: string
+  empleados?: { id: string; name: string }[]
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10)
+function diasEntre(desde: string, hasta: string): number | null {
+  if (!desde || !hasta || hasta < desde) return null
+  return Math.round((Date.parse(hasta) - Date.parse(desde)) / 86400000) + 1
 }
 
-const DEFAULT: VacacionFormValues = {
-  fecha_desde: today(),
-  fecha_hasta: today(),
-  notas: '',
-}
-
-export function VacacionDialog({ open, onOpenChange, empleadoId }: Props) {
+export function VacacionDialog({ open, onOpenChange, empleadoId, empleados = [] }: Props) {
+  const [elegido, setElegido] = useState('')
   const form = useForm<VacacionFormValues>({
     resolver: zodResolver(vacacionSchema) as Resolver<VacacionFormValues>,
-    defaultValues: DEFAULT,
+    defaultValues: { fecha_desde: hoyISO(), fecha_hasta: hoyISO(), notas: '' },
   })
 
   useEffect(() => {
-    if (open) form.reset(DEFAULT)
+    if (!open) return
+    form.reset({ fecha_desde: hoyISO(), fecha_hasta: hoyISO(), notas: '' })
   }, [open, form])
 
+  const destino = empleadoId ?? elegido
+  const nombreFijo = empleadoId ? empleados.find((e) => e.id === empleadoId)?.name : undefined
+  const [desde, hasta] = useWatch({ control: form.control, name: ['fecha_desde', 'fecha_hasta'] })
+  const dias = diasEntre(desde, hasta)
+
   async function onSubmit(values: VacacionFormValues) {
-    const result = await createVacacion(empleadoId, values)
+    if (!destino) {
+      toast.error('Elegí el empleado')
+      return
+    }
+    const result = await createVacacion(destino, values)
     if (result.error) {
       toast.error(result.error)
       return
@@ -53,10 +63,26 @@ export function VacacionDialog({ open, onOpenChange, empleadoId }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Registrar vacaciones</DialogTitle>
+          <DialogTitle>Registrar vacaciones{nombreFijo ? ` — ${nombreFijo}` : ''}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form id="vacacion-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {!empleadoId && (
+              <div className="space-y-1">
+                <label htmlFor="vacacion-empleado" className="text-sm font-medium">Empleado</label>
+                <select
+                  id="vacacion-empleado"
+                  value={elegido}
+                  onChange={(e) => setElegido(e.target.value)}
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="">Elegí…</option>
+                  {empleados.map((e) => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -81,6 +107,11 @@ export function VacacionDialog({ open, onOpenChange, empleadoId }: Props) {
                 )}
               />
             </div>
+            {dias !== null && (
+              <p className="text-xs text-muted-foreground">
+                {dias} {dias === 1 ? 'día' : 'días'} corridos
+              </p>
+            )}
             <FormField
               control={form.control}
               name="notas"

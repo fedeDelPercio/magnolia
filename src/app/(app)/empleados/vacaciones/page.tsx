@@ -1,4 +1,4 @@
-import { getTodasVacaciones, getEmpleados } from '@/features/empleados/queries'
+import { getTodasVacaciones, getEmpleados, añoActual } from '@/features/empleados/queries'
 import { VacacionesPanorama } from '@/features/empleados/components/vacaciones-panorama'
 import { PageHeader } from '@/components/shared/page-header'
 
@@ -8,10 +8,11 @@ type Props = { searchParams: Promise<{ año?: string }> }
 
 export default async function VacacionesPage({ searchParams }: Props) {
   const sp = await searchParams
-  const año = sp.año ? parseInt(sp.año) : new Date().getFullYear()
+  const pedido = sp.año ? parseInt(sp.año, 10) : NaN
+  const año = pedido >= 2000 && pedido <= 2100 ? pedido : añoActual()
   const [vacaciones, empleados] = await Promise.all([
     getTodasVacaciones({ año }),
-    getEmpleados({ incluirInactivos: true }),
+    getEmpleados({ incluirInactivos: true, año }),
   ])
 
   return (
@@ -23,7 +24,7 @@ export default async function VacacionesPage({ searchParams }: Props) {
             <span className="italic">Panorama</span> de vacaciones
           </>
         }
-        description="Todas las tomas de vacaciones del año, su estado actual y los días restantes por persona."
+        description="Las tomas de vacaciones del año y los días que le quedan a cada uno. Tocá el total de una persona para cambiar los días que le corresponden ese año."
         size="md"
       />
       <VacacionesPanorama vacaciones={vacaciones} empleados={empleados} año={año} />

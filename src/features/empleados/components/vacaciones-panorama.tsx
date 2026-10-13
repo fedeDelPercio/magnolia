@@ -1,18 +1,19 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ChevronLeftIcon, ChevronRightIcon, BanIcon, RotateCcwIcon, TrashIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, BanIcon, RotateCcwIcon, TrashIcon, PencilIcon, PlusIcon } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { estadoVacacion, ESTADO_LABELS, ESTADO_TONE, type EstadoVacacion } from '../lib/estado-vacacion'
-import { toggleVacacionCancelada, deleteVacacion } from '../actions'
+import { toggleVacacionCancelada, deleteVacacion, setVacacionesDelAño } from '../actions'
 import type { VacacionConEmpleado, EmpleadoListItem } from '../queries'
+import { VacacionDialog } from './vacacion-dialog'
 
 type Props = {
   vacaciones: VacacionConEmpleado[]
@@ -30,10 +31,99 @@ function daysBetweenInclusive(desde: string, hasta: string): number {
   return Math.round((b - a) / (1000 * 60 * 60 * 24)) + 1
 }
 
+// "/ 14" de la tarjeta: tocándolo se cambian los días que le corresponden ese
+// año (siguen valiendo para los siguientes hasta que se cambien).
+function DiasCorresponden({ empleadoId, nombre, año, dias }: { empleadoId: string; nombre: string; año: number; dias: number }) {
+  const [editando, setEditando] = useState(false)
+  const [texto, setTexto] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const cancelado = useRef(false)
+
+  async function alSalir() {
+    if (cancelado.current || guardando) {
+      cancelado.current = false
+      setEditando(false)
+      return
+    }
+    const n = Number(texto)
+    if (texto.trim() === '' || !Number.isInteger(n) || n < 0 || n > 60) {
+      toast.error('Tienen que ser entre 0 y 60 días')
+      setEditando(false)
+      return
+    }
+    if (n === dias) {
+      setEditando(false)
+      return
+    }
+    setGuardando(true)
+    const r = await setVacacionesDelAño(empleadoId, año, n)
+    setGuardando(false)
+    setEditando(false)
+    if (r.error) toast.error(r.error)
+    else toast.success(`${nombre}: ${n} días de vacaciones en ${año}`)
+  }
+
+  const etiqueta = `Días de vacaciones que le corresponden a ${nombre} en ${año}`
+  if (editando) {
+    return (
+      <span className="text-sm text-muted-foreground">
+        /{' '}
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={60}
+          autoFocus
+          value={texto}
+          disabled={guardando}
+          aria-label={etiqueta}
+          onChange={(ev) => setTexto(ev.target.value)}
+          onFocus={(ev) => ev.target.select()}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Enter') ev.currentTarget.blur()
+            if (ev.key === 'Escape') {
+              cancelado.current = true
+              ev.currentTarget.blur()
+            }
+          }}
+          onBlur={() => void alSalir()}
+          className="h-6 w-12 rounded border bg-background px-1 text-sm tabular-nums text-foreground"
+        />
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setTexto(String(dias))
+        setEditando(true)
+      }}
+      title={`Cambiar los días que le corresponden en ${año}`}
+      aria-label={`${etiqueta}: ${dias}. Cambiar`}
+      className="inline-flex items-center gap-1 rounded px-0.5 text-sm tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground"
+    >
+      / {dias}
+      <PencilIcon className="size-3 opacity-60" />
+    </button>
+  )
+}
+
 export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
   const router = useRouter()
   const [filtroEstado, setFiltroEstado] = useState<EstadoVacacion | 'todas'>('todas')
   const [, startTransition] = useTransition()
+  const [registrarOpen, setRegistrarOpen] = useState(false)
+  // Desde la tarjeta va con el empleado elegido; desde el botón de arriba, se elige.
+  const [registrarPara, setRegistrarPara] = useState<string | undefined>(undefined)
+  const [aperturas, setAperturas] = useState(0)
+  const activos = useMemo(() => empleados.filter((e) => e.activo).map((e) => ({ id: e.id, name: e.name })), [empleados])
+
+  function abrirRegistrar(empleadoId?: string) {
+    setRegistrarPara(empleadoId)
+    setAperturas((n) => n + 1)
+    setRegistrarOpen(true)
+  }
 
   const enriched = useMemo(
     () =>
@@ -73,7 +163,7 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
       .filter((e) => e.activo || tomadosPorId.has(e.id))
       .map((e) => {
         const tomados = tomadosPorId.get(e.id) ?? 0
-        const asignados = e.vacaciones_dias_anuales
+        const asignados = e.dias_vacaciones_corresponden
         const restantes = Math.max(0, asignados - tomados)
         const pct = asignados > 0 ? Math.min(100, (tomados / asignados) * 100) : 0
         return {
@@ -91,7 +181,7 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
   }, [enriched, empleados])
 
   const totalAsignado = useMemo(
-    () => empleados.filter((e) => e.activo).reduce((s, e) => s + e.vacaciones_dias_anuales, 0),
+    () => empleados.filter((e) => e.activo).reduce((s, e) => s + e.dias_vacaciones_corresponden, 0),
     [empleados],
   )
   const totalRestantes = Math.max(0, totalAsignado - totalDiasActivos)
@@ -129,7 +219,7 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
             <ChevronRightIcon className="size-4" />
           </Button>
         </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
           <span>
             <span className="text-foreground font-medium tabular-nums">{totalDiasActivos}</span>
             {totalAsignado > 0 && (
@@ -141,6 +231,11 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
             <span>
               <span className="text-foreground font-medium tabular-nums">{totalRestantes}</span> restantes en total
             </span>
+          )}
+          {activos.length > 0 && (
+            <Button size="sm" onClick={() => abrirRegistrar()}>
+              <PlusIcon className="size-3.5" /> Registrar vacaciones
+            </Button>
           )}
         </div>
       </div>
@@ -169,11 +264,23 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
                     {e.name}
                     {!e.activo && <span className="ml-1 text-[10px] text-muted-foreground">(inactivo)</span>}
                   </p>
+                  {e.activo && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="-my-1 size-6 shrink-0 text-muted-foreground"
+                      onClick={() => abrirRegistrar(e.id)}
+                      title={`Registrar vacaciones de ${e.name}`}
+                      aria-label={`Registrar vacaciones de ${e.name}`}
+                    >
+                      <PlusIcon className="size-3.5" />
+                    </Button>
+                  )}
                 </div>
                 <div className="mt-2 flex items-baseline justify-between gap-2">
-                  <p className="num-editorial text-xl leading-none tabular-nums">
-                    {e.tomados}
-                    <span className="text-sm text-muted-foreground"> / {e.asignados}</span>
+                  <p className="flex items-baseline gap-1">
+                    <span className="num-editorial text-xl leading-none tabular-nums">{e.tomados}</span>
+                    <DiasCorresponden empleadoId={e.id} nombre={e.name} año={año} dias={e.asignados} />
                   </p>
                   <p className="text-xs tabular-nums text-muted-foreground">
                     {exceso ? (
@@ -288,6 +395,14 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
           </tbody>
         </table>
       </div>
+
+      <VacacionDialog
+        key={aperturas}
+        open={registrarOpen}
+        onOpenChange={setRegistrarOpen}
+        empleadoId={registrarPara}
+        empleados={activos}
+      />
     </div>
   )
 }

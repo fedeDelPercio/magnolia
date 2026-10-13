@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import {
@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/format'
+import { hoyISO } from '@/lib/fecha'
 
 import type { EmpleadoDetalle, ProductoConCosto } from '../queries'
 import { DOW_LABELS_SHORT, TIPO_AUSENCIA_LABELS } from '../schemas'
@@ -81,6 +82,13 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
   const [ausOpen, setAusOpen] = useState(false)
   const [descuentoOpen, setDescuentoOpen] = useState(false)
   const [tardanzaOpen, setTardanzaOpen] = useState(false)
+  // El diálogo muestra (y edita) las vacaciones de este año. Mismo objeto entre
+  // renders: el diálogo se reinicia cuando cambia.
+  const diasCorresponden = detalle.dias_vacaciones_corresponden
+  const empleadoParaEditar = useMemo(
+    () => ({ ...empleado, vacaciones_dias_anuales: diasCorresponden }),
+    [empleado, diasCorresponden],
+  )
 
   const plusMensual = Number(empleado.plus_mensual) || 0
   const descuentosPendientes = descuentos.filter((d) => !d.liquidacion_id)
@@ -244,7 +252,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2 text-card-title">
               <PalmtreeIcon className="size-3.5 text-muted-foreground" />
-              <span>Vacaciones {new Date().getFullYear()}</span>
+              <span>Vacaciones {hoyISO().slice(0, 4)}</span>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setVacOpen(true)}>
               <PlusIcon className="size-3.5" /> Registrar
@@ -255,7 +263,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
               {detalle.dias_vacaciones_restantes}
             </span>
             <span className="text-sm text-muted-foreground">
-              de {empleado.vacaciones_dias_anuales} días disponibles ({detalle.dias_vacaciones_tomados} tomados)
+              de {detalle.dias_vacaciones_corresponden} días disponibles ({detalle.dias_vacaciones_tomados} tomados)
             </span>
           </div>
           {vacaciones.length === 0 ? (
@@ -539,7 +547,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
         </div>
       </div>
 
-      <EmpleadoDialog open={empleadoOpen} onOpenChange={setEmpleadoOpen} empleado={empleado} />
+      <EmpleadoDialog open={empleadoOpen} onOpenChange={setEmpleadoOpen} empleado={empleadoParaEditar} />
       <HorarioDialog
         open={horarioOpen}
         onOpenChange={setHorarioOpen}

@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import type { Tables } from '@/types/database'
+import { hoyISO } from '@/lib/fecha'
+import { diasQueCorresponden, type DiasPorAnio } from './lib/vacaciones-por-anio'
 
 export type Empleado = Tables<'empleados'>
 export type EmpleadoHorario = Tables<'empleado_horarios'>
@@ -15,6 +17,8 @@ export type EmpleadoDescuento = Tables<'empleado_descuentos'> & {
 export type EmpleadoTardanza = Tables<'empleado_tardanzas'>
 
 export type EmpleadoListItem = Empleado & {
+  // Del año pedido (por defecto, el actual).
+  dias_vacaciones_corresponden: number
   dias_vacaciones_tomados: number
   dias_vacaciones_restantes: number
 }
@@ -27,6 +31,8 @@ export type EmpleadoDetalle = {
   liquidaciones: EmpleadoLiquidacion[]
   descuentos: EmpleadoDescuento[]
   tardanzas: EmpleadoTardanza[]
+  // Del año actual.
+  dias_vacaciones_corresponden: number
   dias_vacaciones_tomados: number
   dias_vacaciones_restantes: number
 }
@@ -47,7 +53,35 @@ function totalDiasVacacionesDelAño(vacaciones: EmpleadoVacacion[], año: number
     .reduce((acc, v) => acc + diffDaysInclusive(v.fecha_desde, v.fecha_hasta), 0)
 }
 
-export async function getEmpleados(opts: { incluirInactivos?: boolean } = {}): Promise<EmpleadoListItem[]> {
+export function añoActual(): number {
+  return Number(hoyISO().slice(0, 4))
+}
+
+type Supabase = Awaited<ReturnType<typeof createClient>>
+
+// Días que le corresponden por año (ver lib/vacaciones-por-anio). Si la tabla
+// todavía no existe (migración 0082 sin aplicar) se usa el valor del alta.
+export async function getVacacionesPorAnio(
+  supabase: Supabase,
+  tenantId: string,
+  empleadoId?: string,
+): Promise<DiasPorAnio[]> {
+  let query = supabase
+    .from('empleado_vacaciones_anuales')
+    .select('empleado_id, anio, dias')
+    .eq('tenant_id', tenantId)
+  if (empleadoId) query = query.eq('empleado_id', empleadoId)
+  const { data, error } = await query
+  if (error) {
+    if (error.code === 'PGRST205' || error.code === '42P01') return []
+    throw new Error(error.message)
+  }
+  return data ?? []
+}
+
+export async function getEmpleados(
+  opts: { incluirInactivos?: boolean; año?: number } = {},
+): Promise<EmpleadoListItem[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
@@ -59,16 +93,18 @@ export async function getEmpleados(opts: { incluirInactivos?: boolean } = {}): P
 
   if (!opts.incluirInactivos) query = query.eq('activo', true)
 
-  const { data, error } = await query
+  const [{ data, error }, porAnio] = await Promise.all([query, getVacacionesPorAnio(supabase, tenantId)])
   if (error) throw new Error(error.message)
 
-  const año = new Date().getFullYear()
+  const año = opts.año ?? añoActual()
   return (data ?? []).map(({ empleado_vacaciones, ...emp }) => {
     const vacs = (empleado_vacaciones ?? []) as Pick<EmpleadoVacacion, 'fecha_desde' | 'fecha_hasta' | 'cancelada'>[]
     const tomados = totalDiasVacacionesDelAño(vacs as EmpleadoVacacion[], año)
-    const restantes = Math.max(0, emp.vacaciones_dias_anuales - tomados)
+    const corresponden = diasQueCorresponden(emp.vacaciones_dias_anuales, porAnio, emp.id, año)
+    const restantes = Math.max(0, corresponden - tomados)
     return {
       ...(emp as Empleado),
+      dias_vacaciones_corresponden: corresponden,
       dias_vacaciones_tomados: tomados,
       dias_vacaciones_restantes: restantes,
     }
@@ -90,7 +126,7 @@ export async function getEmpleado(id: string): Promise<EmpleadoDetalle | null> {
   // Descuentos y llegadas tarde: todo lo pendiente + lo resuelto de los últimos
   // 120 días (el historial viejo no aporta en la ficha).
   const desde120 = isoDaysAgo(120)
-  const [horariosRes, vacacionesRes, ausenciasRes, liquidacionesRes, descuentosRes, tardanzasRes] = await Promise.all([
+  const [horariosRes, vacacionesRes, ausenciasRes, liquidacionesRes, descuentosRes, tardanzasRes, porAnio] = await Promise.all([
     supabase.from('empleado_horarios').select('*').eq('empleado_id', id).order('dow'),
     supabase
       .from('empleado_vacaciones')
@@ -123,14 +159,16 @@ export async function getEmpleado(id: string): Promise<EmpleadoDetalle | null> {
       .or(`recuperada.eq.false,fecha.gte.${desde120}`)
       .order('fecha', { ascending: false })
       .order('created_at', { ascending: false }),
+    getVacacionesPorAnio(supabase, tenantId, id),
   ])
   if (descuentosRes.error) throw new Error(descuentosRes.error.message)
   if (tardanzasRes.error) throw new Error(tardanzasRes.error.message)
 
-  const año = new Date().getFullYear()
+  const año = añoActual()
   const vacaciones = vacacionesRes.data ?? []
   const tomados = totalDiasVacacionesDelAño(vacaciones, año)
-  const restantes = Math.max(0, empleado.vacaciones_dias_anuales - tomados)
+  const corresponden = diasQueCorresponden(empleado.vacaciones_dias_anuales, porAnio, id, año)
+  const restantes = Math.max(0, corresponden - tomados)
 
   return {
     empleado,
@@ -140,6 +178,7 @@ export async function getEmpleado(id: string): Promise<EmpleadoDetalle | null> {
     liquidaciones: liquidacionesRes.data ?? [],
     descuentos: (descuentosRes.data ?? []) as unknown as EmpleadoDescuento[],
     tardanzas: tardanzasRes.data ?? [],
+    dias_vacaciones_corresponden: corresponden,
     dias_vacaciones_tomados: tomados,
     dias_vacaciones_restantes: restantes,
   }

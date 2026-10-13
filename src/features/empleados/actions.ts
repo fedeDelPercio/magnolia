@@ -14,7 +14,9 @@ import type {
   DescuentoFormValues,
   TardanzaFormValues,
 } from './schemas'
-import { descuentoSchema, tardanzaSchema } from './schemas'
+import { descuentoSchema, tardanzaSchema, vacacionSchema } from './schemas'
+import { añoActual, getVacacionesPorAnio } from './queries'
+import { diasQueCorresponden } from './lib/vacaciones-por-anio'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -51,7 +53,8 @@ export async function updateEmpleado(
   values: EmpleadoFormValues,
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
-  const { error } = await supabase
+  const tenantId = await getActiveTenantId()
+  const { data: actual, error } = await supabase
     .from('empleados')
     .update({
       name: values.name,
@@ -59,16 +62,34 @@ export async function updateEmpleado(
       sueldo_diario: values.sueldo_diario,
       plus_mensual: values.plus_mensual,
       aguinaldo_estimado: values.aguinaldo_estimado,
-      vacaciones_dias_anuales: values.vacaciones_dias_anuales,
       activo: values.activo,
       notas: values.notas || null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .select('vacaciones_dias_anuales')
+    .single()
   if (error) return { error: error.message }
+
+  // Las vacaciones del diálogo son las de este año: si cambiaron se guardan
+  // para este año (y siguen valiendo para los próximos), sin reescribir los
+  // anteriores.
+  const año = añoActual()
+  let porAnio: Awaited<ReturnType<typeof getVacacionesPorAnio>>
+  try {
+    porAnio = await getVacacionesPorAnio(supabase, tenantId, id)
+  } catch (e) {
+    return { error: `No se pudieron guardar las vacaciones: ${(e as Error).message}` }
+  }
+  if (diasQueCorresponden(actual.vacaciones_dias_anuales, porAnio, id, año) !== values.vacaciones_dias_anuales) {
+    const r = await guardarDiasDelAño(supabase, tenantId, id, año, values.vacaciones_dias_anuales)
+    if (r.error) return { error: `No se pudieron guardar las vacaciones: ${r.error}` }
+  }
 
   revalidatePath('/empleados')
   revalidatePath(`/empleados/${id}`)
+  revalidatePath('/empleados/vacaciones')
   return {}
 }
 
@@ -115,24 +136,93 @@ export async function saveHorario(
 
 // ---- Vacaciones ------------------------------------------------------------
 
+const MAX_DIAS_TOMA = 60
+
+function fechaDeVacacionValida(fecha: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(fecha) && !Number.isNaN(Date.parse(fecha)) && fecha >= '2020-01-01' && fecha <= '2100-12-31'
+}
+
+function ddmm(fecha: string): string {
+  return `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`
+}
+
 export async function createVacacion(
   empleadoId: string,
   values: VacacionFormValues,
 ): Promise<{ error?: string }> {
+  const parsed = vacacionSchema.safeParse(values)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Revisá los datos' }
+  const { fecha_desde, fecha_hasta } = parsed.data
+  if (!fechaDeVacacionValida(fecha_desde) || !fechaDeVacacionValida(fecha_hasta)) return { error: 'La fecha no es válida' }
+  const dias = Math.round((Date.parse(fecha_hasta) - Date.parse(fecha_desde)) / 86400000) + 1
+  if (dias > MAX_DIAS_TOMA) return { error: `Son ${dias} días: revisá las fechas` }
+
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
+  if (!(await empleadoDelLocal(supabase, tenantId, empleadoId))) return { error: 'Empleado no encontrado' }
+
+  // Una toma que se pisa con otra suele ser la misma cargada dos veces.
+  const { data: pisadas, error: pisErr } = await supabase
+    .from('empleado_vacaciones')
+    .select('fecha_desde, fecha_hasta')
+    .eq('empleado_id', empleadoId)
+    .eq('cancelada', false)
+    .lte('fecha_desde', fecha_hasta)
+    .gte('fecha_hasta', fecha_desde)
+    .limit(1)
+  if (pisErr) return { error: pisErr.message }
+  const pisada = pisadas?.[0]
+  if (pisada) {
+    return { error: `Ya tiene vacaciones del ${ddmm(pisada.fecha_desde)} al ${ddmm(pisada.fecha_hasta)} en esas fechas` }
+  }
 
   const { error } = await supabase.from('empleado_vacaciones').insert({
     empleado_id: empleadoId,
     tenant_id: tenantId,
-    fecha_desde: values.fecha_desde,
-    fecha_hasta: values.fecha_hasta,
-    notas: values.notas || null,
+    fecha_desde,
+    fecha_hasta,
+    notas: parsed.data.notas?.trim() || null,
   })
   if (error) return { error: error.message }
 
   revalidatePath(`/empleados/${empleadoId}`)
   revalidatePath('/empleados')
+  revalidatePath('/empleados/vacaciones')
+  return {}
+}
+
+async function guardarDiasDelAño(
+  supabase: Supabase,
+  tenantId: string,
+  empleadoId: string,
+  año: number,
+  dias: number,
+): Promise<{ error?: string }> {
+  const { error } = await supabase
+    .from('empleado_vacaciones_anuales')
+    .upsert(
+      { tenant_id: tenantId, empleado_id: empleadoId, anio: año, dias, updated_at: new Date().toISOString() },
+      { onConflict: 'empleado_id,anio' },
+    )
+  return error ? { error: error.message } : {}
+}
+
+/** Días de vacaciones que le corresponden en un año (siguen valiendo para los siguientes hasta que se cambien). */
+export async function setVacacionesDelAño(
+  empleadoId: string,
+  año: number,
+  dias: number,
+): Promise<{ error?: string }> {
+  if (!Number.isInteger(dias) || dias < 0 || dias > 60) return { error: 'Tienen que ser entre 0 y 60 días' }
+  if (!Number.isInteger(año) || año < 2000 || año > 2100) return { error: 'El año no es válido' }
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  if (!(await empleadoDelLocal(supabase, tenantId, empleadoId))) return { error: 'Empleado no encontrado' }
+  const r = await guardarDiasDelAño(supabase, tenantId, empleadoId, año, dias)
+  if (r.error) return r
+  revalidatePath('/empleados/vacaciones')
+  revalidatePath('/empleados')
+  revalidatePath(`/empleados/${empleadoId}`)
   return {}
 }
 

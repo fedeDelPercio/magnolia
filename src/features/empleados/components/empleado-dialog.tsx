@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { hoyISO } from '@/lib/fecha'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 
@@ -167,7 +168,8 @@ export function EmpleadoDialog({ open, onOpenChange, empleado }: Props) {
                   name="vacaciones_dias_anuales"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Vacaciones (días/año)</FormLabel>
+                      {/* Al editar son las de este año (ver updateEmpleado). */}
+                      <FormLabel>{empleado ? `Vacaciones ${hoyISO().slice(0, 4)} (días)` : 'Vacaciones (días/año)'}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"

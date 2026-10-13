@@ -64,7 +64,8 @@ export function EmpleadosClient({ empleados }: Props) {
       sueldo_diario: e.sueldo_diario,
       plus_mensual: e.plus_mensual,
       aguinaldo_estimado: e.aguinaldo_estimado,
-      vacaciones_dias_anuales: e.vacaciones_dias_anuales,
+      // El diálogo muestra (y edita) las de este año.
+      vacaciones_dias_anuales: e.dias_vacaciones_corresponden,
       activo: e.activo,
       notas: e.notas,
       created_at: e.created_at,
@@ -131,7 +132,7 @@ export function EmpleadosClient({ empleados }: Props) {
       ) : (
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((e) => {
-            const vacExceso = e.dias_vacaciones_restantes === 0 && e.vacaciones_dias_anuales > 0
+            const vacExceso = e.dias_vacaciones_restantes === 0 && e.dias_vacaciones_corresponden > 0
             return (
               <div
                 key={e.id}
@@ -182,7 +183,7 @@ export function EmpleadosClient({ empleados }: Props) {
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Vacaciones</span>
                       <span className={cn('tabular-nums', vacExceso && 'text-amber-700 font-medium')}>
-                        {e.dias_vacaciones_restantes} / {e.vacaciones_dias_anuales} d
+                        {e.dias_vacaciones_restantes} / {e.dias_vacaciones_corresponden} d
                       </span>
                     </div>
                   </div>
