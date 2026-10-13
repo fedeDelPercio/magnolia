@@ -43,3 +43,6 @@ next-env.d.ts
 # Playwright smoke screenshots (locales, no se commitean)
 scripts/.shots/
 .tsc-out.txt
+
+# Vinculación local de la CLI de Supabase
+supabase/.temp/
