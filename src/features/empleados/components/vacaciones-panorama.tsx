@@ -31,6 +31,10 @@ function daysBetweenInclusive(desde: string, hasta: string): number {
   return Math.round((b - a) / (1000 * 60 * 60 * 24)) + 1
 }
 
+function fechaLarga(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+}
+
 // "/ 14" de la tarjeta: tocándolo se cambian los días que le corresponden ese
 // año (siguen valiendo para los siguientes hasta que se cambien).
 function DiasCorresponden({ empleadoId, nombre, año, dias }: { empleadoId: string; nombre: string; año: number; dias: number }) {
@@ -325,8 +329,9 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
       </div>
 
       {/* Tabla */}
-      <div className="rounded-xl border bg-card overflow-hidden">
-        <table className="w-full text-sm">
+      {/* En celular la tabla se corre de costado (si no, se cortaban los botones). */}
+      <div className="rounded-xl border bg-card overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/50 text-xs text-muted-foreground">
             <tr>
               <th className="text-left px-3 py-2">Empleado</th>
@@ -356,8 +361,8 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
                       <span className="ml-1 text-[10px] text-muted-foreground">(inactivo)</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 tabular-nums">{v.fecha_desde}</td>
-                  <td className="px-3 py-2 tabular-nums">{v.fecha_hasta}</td>
+                  <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fechaLarga(v.fecha_desde)}</td>
+                  <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fechaLarga(v.fecha_hasta)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.dias}</td>
                   <td className="px-3 py-2">
                     <Badge variant="outline" className={cn('text-[10px]', ESTADO_TONE[v.estado])}>
