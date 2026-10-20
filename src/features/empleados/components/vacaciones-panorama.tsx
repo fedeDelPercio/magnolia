@@ -11,14 +11,16 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { estadoVacacion, ESTADO_LABELS, ESTADO_TONE, type EstadoVacacion } from '../lib/estado-vacacion'
-import { toggleVacacionCancelada, deleteVacacion, setVacacionesDelAño } from '../actions'
+import { toggleVacacionCancelada, deleteVacacion, setVacacionesDeTemporada } from '../actions'
+import { etiquetaTemporada } from '../lib/vacaciones-por-anio'
 import type { VacacionConEmpleado, EmpleadoListItem } from '../queries'
 import { VacacionDialog } from './vacacion-dialog'
 
 type Props = {
   vacaciones: VacacionConEmpleado[]
   empleados: EmpleadoListItem[]
-  año: number
+  // 2027 = temporada 2026-2027 (octubre a septiembre).
+  temporada: number
 }
 
 const ESTADOS: (EstadoVacacion | 'todas')[] = ['todas', 'planificadas', 'en_curso', 'completas', 'canceladas']
@@ -35,9 +37,9 @@ function fechaLarga(iso: string): string {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 }
 
-// "/ 14" de la tarjeta: tocándolo se cambian los días que le corresponden ese
-// año (siguen valiendo para los siguientes hasta que se cambien).
-function DiasCorresponden({ empleadoId, nombre, año, dias }: { empleadoId: string; nombre: string; año: number; dias: number }) {
+// "/ 14" de la tarjeta: tocándolo se cambian los días que le corresponden esa
+// temporada (siguen valiendo para las siguientes hasta que se cambien).
+function DiasCorresponden({ empleadoId, nombre, temporada, dias }: { empleadoId: string; nombre: string; temporada: number; dias: number }) {
   const [editando, setEditando] = useState(false)
   const [texto, setTexto] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -60,14 +62,14 @@ function DiasCorresponden({ empleadoId, nombre, año, dias }: { empleadoId: stri
       return
     }
     setGuardando(true)
-    const r = await setVacacionesDelAño(empleadoId, año, n)
+    const r = await setVacacionesDeTemporada(empleadoId, temporada, n)
     setGuardando(false)
     setEditando(false)
     if (r.error) toast.error(r.error)
-    else toast.success(`${nombre}: ${n} días de vacaciones en ${año}`)
+    else toast.success(`${nombre}: ${n} días de vacaciones en ${etiquetaTemporada(temporada)}`)
   }
 
-  const etiqueta = `Días de vacaciones que le corresponden a ${nombre} en ${año}`
+  const etiqueta = `Días de vacaciones que le corresponden a ${nombre} en ${etiquetaTemporada(temporada)}`
   if (editando) {
     return (
       <span className="text-sm text-muted-foreground">
@@ -103,7 +105,7 @@ function DiasCorresponden({ empleadoId, nombre, año, dias }: { empleadoId: stri
         setTexto(String(dias))
         setEditando(true)
       }}
-      title={`Cambiar los días que le corresponden en ${año}`}
+      title={`Cambiar los días que le corresponden en ${etiquetaTemporada(temporada)}`}
       aria-label={`${etiqueta}: ${dias}. Cambiar`}
       className="inline-flex items-center gap-1 rounded px-0.5 text-sm tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground"
     >
@@ -113,7 +115,7 @@ function DiasCorresponden({ empleadoId, nombre, año, dias }: { empleadoId: stri
   )
 }
 
-export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
+export function VacacionesPanorama({ vacaciones, empleados, temporada }: Props) {
   const router = useRouter()
   const [filtroEstado, setFiltroEstado] = useState<EstadoVacacion | 'todas'>('todas')
   const [, startTransition] = useTransition()
@@ -155,7 +157,7 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
     [enriched],
   )
 
-  // Resumen por empleado: días tomados del año filtrado (excluye canceladas) vs cuota anual.
+  // Resumen por empleado: días tomados en la temporada (excluye canceladas) vs los que le corresponden.
   // Incluye empleados activos sin tomas (para que vean su saldo intacto).
   const porEmpleado = useMemo(() => {
     const tomadosPorId = new Map<string, number>()
@@ -215,11 +217,11 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
       {/* Year nav + counters */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="size-8" onClick={() => router.push(`/empleados/vacaciones?año=${año - 1}`)}>
+          <Button variant="outline" size="icon" className="size-8" aria-label="Temporada anterior" onClick={() => router.push(`/empleados/vacaciones?temporada=${temporada - 1}`)}>
             <ChevronLeftIcon className="size-4" />
           </Button>
-          <h2 className="text-base font-semibold w-20 text-center tabular-nums">{año}</h2>
-          <Button variant="outline" size="icon" className="size-8" onClick={() => router.push(`/empleados/vacaciones?año=${año + 1}`)}>
+          <h2 className="text-base font-semibold w-28 text-center tabular-nums">{etiquetaTemporada(temporada)}</h2>
+          <Button variant="outline" size="icon" className="size-8" aria-label="Temporada siguiente" onClick={() => router.push(`/empleados/vacaciones?temporada=${temporada + 1}`)}>
             <ChevronRightIcon className="size-4" />
           </Button>
         </div>
@@ -284,7 +286,7 @@ export function VacacionesPanorama({ vacaciones, empleados, año }: Props) {
                 <div className="mt-2 flex items-baseline justify-between gap-2">
                   <p className="flex items-baseline gap-1">
                     <span className="num-editorial text-xl leading-none tabular-nums">{e.tomados}</span>
-                    <DiasCorresponden empleadoId={e.id} nombre={e.name} año={año} dias={e.asignados} />
+                    <DiasCorresponden empleadoId={e.id} nombre={e.name} temporada={temporada} dias={e.asignados} />
                   </p>
                   <p className="text-xs tabular-nums text-muted-foreground">
                     {exceso ? (

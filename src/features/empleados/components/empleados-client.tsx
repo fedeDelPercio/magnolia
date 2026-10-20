@@ -64,7 +64,7 @@ export function EmpleadosClient({ empleados }: Props) {
       sueldo_diario: e.sueldo_diario,
       plus_mensual: e.plus_mensual,
       aguinaldo_estimado: e.aguinaldo_estimado,
-      // El diálogo muestra (y edita) las de este año.
+      // El diálogo muestra (y edita) las de la temporada en curso.
       vacaciones_dias_anuales: e.dias_vacaciones_corresponden,
       activo: e.activo,
       notas: e.notas,

@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import type { Tables } from '@/types/database'
 import { hoyISO } from '@/lib/fecha'
-import { diasQueCorresponden, type DiasPorAnio } from './lib/vacaciones-por-anio'
+import { diasQueCorresponden, temporadaDe, type DiasPorAnio } from './lib/vacaciones-por-anio'
 
 export type Empleado = Tables<'empleados'>
 export type EmpleadoHorario = Tables<'empleado_horarios'>
@@ -17,7 +17,7 @@ export type EmpleadoDescuento = Tables<'empleado_descuentos'> & {
 export type EmpleadoTardanza = Tables<'empleado_tardanzas'>
 
 export type EmpleadoListItem = Empleado & {
-  // Del año pedido (por defecto, el actual).
+  // De la temporada pedida (por defecto, la actual). Ver lib/vacaciones-por-anio.
   dias_vacaciones_corresponden: number
   dias_vacaciones_tomados: number
   dias_vacaciones_restantes: number
@@ -31,7 +31,7 @@ export type EmpleadoDetalle = {
   liquidaciones: EmpleadoLiquidacion[]
   descuentos: EmpleadoDescuento[]
   tardanzas: EmpleadoTardanza[]
-  // Del año actual.
+  // De la temporada actual.
   dias_vacaciones_corresponden: number
   dias_vacaciones_tomados: number
   dias_vacaciones_restantes: number
@@ -45,16 +45,17 @@ function diffDaysInclusive(desde: string, hasta: string): number {
   return Math.round((b - a) / (1000 * 60 * 60 * 24)) + 1
 }
 
-function totalDiasVacacionesDelAño(vacaciones: EmpleadoVacacion[], año: number): number {
-  // Las canceladas no descuentan días del año.
+function totalDiasDeLaTemporada(vacaciones: EmpleadoVacacion[], temporada: number): number {
+  // Las canceladas no descuentan días. Cada toma cuenta en la temporada en que empieza.
   return vacaciones
     .filter((v) => !v.cancelada)
-    .filter((v) => v.fecha_desde.startsWith(String(año)) || v.fecha_hasta.startsWith(String(año)))
+    .filter((v) => temporadaDe(v.fecha_desde) === temporada)
     .reduce((acc, v) => acc + diffDaysInclusive(v.fecha_desde, v.fecha_hasta), 0)
 }
 
-export function añoActual(): number {
-  return Number(hoyISO().slice(0, 4))
+/** Temporada de vacaciones en curso (octubre a septiembre; 2027 = 2026-2027). */
+export function temporadaActual(): number {
+  return temporadaDe(hoyISO())
 }
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
@@ -80,7 +81,7 @@ export async function getVacacionesPorAnio(
 }
 
 export async function getEmpleados(
-  opts: { incluirInactivos?: boolean; año?: number } = {},
+  opts: { incluirInactivos?: boolean; temporada?: number } = {},
 ): Promise<EmpleadoListItem[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
@@ -96,11 +97,11 @@ export async function getEmpleados(
   const [{ data, error }, porAnio] = await Promise.all([query, getVacacionesPorAnio(supabase, tenantId)])
   if (error) throw new Error(error.message)
 
-  const año = opts.año ?? añoActual()
+  const temporada = opts.temporada ?? temporadaActual()
   return (data ?? []).map(({ empleado_vacaciones, ...emp }) => {
     const vacs = (empleado_vacaciones ?? []) as Pick<EmpleadoVacacion, 'fecha_desde' | 'fecha_hasta' | 'cancelada'>[]
-    const tomados = totalDiasVacacionesDelAño(vacs as EmpleadoVacacion[], año)
-    const corresponden = diasQueCorresponden(emp.vacaciones_dias_anuales, porAnio, emp.id, año)
+    const tomados = totalDiasDeLaTemporada(vacs as EmpleadoVacacion[], temporada)
+    const corresponden = diasQueCorresponden(emp.vacaciones_dias_anuales, porAnio, emp.id, temporada)
     const restantes = Math.max(0, corresponden - tomados)
     return {
       ...(emp as Empleado),
@@ -164,10 +165,10 @@ export async function getEmpleado(id: string): Promise<EmpleadoDetalle | null> {
   if (descuentosRes.error) throw new Error(descuentosRes.error.message)
   if (tardanzasRes.error) throw new Error(tardanzasRes.error.message)
 
-  const año = añoActual()
+  const temporada = temporadaActual()
   const vacaciones = vacacionesRes.data ?? []
-  const tomados = totalDiasVacacionesDelAño(vacaciones, año)
-  const corresponden = diasQueCorresponden(empleado.vacaciones_dias_anuales, porAnio, id, año)
+  const tomados = totalDiasDeLaTemporada(vacaciones, temporada)
+  const corresponden = diasQueCorresponden(empleado.vacaciones_dias_anuales, porAnio, id, temporada)
   const restantes = Math.max(0, corresponden - tomados)
 
   return {
@@ -232,9 +233,9 @@ export type VacacionConEmpleado = EmpleadoVacacion & {
 
 /**
  * Trae todas las vacaciones del tenant para mostrar el panorama global.
- * Filtros opcionales: por año (matchea fecha_desde o fecha_hasta) y por empleado.
+ * Filtros opcionales: por temporada (la de fecha_desde) y por empleado.
  */
-export async function getTodasVacaciones(opts: { año?: number; empleadoId?: string } = {}): Promise<VacacionConEmpleado[]> {
+export async function getTodasVacaciones(opts: { temporada?: number; empleadoId?: string } = {}): Promise<VacacionConEmpleado[]> {
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
 
@@ -260,10 +261,11 @@ export async function getTodasVacaciones(opts: { año?: number; empleadoId?: str
     } as VacacionConEmpleado
   })
 
-  if (opts.año !== undefined) {
-    const y = String(opts.año)
-    rows = rows.filter((v) => v.fecha_desde.startsWith(y) || v.fecha_hasta.startsWith(y))
+  if (opts.temporada !== undefined) {
+    const t = opts.temporada
+    rows = rows.filter((v) => temporadaDe(v.fecha_desde) === t)
   }
+
 
   return rows
 }

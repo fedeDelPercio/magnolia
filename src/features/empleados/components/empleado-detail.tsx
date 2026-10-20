@@ -38,6 +38,7 @@ import {
   setTardanzaRecuperada,
 } from '../actions'
 import { formatMinutos } from '../lib/descuentos-plus'
+import { etiquetaTemporada, temporadaDe } from '../lib/vacaciones-por-anio'
 import { DescuentoDialog } from './descuento-dialog'
 import { TardanzaDialog } from './tardanza-dialog'
 import { EmpleadoDialog } from './empleado-dialog'
@@ -82,7 +83,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
   const [ausOpen, setAusOpen] = useState(false)
   const [descuentoOpen, setDescuentoOpen] = useState(false)
   const [tardanzaOpen, setTardanzaOpen] = useState(false)
-  // El diálogo muestra (y edita) las vacaciones de este año. Mismo objeto entre
+  // El diálogo muestra (y edita) las vacaciones de la temporada en curso. Mismo objeto entre
   // renders: el diálogo se reinicia cuando cambia.
   const diasCorresponden = detalle.dias_vacaciones_corresponden
   const empleadoParaEditar = useMemo(
@@ -252,7 +253,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2 text-card-title">
               <PalmtreeIcon className="size-3.5 text-muted-foreground" />
-              <span>Vacaciones {hoyISO().slice(0, 4)}</span>
+              <span>Vacaciones {etiquetaTemporada(temporadaDe(hoyISO()))}</span>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setVacOpen(true)}>
               <PlusIcon className="size-3.5" /> Registrar

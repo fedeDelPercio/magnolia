@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { diasQueCorresponden, type DiasPorAnio } from './vacaciones-por-anio'
+import { diasQueCorresponden, etiquetaTemporada, temporadaDe, type DiasPorAnio } from './vacaciones-por-anio'
 
 const filas: DiasPorAnio[] = [
   { empleado_id: 'mayra', anio: 2027, dias: 14 },
@@ -33,5 +33,23 @@ describe('diasQueCorresponden', () => {
 
   it('cero es un valor válido', () => {
     expect(diasQueCorresponden(14, [{ empleado_id: 'x', anio: 2026, dias: 0 }], 'x', 2026)).toBe(0)
+  })
+})
+
+describe('temporadas (octubre a septiembre)', () => {
+  it('desde octubre arranca la temporada del año siguiente', () => {
+    expect(temporadaDe('2026-10-01')).toBe(2027)
+    expect(temporadaDe('2026-10-20')).toBe(2027)
+    expect(temporadaDe('2026-12-31')).toBe(2027)
+  })
+
+  it('hasta septiembre sigue la temporada que termina ese año', () => {
+    expect(temporadaDe('2027-01-15')).toBe(2027)
+    expect(temporadaDe('2027-09-30')).toBe(2027)
+    expect(temporadaDe('2026-09-30')).toBe(2026)
+  })
+
+  it('se muestra con los dos años', () => {
+    expect(etiquetaTemporada(2027)).toBe('2026-2027')
   })
 })

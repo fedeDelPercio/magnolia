@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 
 import { empleadoSchema, type EmpleadoFormValues } from '../schemas'
 import { createEmpleado, updateEmpleado } from '../actions'
+import { etiquetaTemporada, temporadaDe } from '../lib/vacaciones-por-anio'
 import type { Empleado } from '../queries'
 
 type Props = {
@@ -168,8 +169,8 @@ export function EmpleadoDialog({ open, onOpenChange, empleado }: Props) {
                   name="vacaciones_dias_anuales"
                   render={({ field }) => (
                     <FormItem>
-                      {/* Al editar son las de este año (ver updateEmpleado). */}
-                      <FormLabel>{empleado ? `Vacaciones ${hoyISO().slice(0, 4)} (días)` : 'Vacaciones (días/año)'}</FormLabel>
+                      {/* Al editar son las de la temporada en curso (ver updateEmpleado). */}
+                      <FormLabel>{empleado ? `Vacaciones ${etiquetaTemporada(temporadaDe(hoyISO()))} (días)` : 'Vacaciones (días por temporada)'}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
