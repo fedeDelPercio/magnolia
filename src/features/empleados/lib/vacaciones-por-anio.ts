@@ -29,3 +29,10 @@ export function temporadaDe(fechaISO: string): number {
 export function etiquetaTemporada(temporada: number): string {
   return `${temporada - 1}-${temporada}`
 }
+
+// Una toma se guarda con su último día de vacaciones (fecha_hasta); en pantalla
+// se pide y se muestra el día en que vuelve a trabajar, que es el siguiente.
+export function sumarDias(fechaISO: string, dias: number): string {
+  const [y, m, d] = fechaISO.split('-').map(Number)
+  return new Date(Date.UTC(y!, m! - 1, d! + dias)).toISOString().slice(0, 10)
+}

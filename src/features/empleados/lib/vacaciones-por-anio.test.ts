@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { diasQueCorresponden, etiquetaTemporada, temporadaDe, type DiasPorAnio } from './vacaciones-por-anio'
+import { diasQueCorresponden, etiquetaTemporada, sumarDias, temporadaDe, type DiasPorAnio } from './vacaciones-por-anio'
 
 const filas: DiasPorAnio[] = [
   { empleado_id: 'mayra', anio: 2027, dias: 14 },
@@ -51,5 +51,18 @@ describe('temporadas (octubre a septiembre)', () => {
 
   it('se muestra con los dos años', () => {
     expect(etiquetaTemporada(2027)).toBe('2026-2027')
+  })
+})
+
+describe('sumarDias (día que vuelve ↔ último día de vacaciones)', () => {
+  it('vuelve el 26/10 → el último día es el 25/10', () => {
+    expect(sumarDias('2026-10-26', -1)).toBe('2026-10-25')
+    expect(sumarDias('2026-10-25', 1)).toBe('2026-10-26')
+  })
+
+  it('cruza meses y años', () => {
+    expect(sumarDias('2026-11-01', -1)).toBe('2026-10-31')
+    expect(sumarDias('2027-01-01', -1)).toBe('2026-12-31')
+    expect(sumarDias('2028-02-28', 1)).toBe('2028-02-29')
   })
 })

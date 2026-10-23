@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useForm, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
@@ -11,8 +12,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { hoyISO } from '@/lib/fecha'
 
-import { vacacionSchema, type VacacionFormValues } from '../schemas'
 import { createVacacion } from '../actions'
+import { sumarDias } from '../lib/vacaciones-por-anio'
 
 type Props = {
   open: boolean
@@ -23,34 +24,56 @@ type Props = {
   empleados?: { id: string; name: string }[]
 }
 
-function diasEntre(desde: string, hasta: string): number | null {
-  if (!desde || !hasta || hasta < desde) return null
-  return Math.round((Date.parse(hasta) - Date.parse(desde)) / 86400000) + 1
+// Se pide el día en que vuelve a trabajar (así lo cuentan: "se va el 19 y
+// vuelve el 26"); se guarda el último día de vacaciones, el anterior.
+const formSchema = z
+  .object({
+    fecha_desde: z.string().min(1, 'Requerido'),
+    fecha_vuelta: z.string().min(1, 'Requerido'),
+    notas: z.string().optional(),
+  })
+  .refine((v) => v.fecha_vuelta > v.fecha_desde, {
+    path: ['fecha_vuelta'],
+    message: 'Tiene que volver después del primer día de vacaciones',
+  })
+type FormValues = z.infer<typeof formSchema>
+
+function ddmm(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+}
+
+function diasHastaVolver(desde: string, vuelta: string): number | null {
+  if (!desde || !vuelta || vuelta <= desde) return null
+  return Math.round((Date.parse(vuelta) - Date.parse(desde)) / 86400000)
 }
 
 export function VacacionDialog({ open, onOpenChange, empleadoId, empleados = [] }: Props) {
   const [elegido, setElegido] = useState('')
-  const form = useForm<VacacionFormValues>({
-    resolver: zodResolver(vacacionSchema) as Resolver<VacacionFormValues>,
-    defaultValues: { fecha_desde: hoyISO(), fecha_hasta: hoyISO(), notas: '' },
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema) as Resolver<FormValues>,
+    defaultValues: { fecha_desde: hoyISO(), fecha_vuelta: '', notas: '' },
   })
 
   useEffect(() => {
     if (!open) return
-    form.reset({ fecha_desde: hoyISO(), fecha_hasta: hoyISO(), notas: '' })
+    form.reset({ fecha_desde: hoyISO(), fecha_vuelta: '', notas: '' })
   }, [open, form])
 
   const destino = empleadoId ?? elegido
   const nombreFijo = empleadoId ? empleados.find((e) => e.id === empleadoId)?.name : undefined
-  const [desde, hasta] = useWatch({ control: form.control, name: ['fecha_desde', 'fecha_hasta'] })
-  const dias = diasEntre(desde, hasta)
+  const [desde, vuelta] = useWatch({ control: form.control, name: ['fecha_desde', 'fecha_vuelta'] })
+  const dias = diasHastaVolver(desde, vuelta)
 
-  async function onSubmit(values: VacacionFormValues) {
+  async function onSubmit(values: FormValues) {
     if (!destino) {
       toast.error('Elegí el empleado')
       return
     }
-    const result = await createVacacion(destino, values)
+    const result = await createVacacion(destino, {
+      fecha_desde: values.fecha_desde,
+      fecha_hasta: sumarDias(values.fecha_vuelta, -1),
+      notas: values.notas,
+    })
     if (result.error) {
       toast.error(result.error)
       return
@@ -89,7 +112,7 @@ export function VacacionDialog({ open, onOpenChange, empleadoId, empleados = [] 
                 name="fecha_desde"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Desde</FormLabel>
+                    <FormLabel>Primer día</FormLabel>
                     <FormControl><Input type="date" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -97,10 +120,10 @@ export function VacacionDialog({ open, onOpenChange, empleadoId, empleados = [] 
               />
               <FormField
                 control={form.control}
-                name="fecha_hasta"
+                name="fecha_vuelta"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Hasta</FormLabel>
+                    <FormLabel>Vuelve a trabajar</FormLabel>
                     <FormControl><Input type="date" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -109,7 +132,7 @@ export function VacacionDialog({ open, onOpenChange, empleadoId, empleados = [] 
             </div>
             {dias !== null && (
               <p className="text-xs text-muted-foreground">
-                {dias} {dias === 1 ? 'día' : 'días'} corridos
+                {dias} {dias === 1 ? 'día' : 'días'} de vacaciones (del {ddmm(desde)} al {ddmm(sumarDias(vuelta, -1))})
               </p>
             )}
             <FormField

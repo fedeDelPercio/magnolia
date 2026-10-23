@@ -38,7 +38,7 @@ import {
   setTardanzaRecuperada,
 } from '../actions'
 import { formatMinutos } from '../lib/descuentos-plus'
-import { etiquetaTemporada, temporadaDe } from '../lib/vacaciones-por-anio'
+import { etiquetaTemporada, sumarDias, temporadaDe } from '../lib/vacaciones-por-anio'
 import { DescuentoDialog } from './descuento-dialog'
 import { TardanzaDialog } from './tardanza-dialog'
 import { EmpleadoDialog } from './empleado-dialog'
@@ -278,7 +278,7 @@ export function EmpleadoDetail({ detalle, productos }: Props) {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className={cn('tabular-nums', v.cancelada && 'line-through opacity-60')}>
-                          {v.fecha_desde} → {v.fecha_hasta}
+                          {fechaCorta(v.fecha_desde)}/{v.fecha_desde.slice(0, 4)} · vuelve {fechaCorta(sumarDias(v.fecha_hasta, 1))}
                         </p>
                         <Badge variant="outline" className={cn('text-[10px]', ESTADO_TONE[estado])}>
                           {ESTADO_LABELS[estado]}

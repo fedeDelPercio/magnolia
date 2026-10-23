@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 
 import { estadoVacacion, ESTADO_LABELS, ESTADO_TONE, type EstadoVacacion } from '../lib/estado-vacacion'
 import { toggleVacacionCancelada, deleteVacacion, setVacacionesDeTemporada } from '../actions'
-import { etiquetaTemporada } from '../lib/vacaciones-por-anio'
+import { etiquetaTemporada, sumarDias } from '../lib/vacaciones-por-anio'
 import type { VacacionConEmpleado, EmpleadoListItem } from '../queries'
 import { VacacionDialog } from './vacacion-dialog'
 
@@ -338,7 +338,7 @@ export function VacacionesPanorama({ vacaciones, empleados, temporada }: Props) 
             <tr>
               <th className="text-left px-3 py-2">Empleado</th>
               <th className="text-left px-3 py-2">Desde</th>
-              <th className="text-left px-3 py-2">Hasta</th>
+              <th className="text-left px-3 py-2">Vuelve</th>
               <th className="text-right px-3 py-2">Días</th>
               <th className="text-left px-3 py-2">Estado</th>
               <th className="text-left px-3 py-2">Notas</th>
@@ -364,7 +364,7 @@ export function VacacionesPanorama({ vacaciones, empleados, temporada }: Props) 
                     )}
                   </td>
                   <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fechaLarga(v.fecha_desde)}</td>
-                  <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fechaLarga(v.fecha_hasta)}</td>
+                  <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fechaLarga(sumarDias(v.fecha_hasta, 1))}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{v.dias}</td>
                   <td className="px-3 py-2">
                     <Badge variant="outline" className={cn('text-[10px]', ESTADO_TONE[v.estado])}>
