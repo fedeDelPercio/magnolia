@@ -631,7 +631,8 @@ export function CompraDialog({
                 />
               </div>
               <div className="w-20 space-y-1">
-                <label className="text-xs text-muted-foreground">
+                {/* div y no label: un botón dentro de un label se activa al tocar "Cant." */}
+                <div className="text-xs text-muted-foreground">
                   Cant.{' '}
                   {selectedInsumo && selectedInsumo.purchase_unit_label && selectedInsumo.purchase_unit_factor ? (
                     // Se toca para cargar en la unidad suelta (o volver a la presentación).
@@ -639,6 +640,7 @@ export function CompraDialog({
                       type="button"
                       onClick={() => setEnPresentacion((v) => !v)}
                       className="rounded underline decoration-dotted underline-offset-2 hover:text-foreground"
+                      aria-label={`Cantidad en ${enPresentacion ? selectedInsumo.purchase_unit_label : UNIT_LABELS[selectedInsumo.unit]}. Tocar para cargar en ${enPresentacion ? UNIT_LABELS[selectedInsumo.unit] : selectedInsumo.purchase_unit_label}`}
                       title={`Cambiar entre ${selectedInsumo.purchase_unit_label} (${Number(selectedInsumo.purchase_unit_factor).toLocaleString('es-AR')} ${UNIT_LABELS[selectedInsumo.unit]}) y ${UNIT_LABELS[selectedInsumo.unit]}`}
                     >
                       ({enPresentacion ? selectedInsumo.purchase_unit_label : UNIT_LABELS[selectedInsumo.unit]})
@@ -646,7 +648,7 @@ export function CompraDialog({
                   ) : selectedInsumo ? (
                     `(${UNIT_LABELS[selectedInsumo.unit]})`
                   ) : null}
-                </label>
+                </div>
                 <Input
                   id="compra-qty-input"
                   type="number"
