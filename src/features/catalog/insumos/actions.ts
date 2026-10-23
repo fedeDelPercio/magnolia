@@ -161,7 +161,7 @@ export async function updateInsumo(
     if (existing && existing.unit !== values.unit) {
       const { data: lineas, error: linErr } = await supabase
         .from('receta_ingredientes')
-        .select('unit, recetas(name)')
+        .select('unit, recetas!receta_ingredientes_receta_id_fkey(name)')
         .eq('insumo_id', id)
       if (linErr) return { error: mapError(linErr.message) }
       const malas = ((lineas ?? []) as unknown as { unit: string; recetas: { name: string } | null }[])

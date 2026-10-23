@@ -25,7 +25,7 @@ const TIPOS: { tipo: TipoRevision; titulo: string; porQue: string; href: string;
   {
     tipo: 'costo_mayor_precio',
     titulo: 'Productos que cuestan más de lo que se venden',
-    porQue: 'Suele ser un ingrediente con la unidad o el precio mal (ver los dos de arriba).',
+    porQue: 'Suele ser un ingrediente con la unidad o el precio mal cargado.',
     href: '/catalogo/productos',
     donde: 'Productos',
     orden: 'mayor',

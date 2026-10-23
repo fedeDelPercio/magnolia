@@ -12,6 +12,8 @@
 -- - costo_mayor_precio: el costo calculado supera el precio de venta; casi
 --   siempre es un ingrediente con la unidad o el precio mal.
 -- - stock_negativo: insumo con control de stock por debajo de cero.
+-- Los montos van con formato argentino (to_char da 1,234.50: se intercambian
+-- los separadores con translate).
 
 create or replace view public.datos_para_revisar
 with (security_invoker = true) as
@@ -49,8 +51,8 @@ select tenant_id, 'receta_unidad'::text tipo, name nombre,
  group by tenant_id, insumo_id, name, receta_unit, insumo_unit
 union all
 select i.tenant_id, 'precio_raro', i.name,
-       'Precio actual $' || to_char(i.current_price, 'FM999G999G990D00') || ' por ' || i.unit::text
-         || '; sus compras rondan $' || to_char(p.mediana, 'FM999G999G990D00'),
+       'Precio actual $' || translate(to_char(i.current_price, 'FM999G999G990D00'), ',.', '.,') || ' por ' || i.unit::text
+         || '; sus compras rondan $' || translate(to_char(p.mediana, 'FM999G999G990D00'), ',.', '.,'),
        round(greatest(i.current_price / p.mediana, p.mediana / i.current_price), 1)
   from public.insumos i
   join precios p on p.insumo_id = i.id
@@ -69,13 +71,13 @@ select p.tenant_id, 'vendido_sin_receta', p.name,
                    where p.concepto_id is not null and p2.concepto_id = p.concepto_id and p2.id <> p.id and p2.active)
 union all
 select c.tenant_id, 'costo_mayor_precio', c.name,
-       'Costo $' || to_char(c.total_cost, 'FM999G999G990') || ' y se vende a $' || to_char(c.sale_price, 'FM999G999G990'),
+       'Costo $' || translate(to_char(c.total_cost, 'FM999G999G990'), ',.', '.,') || ' y se vende a $' || translate(to_char(c.sale_price, 'FM999G999G990'), ',.', '.,'),
        round(c.total_cost / c.sale_price, 1)
   from public.product_costs c
  where c.active and c.sale_price > 0 and c.total_cost > c.sale_price
 union all
 select s.tenant_id, 'stock_negativo', i.name,
-       'Stock ' || to_char(s.stock_actual, 'FM999G999G990D0') || ' ' || s.unit
+       'Stock ' || translate(to_char(s.stock_actual, 'FM999G999G990D0'), ',.', '.,') || ' ' || s.unit
          || ': se usó más de lo que se compró desde el último conteo',
        round(s.stock_actual, 1)
   from public.insumo_stock s
