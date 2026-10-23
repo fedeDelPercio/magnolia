@@ -44,7 +44,8 @@ vendidos as (
    group by m.producto_id
 )
 select tenant_id, 'receta_unidad'::text tipo, name nombre,
-       'Las recetas lo usan en ' || receta_unit || ' y el insumo está en ' || insumo_unit || ': '
+       'Las recetas lo usan en ' || case receta_unit when 'u' then 'unidades' when 'g' then 'gramos' when 'docena' then 'docenas' when 'porcion' then 'porciones' else receta_unit end
+         || ' y el insumo está en ' || case insumo_unit when 'u' then 'unidades' when 'g' then 'gramos' when 'docena' then 'docenas' when 'porcion' then 'porciones' else insumo_unit end || ': '
          || string_agg(receta, ', ' order by receta) detalle,
        count(*)::numeric valor
   from lineas_mal
