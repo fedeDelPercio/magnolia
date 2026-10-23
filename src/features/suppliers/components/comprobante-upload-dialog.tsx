@@ -16,7 +16,8 @@ import { InsumoDialog } from '@/features/catalog/insumos/components/insumo-dialo
 import type { InsumoWithProveedor } from '@/features/catalog/insumos/queries'
 import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { parseUploadedComprobante, applyComprobante, discardComprobante, refreshInsumoForComprobante, getComprobanteUploadPath, type ApplyItem } from '../comprobantes/actions'
-import { createInsumo, getInsumoFullForEdit, getDespiecesByParents } from '@/features/catalog/insumos/actions'
+import { createInsumo, getInsumoFullForEdit, getDespiecesByParents, type HijoDespiece } from '@/features/catalog/insumos/actions'
+import { avisoPrecioSospechoso } from '../precio-sospechoso'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { IVA_RATES, IVA_RATE_LABELS, type IvaRate } from '../schemas'
 import { computePricing } from '../pricing'
@@ -120,7 +121,9 @@ export function ComprobanteUploadDialog({
   // Cache de despieces de los insumos seleccionados: parent_id -> hijos[].
   // Lo refetcheamos cuando cambian las asignaciones para que el preview refleje
   // ediciones hechas en el modal anidado.
-  const [despieces, setDespieces] = useState<Record<string, Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>>>({})
+  const [despieces, setDespieces] = useState<Record<string, HijoDespiece[]>>({})
+  // Avisos de precio sospechoso ya mostrados: el segundo "Registrar" guarda.
+  const [sospechasAceptadas, setSospechasAceptadas] = useState('')
 
   useEffect(() => {
     const ids = Array.from(new Set(lines.map((l) => l.assignedInsumoId).filter(Boolean) as string[]))
@@ -395,11 +398,64 @@ export function ComprobanteUploadDialog({
     }
   }
 
+  // Líneas con un precio por unidad 3 veces distinto al último (ver
+  // precio-sospechoso.ts): casi siempre una cantidad leída en otra unidad.
+  function avisosDePrecio(): string[] {
+    const avisos: string[] = []
+    for (const line of lines) {
+      if (line.discarded || !line.assignedInsumoId) continue
+      const insumo = localInsumos.find((i) => i.id === line.assignedInsumoId)
+      const qty = parseFloat(line.qtyInput)
+      const total = parseFloat(line.totalInput)
+      if (!insumo || !(qty > 0) || !(total > 0)) continue
+      const conPresentacion = !!(insumo.purchase_unit_label && insumo.purchase_unit_factor)
+      const qtyBase = qty * (conPresentacion ? Number(insumo.purchase_unit_factor) : 1)
+      const ivaEff = line.ivaRate === null ? ivaRate : line.ivaRate
+      const conIvaMul = (1 - descuentoPct / 100) * (1 + ivaEff / 100)
+      const hijos = despieces[insumo.id]
+      if (hijos && hijos.length > 0) {
+        const sumQty = hijos.reduce((s, h) => s + h.qty_por_unidad, 0)
+        if (!(sumQty > 0)) continue
+        const porPieza = (total / (qtyBase * sumQty)) * conIvaMul
+        const aviso = hijos
+          .map((h) => avisoPrecioSospechoso({
+            nombre: h.hijo_name,
+            anterior: h.hijo_price,
+            nuevo: porPieza,
+            unidad: UNIT_LABELS[h.hijo_unit as UnitKind] ?? h.hijo_unit,
+            conPresentacion,
+          }))
+          .find(Boolean)
+        if (aviso) avisos.push(aviso)
+        continue
+      }
+      const aviso = avisoPrecioSospechoso({
+        nombre: insumo.name,
+        anterior: Number(insumo.current_price) || 0,
+        nuevo: (total / qtyBase) * conIvaMul,
+        unidad: UNIT_LABELS[insumo.unit as UnitKind] ?? insumo.unit,
+        conPresentacion,
+      })
+      if (aviso) avisos.push(aviso)
+    }
+    return avisos
+  }
+
   async function handleApply() {
     if (!uploadId) return
     const items = buildApplyItems()
     if (items.length === 0) {
       toast.error('Asigná insumo, cantidad y precio total a al menos una línea')
+      return
+    }
+    const avisos = avisosDePrecio()
+    const claveAvisos = avisos.join('|')
+    if (avisos.length > 0 && sospechasAceptadas !== claveAvisos) {
+      setSospechasAceptadas(claveAvisos)
+      toast.warning(
+        `${avisos.slice(0, 3).join(' ')}${avisos.length > 3 ? ` (y ${avisos.length - 3} más)` : ''} Si está bien, tocá Registrar compra de nuevo.`,
+        { duration: 20000 },
+      )
       return
     }
     // Snapshot de lo necesario porque reset() limpia el estado antes que

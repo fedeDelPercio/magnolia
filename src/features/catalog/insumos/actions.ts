@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/tenant/server'
 import type { InsumoFormValues } from './schemas'
+import { UNIT_LABELS, type UnitKind } from './schemas'
+import { unitsCompatible } from '@/features/catalog/recetas/lib/unit-conversion'
 import { getInsumoHistory, getInsumoComprasQty, getInsumoUsadoEn, getStockAjustes, type PriceHistoryEntry, type CompraQtyEntry, type InsumoUsadoEn, type StockAjusteEntry } from './queries'
 
 export async function fetchInsumoHistory(
@@ -148,9 +150,30 @@ export async function updateInsumo(
 
     const { data: existing } = await supabase
       .from('insumos')
-      .select('current_price')
+      .select('current_price, unit')
       .eq('id', id)
       .single()
+
+    // Cambiar la unidad (ej. de gramos a unidades) deja mal las recetas que lo
+    // usan en la otra: el sistema no puede pasar gramos a "atados" y descuenta
+    // 1 a 1 (Verdeo: 30 g se descontaban como 30 atados y el costo se iba a
+    // las nubes). Primero hay que corregir esas recetas.
+    if (existing && existing.unit !== values.unit) {
+      const { data: lineas, error: linErr } = await supabase
+        .from('receta_ingredientes')
+        .select('unit, recetas(name)')
+        .eq('insumo_id', id)
+      if (linErr) return { error: mapError(linErr.message) }
+      const malas = ((lineas ?? []) as unknown as { unit: string; recetas: { name: string } | null }[])
+        .filter((l) => !unitsCompatible(l.unit, values.unit))
+      if (malas.length > 0) {
+        const recetas = Array.from(new Set(malas.map((l) => l.recetas?.name).filter(Boolean)))
+        const en = UNIT_LABELS[malas[0]!.unit as UnitKind] ?? malas[0]!.unit
+        return {
+          error: `No se puede pasar ${values.name} a ${UNIT_LABELS[values.unit]}: se usa en ${en} en ${recetas.slice(0, 4).join(', ')}${recetas.length > 4 ? ` y ${recetas.length - 4} más` : ''}. Cambiá primero esas recetas.`,
+        }
+      }
+    }
 
     const { error } = await supabase
       .from('insumos')
@@ -394,30 +417,34 @@ export async function listInsumosForDespiece(parentId: string | null): Promise<
 
 // Trae los despieces de varios padres en una sola query. Devuelve un map
 // parent_id -> hijos[]. Usado por la UI de compras/comprobante para mostrar
-// preview de "esta compra va a generar X de pechuga + Y de patas".
+// preview de "esta compra va a generar X de pechuga + Y de patas" y comparar
+// el precio por pieza con el último pagado (hijo_price, bruto).
+export type HijoDespiece = { hijo_name: string; qty_por_unidad: number; hijo_unit: string; hijo_price: number }
+
 export async function getDespiecesByParents(
   parentIds: string[],
-): Promise<Record<string, Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>>> {
+): Promise<Record<string, HijoDespiece[]>> {
   if (parentIds.length === 0) return {}
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
   const { data } = await supabase
     .from('insumo_despiece')
-    .select('parent_id, qty_por_unidad, hijo:insumos!insumo_despiece_hijo_id_fkey(name, unit)')
+    .select('parent_id, qty_por_unidad, hijo:insumos!insumo_despiece_hijo_id_fkey(name, unit, current_price)')
     .eq('tenant_id', tenantId)
     .in('parent_id', parentIds)
 
-  const map: Record<string, Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>> = {}
+  const map: Record<string, HijoDespiece[]> = {}
   for (const row of (data ?? []) as unknown as Array<{
     parent_id: string
     qty_por_unidad: number
-    hijo: { name: string; unit: string } | null
+    hijo: { name: string; unit: string; current_price: number | null } | null
   }>) {
     const arr = map[row.parent_id] ?? []
     arr.push({
       hijo_name: row.hijo?.name ?? '',
       qty_por_unidad: Number(row.qty_por_unidad),
       hijo_unit: row.hijo?.unit ?? '',
+      hijo_price: Number(row.hijo?.current_price) || 0,
     })
     map[row.parent_id] = arr
   }

@@ -2671,6 +2671,16 @@ export type Database = {
       }
     }
     Views: {
+      datos_para_revisar: {
+        Row: {
+          detalle: string | null
+          nombre: string | null
+          tenant_id: string | null
+          tipo: string | null
+          valor: number | null
+        }
+        Relationships: []
+      }
       cierre_caja_productos_active: {
         Row: {
           cantidad: number | null

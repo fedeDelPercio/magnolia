@@ -1,4 +1,5 @@
-import { getProveedoresConRegla, getChequesMesSummary } from '@/features/alerts/queries'
+import { getProveedoresConRegla, getChequesMesSummary, getDatosParaRevisar } from '@/features/alerts/queries'
+import { DatosParaRevisar } from '@/features/alerts/components/datos-para-revisar'
 import { evaluatePaymentRule } from '@/features/suppliers/payment-rules'
 import { RuleAlertCard } from '@/features/alerts/components/rule-alert-card'
 import { ChequesMesCard } from '@/features/alerts/components/cheques-mes-card'
@@ -25,9 +26,10 @@ export default async function Page({ searchParams }: Props) {
   const sp = await searchParams
   const chequesMonthRef = parseMonth(sp.chequesMonth) ?? new Date()
 
-  const [proveedores, limiteCheques] = await Promise.all([
+  const [proveedores, limiteCheques, datosParaRevisar] = await Promise.all([
     getProveedoresConRegla(),
     getLimiteChequesMensual(),
+    getDatosParaRevisar(),
   ])
   const chequesSummary = await getChequesMesSummary(limiteCheques, chequesMonthRef)
 
@@ -115,6 +117,16 @@ export default async function Page({ searchParams }: Props) {
             )}
           </div>
         )}
+      </section>
+
+      <section>
+        <SectionHeader
+          eyebrow="Catálogo y stock"
+          trail={datosParaRevisar.length > 0 ? <span className="text-metric">{datosParaRevisar.length} a revisar</span> : null}
+        >
+          <span className="italic">Datos</span> para revisar
+        </SectionHeader>
+        <DatosParaRevisar datos={datosParaRevisar} />
       </section>
     </div>
   )

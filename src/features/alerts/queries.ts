@@ -188,3 +188,29 @@ export async function getIvaBalance(
     balance: ivaDebito - ivaCredito,
   }
 }
+
+// ---- Datos para revisar ---------------------------------------------------
+// Controles de integridad del catálogo y el stock (vista datos_para_revisar,
+// migración 0084): unidades de receta incompatibles, precios raros, productos
+// vendidos sin receta, costo mayor al precio y stock negativo.
+
+export type TipoRevision = 'receta_unidad' | 'precio_raro' | 'vendido_sin_receta' | 'costo_mayor_precio' | 'stock_negativo'
+
+export type DatoParaRevisar = { tipo: TipoRevision; nombre: string; detalle: string; valor: number }
+
+export async function getDatosParaRevisar(): Promise<DatoParaRevisar[]> {
+  const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
+  const { data, error } = await supabase
+    .from('datos_para_revisar')
+    .select('tipo, nombre, detalle, valor')
+    .eq('tenant_id', tenantId)
+  // Si la vista todavía no existe (migración sin aplicar) la sección no se muestra.
+  if (error) return []
+  return (data ?? []).map((d) => ({
+    tipo: d.tipo as TipoRevision,
+    nombre: d.nombre ?? '',
+    detalle: d.detalle ?? '',
+    valor: Number(d.valor) || 0,
+  }))
+}

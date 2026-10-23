@@ -12,7 +12,8 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { formatCurrency } from '@/lib/format'
 import { runWithResilience, classifyNetworkError } from '@/lib/network-resilience'
 import { UNITS, UNIT_LABELS, INSUMO_KINDS, INSUMO_KIND_LABELS, type UnitKind, type InsumoKind } from '@/features/catalog/insumos/schemas'
-import { createInsumo, getDespiecesByParents } from '@/features/catalog/insumos/actions'
+import { createInsumo, getDespiecesByParents, type HijoDespiece } from '@/features/catalog/insumos/actions'
+import { avisoPrecioSospechoso } from '../precio-sospechoso'
 import { createCompra, updateCompra } from '../actions'
 import { IVA_RATES, IVA_RATE_LABELS, type IvaRate } from '../schemas'
 import { computePricing } from '../pricing'
@@ -110,6 +111,13 @@ export function CompraDialog({
   const [newInsumoId, setNewInsumoId] = useState('')
   const [newQty, setNewQty] = useState('')
   const [newTotal, setNewTotal] = useState('')
+  // Si el insumo tiene presentación (ej. "Pack = 12 kg"), la cantidad se carga
+  // en la presentación; se puede pasar a la unidad suelta cuando se compra
+  // otra cosa (1 kg en el súper). Se vuelve a la presentación al cambiar de insumo.
+  const [enPresentacion, setEnPresentacion] = useState(true)
+  // Línea con precio sospechoso (ver precio-sospechoso.ts) que ya se avisó: el
+  // segundo intento la guarda.
+  const [sospechaAceptada, setSospechaAceptada] = useState('')
 
   // Mini-form para crear insumo inline
   const [creatingInsumo, setCreatingInsumo] = useState(false)
@@ -198,6 +206,7 @@ export function CompraDialog({
   function handleSelectInsumo(id: string | null) {
     if (!id) return
     setNewInsumoId(id)
+    setEnPresentacion(true)
     // No pre-llenamos precio porque ahora el campo es el total pagado, que
     // depende de la cantidad. La dueña sabe el total que pagó.
   }
@@ -211,11 +220,7 @@ export function CompraDialog({
     // Si el insumo tiene presentación de compra definida (ej "cajón = 10 kg"),
     // la cantidad ingresada está en cajones y la convertimos a unidad base
     // (la DB y el resto del sistema sólo entienden unidad base).
-    const factor =
-      insumo.purchase_unit_label && insumo.purchase_unit_factor
-        ? insumo.purchase_unit_factor
-        : 1
-    const qtyBase = qty * factor
+    const qtyBase = qty * factorDe(insumo)
     return {
       insumo_id: insumo.id,
       insumo_name: insumo.name,
@@ -264,6 +269,58 @@ export function CompraDialog({
     )
   }
 
+  function factorDe(insumo: InsumoOpt): number {
+    return insumo.purchase_unit_label && insumo.purchase_unit_factor && enPresentacion
+      ? Number(insumo.purchase_unit_factor)
+      : 1
+  }
+
+  // Aviso si el precio por unidad de la línea que se está cargando es 3 veces
+  // distinto al último (con despiece, el de cada pieza). Mismo criterio bruto
+  // que VariacionPrecio.
+  function avisoLineaNueva(): string | null {
+    const insumo = localInsumos.find((i) => i.id === newInsumoId)
+    const qty = parseFloat(newQty)
+    const total = parseFloat(newTotal)
+    if (!insumo || !(qty > 0) || !(total > 0)) return null
+    const qtyBase = qty * factorDe(insumo)
+    const brutoMul = (1 - descuentoPct / 100) * (1 + ivaRate / 100)
+    const conPresentacion = !!(insumo.purchase_unit_label && insumo.purchase_unit_factor)
+    if (selectedDespiece.length > 0) {
+      const sumQty = selectedDespiece.reduce((s, h) => s + h.qty_por_unidad, 0)
+      if (!(sumQty > 0)) return null
+      const porPieza = (total / (qtyBase * sumQty)) * brutoMul
+      for (const h of selectedDespiece) {
+        const aviso = avisoPrecioSospechoso({
+          nombre: h.hijo_name,
+          anterior: h.hijo_price,
+          nuevo: porPieza,
+          unidad: UNIT_LABELS[h.hijo_unit as keyof typeof UNIT_LABELS] ?? h.hijo_unit,
+          conPresentacion,
+        })
+        if (aviso) return aviso
+      }
+      return null
+    }
+    return avisoPrecioSospechoso({
+      nombre: insumo.name,
+      anterior: Number(insumo.current_price) || 0,
+      nuevo: (total / qtyBase) * brutoMul,
+      unidad: UNIT_LABELS[insumo.unit],
+      conPresentacion,
+    })
+  }
+  const claveLineaNueva = `${newInsumoId}|${newQty}|${newTotal}|${enPresentacion}`
+
+  // true = se puede seguir; false = se avisó y hay que confirmar (otro toque).
+  function confirmarPrecioLineaNueva(accion: string): boolean {
+    const aviso = avisoLineaNueva()
+    if (!aviso || sospechaAceptada === claveLineaNueva) return true
+    setSospechaAceptada(claveLineaNueva)
+    toast.warning(`${aviso} Si está bien, tocá ${accion} de nuevo.`, { duration: 15000 })
+    return false
+  }
+
   function addItem() {
     // Validacion explicita con feedback para que el user entienda que falta,
     // en lugar de un boton silencioso que no responde.
@@ -284,6 +341,7 @@ export function CompraDialog({
       document.getElementById('compra-total-input')?.focus()
       return
     }
+    if (!confirmarPrecioLineaNueva('+')) return
     const item = buildPendingItem()
     if (!item) return
     setItems((prev) => [...prev, item])
@@ -339,6 +397,7 @@ export function CompraDialog({
   }
 
   async function handleSubmit() {
+    if (pendingItem && !confirmarPrecioLineaNueva('Guardar')) return
     const allItems = pendingItem ? [...items, pendingItem] : items
     if (allItems.length === 0) {
       toast.error('Agregá al menos un ítem')
@@ -375,7 +434,7 @@ export function CompraDialog({
 
   // Despiece del insumo seleccionado (si tiene). Si tiene, el costo se reparte
   // entre las unidades hijas generadas y mostramos eso en el preview.
-  const [selectedDespiece, setSelectedDespiece] = useState<Array<{ hijo_name: string; qty_por_unidad: number; hijo_unit: string }>>([])
+  const [selectedDespiece, setSelectedDespiece] = useState<HijoDespiece[]>([])
   useEffect(() => {
     if (!newInsumoId) {
       setSelectedDespiece([])
@@ -573,11 +632,20 @@ export function CompraDialog({
               </div>
               <div className="w-20 space-y-1">
                 <label className="text-xs text-muted-foreground">
-                  Cant. {selectedInsumo
-                    ? selectedInsumo.purchase_unit_label && selectedInsumo.purchase_unit_factor
-                      ? `(${selectedInsumo.purchase_unit_label})`
-                      : `(${UNIT_LABELS[selectedInsumo.unit]})`
-                    : ''}
+                  Cant.{' '}
+                  {selectedInsumo && selectedInsumo.purchase_unit_label && selectedInsumo.purchase_unit_factor ? (
+                    // Se toca para cargar en la unidad suelta (o volver a la presentación).
+                    <button
+                      type="button"
+                      onClick={() => setEnPresentacion((v) => !v)}
+                      className="rounded underline decoration-dotted underline-offset-2 hover:text-foreground"
+                      title={`Cambiar entre ${selectedInsumo.purchase_unit_label} (${Number(selectedInsumo.purchase_unit_factor).toLocaleString('es-AR')} ${UNIT_LABELS[selectedInsumo.unit]}) y ${UNIT_LABELS[selectedInsumo.unit]}`}
+                    >
+                      ({enPresentacion ? selectedInsumo.purchase_unit_label : UNIT_LABELS[selectedInsumo.unit]})
+                    </button>
+                  ) : selectedInsumo ? (
+                    `(${UNIT_LABELS[selectedInsumo.unit]})`
+                  ) : null}
                 </label>
                 <Input
                   id="compra-qty-input"
@@ -696,10 +764,7 @@ export function CompraDialog({
             {selectedInsumo && newQty && newTotal && parseFloat(newQty) > 0 && parseFloat(newTotal) > 0 && (() => {
               const qtyInput = parseFloat(newQty)
               const total = parseFloat(newTotal)
-              const factor =
-                selectedInsumo.purchase_unit_label && selectedInsumo.purchase_unit_factor
-                  ? selectedInsumo.purchase_unit_factor
-                  : 1
+              const factor = factorDe(selectedInsumo)
               const qtyBase = qtyInput * factor
               const newUnitPrice = total / qtyBase
               const baseLabel = UNIT_LABELS[selectedInsumo.unit]
@@ -743,6 +808,14 @@ export function CompraDialog({
                       comprobante escaneado. */}
                   {!hasDespiece && <VariacionPrecio anterior={prevPrice} nuevo={newBrutoPrice} />}
                 </div>
+                {(() => {
+                  const aviso = avisoLineaNueva()
+                  return aviso ? (
+                    <p role="alert" className="text-[11px] font-medium text-red-700">
+                      {aviso} Para guardarla igual hay que confirmar.
+                    </p>
+                  ) : null
+                })()}
                 </div>
               )
             })()}
