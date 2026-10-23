@@ -397,7 +397,7 @@ export function CompraDialog({
   }
 
   async function handleSubmit() {
-    if (pendingItem && !confirmarPrecioLineaNueva('Guardar')) return
+    if (pendingItem && !confirmarPrecioLineaNueva(isEdit ? 'Guardar cambios' : 'Registrar compra')) return
     const allItems = pendingItem ? [...items, pendingItem] : items
     if (allItems.length === 0) {
       toast.error('Agregá al menos un ítem')
