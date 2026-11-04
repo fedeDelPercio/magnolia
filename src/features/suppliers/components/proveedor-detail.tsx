@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
-import { groupPriceByPeriod, groupQtyByPeriod, QTY_GROUP_LABELS, type PriceBucket, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
+import { groupCostByPeriod, groupPriceByPeriod, groupQtyByPeriod, QTY_GROUP_LABELS, type CostBucket, type PriceBucket, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
+import { computePricing } from '../pricing'
 import { VerMas, visibles } from './ver-mas'
 import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared, deletePago } from '../actions'
@@ -57,7 +58,9 @@ type Props = {
 type InsumoHistory = {
   name: string
   unit: string
-  entries: { fecha: string; unit_price: number; qty: number }[]
+  // costo = lo gastado en la línea (cantidad × precio, con descuento e IVA de
+  // la compra; misma regla que el total de la compra).
+  entries: { fecha: string; unit_price: number; qty: number; costo: number }[]
 }
 
 // Formato DD-MM-YYYY con año completo, usado en tooltips/labels del chart de
@@ -69,7 +72,8 @@ function formatDateChart(dateStr: string): string {
 }
 
 // Chart de línea genérico para series por fecha: lo usan Evolución de precios
-// (value = precio unitario) y Evolución de cantidad comprada (value = cantidad).
+// (value = precio unitario), de cantidad comprada (value = cantidad) y de costo
+// total (value = lo gastado).
 function TrendLineChart({
   entries,
   formatShort,
@@ -191,13 +195,14 @@ function buildPriceHistory(compras: CompraWithItems[]): InsumoHistory[] {
   const map = new Map<string, InsumoHistory>()
   const sorted = [...compras].sort((a, b) => a.fecha.localeCompare(b.fecha))
   for (const compra of sorted) {
-    for (const item of compra.compra_items) {
+    const lineas = computePricing(compra.compra_items, Number(compra.iva_rate) || 0, Number(compra.descuento_pct) || 0).lineas
+    compra.compra_items.forEach((item, i) => {
       const key = item.insumos.name
       if (!map.has(key)) {
         map.set(key, { name: item.insumos.name, unit: item.insumos.unit, entries: [] })
       }
-      map.get(key)!.entries.push({ fecha: compra.fecha, unit_price: item.unit_price, qty: item.qty })
-    }
+      map.get(key)!.entries.push({ fecha: compra.fecha, unit_price: item.unit_price, qty: item.qty, costo: lineas[i]?.total ?? 0 })
+    })
   }
   return Array.from(map.values())
     .filter((h) => h.entries.length > 0)
@@ -209,8 +214,8 @@ function formatQty(val: number, unit: string): string {
   return `${val.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unit}`
 }
 
-// Por compra / por semana / por mes: lo usan la evolución de precios y la de
-// cantidad comprada.
+// Por compra / por semana / por mes: lo usan las evoluciones de precios,
+// cantidad comprada y costo total.
 function AgrupadoToggle({ value, onChange }: { value: QtyGroupBy; onChange: (g: QtyGroupBy) => void }) {
   return (
     <div className="flex items-center rounded-md border p-0.5 text-xs">
@@ -293,6 +298,9 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   const [verTodosPagos, setVerTodosPagos] = useState(false)
   const [verTodoPrecio, setVerTodoPrecio] = useState(false)
   const [verTodaCantidad, setVerTodaCantidad] = useState(false)
+  const [selectedInsumoCosto, setSelectedInsumoCosto] = useState<string | null>(null)
+  const [costoGroupBy, setCostoGroupBy] = useState<QtyGroupBy>('compra')
+  const [verTodoCosto, setVerTodoCosto] = useState(false)
   const [editProveedorOpen, setEditProveedorOpen] = useState(false)
 
   function toggleExpandedCompra(id: string) {
@@ -973,6 +981,95 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                   formatShort={(v) => formatQty(v, activeHistory.unit)}
                   formatTitle={(v) => formatQty(v, activeHistory.unit)}
                   idPrefix="qtyArea"
+                />
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Evolución de costo total — lo gastado en cada insumo (cantidad × precio,
+          con descuento e IVA de la compra), por compra o sumado por semana/mes.
+          Muestra si un insumo pesa más porque subió el precio o porque se
+          compró más. */}
+      {priceHistory.length > 0 && (() => {
+        const activeHistory =
+          priceHistory.find((h) => h.name === selectedInsumoCosto) ?? priceHistory[0]!
+        const buckets: CostBucket[] =
+          costoGroupBy === 'compra'
+            ? activeHistory.entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), costo: e.costo, qty: e.qty, compras: 1 }))
+            : groupCostByPeriod(activeHistory.entries, costoGroupBy)
+        const reversed = [...buckets].reverse()
+        const totalPeriodo = buckets.reduce((sum, b) => sum + b.costo, 0)
+        return (
+          <div className="rounded-xl border bg-card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
+              <div>
+                <h2 className="text-base font-semibold">Evolución de costo total</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {costoGroupBy === 'compra'
+                    ? 'Lo gastado en cada compra, con descuento e IVA'
+                    : `Lo gastado por ${costoGroupBy === 'semana' ? 'semana' : 'mes'}, con descuento e IVA`}
+                  {' · '}Total del período: <span className="tabular-nums font-medium text-foreground">{formatCurrency(totalPeriodo)}</span>
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <AgrupadoToggle value={costoGroupBy} onChange={setCostoGroupBy} />
+                <label htmlFor="insumo-costo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Insumo
+                </label>
+                <select
+                  id="insumo-costo-select"
+                  value={activeHistory.name}
+                  onChange={(e) => setSelectedInsumoCosto(e.target.value)}
+                  className="focus-ring rounded-md border bg-background px-2.5 py-1 text-sm tabular-nums"
+                >
+                  {priceHistory.map((h) => (
+                    <option key={h.name} value={h.name}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="border-t divide-y text-sm">
+              {visibles(reversed, verTodoCosto).map((bucket, idx) => {
+                const prev = reversed[idx + 1]
+                const changePct = prev && prev.costo > 0 ? ((bucket.costo - prev.costo) / prev.costo) * 100 : null
+                return (
+                  <div key={bucket.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
+                    <span className="text-muted-foreground">
+                      {bucket.label}
+                      <span className="text-xs text-muted-foreground/70">
+                        {costoGroupBy !== 'compra' && <> · {bucket.compras} compra{bucket.compras !== 1 ? 's' : ''}</>}
+                        {' · '}{formatQty(bucket.qty, activeHistory.unit)}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-right">{formatCurrency(bucket.costo)}</span>
+                    <span className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
+                      {changePct !== null ? (
+                        <span className="flex items-center gap-0.5 text-muted-foreground">
+                          {changePct > 0 ? <TrendingUpIcon className="size-3" /> : changePct < 0 ? <TrendingDownIcon className="size-3" /> : <MinusIcon className="size-3" />}
+                          {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <VerMas total={reversed.length} abierto={verTodoCosto} onToggle={() => setVerTodoCosto((v) => !v)} />
+            {buckets.length >= 2 && (
+              <div className="border-t">
+                <TrendLineChart
+                  entries={buckets.map((b) => ({ fecha: b.fecha, value: b.costo, label: b.chartLabel }))}
+                  formatShort={(v) =>
+                    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', notation: 'compact', maximumFractionDigits: 1 }).format(v)
+                  }
+                  formatTitle={(v) => formatCurrency(v)}
+                  idPrefix="costoArea"
                 />
               </div>
             )}

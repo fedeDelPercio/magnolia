@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { groupPriceByPeriod, groupQtyByPeriod } from './qty-buckets'
+import { groupCostByPeriod, groupPriceByPeriod, groupQtyByPeriod } from './qty-buckets'
 
 describe('groupPriceByPeriod', () => {
   const entries = [
@@ -35,5 +35,26 @@ describe('groupQtyByPeriod', () => {
   it('suma la cantidad por semana', () => {
     const b = groupQtyByPeriod([{ fecha: '2026-10-05', qty: 2 }, { fecha: '2026-10-08', qty: 3 }], 'semana')
     expect(b).toEqual([expect.objectContaining({ fecha: '2026-10-05', qty: 5, compras: 2 })])
+  })
+})
+
+describe('groupCostByPeriod', () => {
+  const entries = [
+    { fecha: '2026-10-05', costo: 12100, qty: 10 },
+    { fecha: '2026-10-07', costo: 6050, qty: 5 },
+    { fecha: '2026-11-02', costo: 3000, qty: 2 },
+  ]
+
+  it('por semana: suma lo gastado y la cantidad', () => {
+    const b = groupCostByPeriod(entries, 'semana')
+    expect(b).toHaveLength(2)
+    expect(b[0]).toMatchObject({ fecha: '2026-10-05', costo: 18150, qty: 15, compras: 2 })
+    expect(b[1]).toMatchObject({ fecha: '2026-11-02', costo: 3000, qty: 2, compras: 1 })
+  })
+
+  it('por mes, ordenado', () => {
+    const b = groupCostByPeriod([...entries].reverse(), 'mes')
+    expect(b.map((x) => [x.fecha, x.costo])).toEqual([['2026-10-01', 18150], ['2026-11-01', 3000]])
+    expect(b[0]!.chartLabel).toBeTruthy()
   })
 })

@@ -1,9 +1,8 @@
 import { formatDate } from './format'
 
-// Agrupado temporal de cantidades compradas. Lo usan el módulo "Evolución de
-// cantidad comprada" del detalle de proveedor y la sección "Cantidad comprada"
-// de la ficha del insumo: mismas vistas (por compra / semana / mes), misma
-// semántica de suma.
+// Agrupado temporal de compras. Lo usan las evoluciones del detalle de
+// proveedor (precios, cantidad comprada, costo total) y la sección "Cantidad
+// comprada" de la ficha del insumo: mismas vistas (por compra / semana / mes).
 
 export type QtyGroupBy = 'compra' | 'semana' | 'mes'
 
@@ -116,4 +115,25 @@ export function groupPriceByPeriod(
   return Array.from(map.values())
     .map(({ bucket, monto, qty, suma }) => ({ ...bucket, precio: qty > 0 ? monto / qty : suma / bucket.compras }))
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
+}
+
+export type CostBucket = {
+  fecha: string
+  label: string
+  chartLabel?: string | undefined
+  // Lo gastado en el insumo: cantidad × precio, con descuento e IVA de la compra.
+  costo: number
+  qty: number
+  compras: number
+}
+
+// Costo total por semana o mes: suma lo gastado y la cantidad del período.
+// Devuelve buckets ascendentes.
+export function groupCostByPeriod(
+  entries: { fecha: string; costo: number; qty: number }[],
+  groupBy: 'semana' | 'mes',
+): CostBucket[] {
+  const qty = groupQtyByPeriod(entries, groupBy)
+  const costo = new Map(groupQtyByPeriod(entries.map((e) => ({ fecha: e.fecha, qty: e.costo })), groupBy).map((b) => [b.fecha, b.qty]))
+  return qty.map((b) => ({ ...b, costo: costo.get(b.fecha) ?? 0 }))
 }
