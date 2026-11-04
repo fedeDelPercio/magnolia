@@ -214,6 +214,16 @@ function formatQty(val: number, unit: string): string {
   return `${val.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unit}`
 }
 
+// Etiqueta corta del gráfico de costo total ("$ 35,4 mil", "$ 1,2 M"). Sin
+// notation:'compact' de Intl: el server y el navegador lo formatean distinto
+// ("$6 K" vs "$6,0 K") y rompe la hidratación.
+function formatPesosCorto(v: number): string {
+  const corto = (n: number) => n.toFixed(1).replace(/\.0$/, '').replace('.', ',')
+  if (Math.abs(v) >= 1_000_000) return `$ ${corto(v / 1_000_000)} M`
+  if (Math.abs(v) >= 1_000) return `$ ${corto(v / 1_000)} mil`
+  return `$ ${Math.round(v)}`
+}
+
 // Por compra / por semana / por mes: lo usan las evoluciones de precios,
 // cantidad comprada y costo total.
 function AgrupadoToggle({ value, onChange }: { value: QtyGroupBy; onChange: (g: QtyGroupBy) => void }) {
@@ -1065,9 +1075,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
               <div className="border-t">
                 <TrendLineChart
                   entries={buckets.map((b) => ({ fecha: b.fecha, value: b.costo, label: b.chartLabel }))}
-                  formatShort={(v) =>
-                    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', notation: 'compact', maximumFractionDigits: 1 }).format(v)
-                  }
+                  formatShort={formatPesosCorto}
                   formatTitle={(v) => formatCurrency(v)}
                   idPrefix="costoArea"
                 />
