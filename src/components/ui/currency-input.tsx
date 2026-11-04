@@ -25,10 +25,8 @@ function formatES(raw: string, decimals: number): string {
   })
 }
 
-// Display mientras el campo esta enfocado: agrupa los miles del entero en vivo
-// (12345 -> "12.345") y preserva la coma decimal y los decimales que se van
-// tipeando (raw "12345.6" -> "12.345,6", raw "12345." -> "12.345,"). Sigue
-// derivandose del value normalizado, sin estado local.
+// Display al enfocar: agrupa los miles del entero (12345 -> "12.345") y
+// muestra la coma decimal (raw "12345.6" -> "12.345,6").
 function groupFocused(raw: string): string {
   if (raw === '' || raw === '-') return raw
   const [intPart = '', decPart] = raw.split('.')
@@ -37,6 +35,21 @@ function groupFocused(raw: string): string {
       ? intPart
       : Number(intPart).toLocaleString('es-AR', { maximumFractionDigits: 0 })
   return raw.includes('.') ? `${grouped},${decPart ?? ''}` : grouped
+}
+
+// Lo que se ve y lo que se guarda mientras se tipea. Antes el texto se
+// rearmaba desde el valor y un punto tipeado a mano se volvía coma decimal:
+// "15." se mostraba "15," y al seguir con "000" quedaba $15. Ahora:
+// - solo dígitos, o puntos seguidos de 3 dígitos ("15.000", el agrupado en
+//   vivo + más dígitos "12.3456"): son miles; se reagrupa en vivo;
+// - con coma, o un punto con 1 o 2 decimales ("15.5"): se muestra tal cual se
+//   tipeó y se guarda normalizado.
+export function interpretarTecleo(raw: string): { valor: string; texto: string } {
+  if (/^\d+$/.test(raw) || /^\d{1,3}(\.\d{3})+\d*$/.test(raw)) {
+    const valor = raw.replace(/\./g, '')
+    return { valor, texto: groupFocused(valor) }
+  }
+  return { valor: normalize(raw), texto: raw }
 }
 
 // Quita separadores de miles (.) y normaliza coma decimal a punto. Tolera
@@ -70,7 +83,10 @@ export function CurrencyInput({
   onPointerDown,
   ...rest
 }: Props) {
-  const [focused, setFocused] = React.useState(false)
+  // Mientras está enfocado: lo que se ve y el valor que se emitió con eso. Si
+  // el valor cambia desde afuera (otro campo lo recalcula), se muestra el nuevo.
+  const [edicion, setEdicion] = React.useState<{ texto: string; valor: string } | null>(null)
+  const focused = edicion !== null
   // El foco vino de un clic con el mouse (no de Tab): ahí se respeta dónde se hizo clic.
   const porPuntero = React.useRef(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -87,7 +103,11 @@ export function CurrencyInput({
     }
   }, [focused])
 
-  const display = focused ? groupFocused(value) : formatES(value, decimals)
+  const display = edicion
+    ? edicion.valor === value
+      ? edicion.texto
+      : groupFocused(value)
+    : formatES(value, decimals)
 
   return (
     <Input
@@ -98,12 +118,14 @@ export function CurrencyInput({
       onChange={(e) => {
         const raw = e.target.value
         if (!ALLOWED_KEYS.test(raw)) return
-        onValueChange(normalize(raw))
+        const t = interpretarTecleo(raw)
+        setEdicion(t)
+        onValueChange(t.valor)
       }}
       onFocus={(e) => {
         seleccionarRef.current = !porPuntero.current
         porPuntero.current = false
-        setFocused(true)
+        setEdicion({ texto: groupFocused(value), valor: value })
         onFocus?.(e)
       }}
       onPointerDown={(e) => {
@@ -113,7 +135,7 @@ export function CurrencyInput({
         onPointerDown?.(e)
       }}
       onBlur={(e) => {
-        setFocused(false)
+        setEdicion(null)
         porPuntero.current = false
         onBlur?.(e)
       }}

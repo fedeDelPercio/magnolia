@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
-import { groupQtyByPeriod, QTY_GROUP_LABELS, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
+import { groupPriceByPeriod, groupQtyByPeriod, QTY_GROUP_LABELS, type PriceBucket, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
+import { VerMas, visibles } from './ver-mas'
 import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared, deletePago } from '../actions'
 import { CompraDialog } from './compra-dialog'
@@ -208,6 +209,28 @@ function formatQty(val: number, unit: string): string {
   return `${val.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unit}`
 }
 
+// Por compra / por semana / por mes: lo usan la evolución de precios y la de
+// cantidad comprada.
+function AgrupadoToggle({ value, onChange }: { value: QtyGroupBy; onChange: (g: QtyGroupBy) => void }) {
+  return (
+    <div className="flex items-center rounded-md border p-0.5 text-xs">
+      {(Object.keys(QTY_GROUP_LABELS) as QtyGroupBy[]).map((g) => (
+        <button
+          key={g}
+          type="button"
+          onClick={() => onChange(g)}
+          aria-pressed={value === g}
+          className={`focus-ring rounded px-2 py-1 transition-colors ${
+            value === g ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {QTY_GROUP_LABELS[g]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boolean }) {
   const [busy, setBusy] = useState(false)
   async function handleClick() {
@@ -264,6 +287,12 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   const [selectedInsumo, setSelectedInsumo] = useState<string | null>(null)
   const [selectedInsumoQty, setSelectedInsumoQty] = useState<string | null>(null)
   const [qtyGroupBy, setQtyGroupBy] = useState<QtyGroupBy>('compra')
+  const [priceGroupBy, setPriceGroupBy] = useState<QtyGroupBy>('compra')
+  // Listas con las últimas 10 y "Ver más" (ver-mas.tsx).
+  const [verTodasCompras, setVerTodasCompras] = useState(false)
+  const [verTodosPagos, setVerTodosPagos] = useState(false)
+  const [verTodoPrecio, setVerTodoPrecio] = useState(false)
+  const [verTodaCantidad, setVerTodaCantidad] = useState(false)
   const [editProveedorOpen, setEditProveedorOpen] = useState(false)
 
   function toggleExpandedCompra(id: string) {
@@ -557,7 +586,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
           </div>
         ) : (
           <div className="border-t divide-y text-sm">
-            {comprasFiltradas.map((c) => {
+            {visibles(comprasFiltradas, verTodasCompras).map((c) => {
               const isExpanded = expandedCompras.has(c.id)
               const itemCount = c.compra_items.length
               return (
@@ -682,6 +711,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
             })}
           </div>
         )}
+        <VerMas total={comprasFiltradas.length} abierto={verTodasCompras} onToggle={() => setVerTodasCompras((v) => !v)} />
       </div>
 
       {/* Pagos */}
@@ -698,7 +728,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
           </div>
         ) : (
           <div className="border-t divide-y text-sm">
-            {pagos.map((p) => {
+            {visibles(pagos, verTodosPagos).map((p) => {
               const chequePending = p.metodo === 'cheque' && !p.cleared_at
               const metodoTone =
                 p.metodo === 'cheque'
@@ -776,20 +806,33 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
             })}
           </div>
         )}
+        <VerMas total={pagos.length} abierto={verTodosPagos} onToggle={() => setVerTodosPagos((v) => !v)} />
       </div>
 
-      {/* Evolución de precios — un insumo por vez para evitar listas larguísimas */}
+      {/* Evolución de precios — un insumo por vez, agrupable por semana o mes
+          igual que la cantidad comprada (precio promedio ponderado por cantidad). */}
       {priceHistory.length > 0 && (() => {
         // Default: primer insumo alfabético si no hay selección o la seleccionada ya no está en el rango.
         const activeHistory =
           priceHistory.find((h) => h.name === selectedInsumo) ?? priceHistory[0]!
-        const entries = activeHistory.entries
-        const reversed = [...entries].reverse()
+        const buckets: PriceBucket[] =
+          priceGroupBy === 'compra'
+            ? activeHistory.entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), precio: e.unit_price, compras: 1 }))
+            : groupPriceByPeriod(activeHistory.entries, priceGroupBy)
+        const reversed = [...buckets].reverse()
         return (
           <div className="rounded-xl border bg-card overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
-              <h2 className="text-base font-semibold">Evolución de precios</h2>
-              <div className="flex items-center gap-2">
+              <div>
+                <h2 className="text-base font-semibold">Evolución de precios</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {priceGroupBy === 'compra'
+                    ? 'Precio por unidad en cada compra del período'
+                    : `Precio promedio por ${priceGroupBy === 'semana' ? 'semana' : 'mes'}, ponderado por la cantidad comprada`}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <AgrupadoToggle value={priceGroupBy} onChange={setPriceGroupBy} />
                 <label htmlFor="insumo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
                   Insumo
                 </label>
@@ -808,14 +851,20 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
               </div>
             </div>
             <div className="border-t divide-y text-sm">
-              {reversed.map((entry, idx, arr) => {
-                const prev = arr[idx + 1]
-                const changePct = prev ? ((entry.unit_price - prev.unit_price) / prev.unit_price) * 100 : null
+              {visibles(reversed, verTodoPrecio).map((bucket, idx) => {
+                // La variación es contra el anterior de la lista completa (la fila 10 también la tiene).
+                const prev = reversed[idx + 1]
+                const changePct = prev && prev.precio > 0 ? ((bucket.precio - prev.precio) / prev.precio) * 100 : null
                 const isLarge = changePct !== null && changePct >= 20
                 return (
-                  <div key={entry.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
-                    <span className="text-muted-foreground">{formatDate(entry.fecha)}</span>
-                    <span className="tabular-nums text-right">{formatCurrency(entry.unit_price)} / {activeHistory.unit}</span>
+                  <div key={bucket.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
+                    <span className="text-muted-foreground">
+                      {bucket.label}
+                      {priceGroupBy !== 'compra' && (
+                        <span className="text-xs text-muted-foreground/70"> · {bucket.compras} compra{bucket.compras !== 1 ? 's' : ''}</span>
+                      )}
+                    </span>
+                    <span className="tabular-nums text-right">{formatCurrency(bucket.precio)} / {activeHistory.unit}</span>
                     <span className="flex items-center justify-end gap-0.5 text-xs tabular-nums">
                       {changePct !== null ? (
                         <span className={`flex items-center gap-0.5 ${isLarge ? 'font-semibold text-rose-700' : changePct > 0 ? 'text-muted-foreground' : changePct < 0 ? 'text-primary' : 'text-muted-foreground'}`}>
@@ -831,10 +880,11 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 )
               })}
             </div>
-            {entries.length >= 2 && (
+            <VerMas total={reversed.length} abierto={verTodoPrecio} onToggle={() => setVerTodoPrecio((v) => !v)} />
+            {buckets.length >= 2 && (
               <div className="border-t">
                 <TrendLineChart
-                  entries={entries.map((e) => ({ fecha: e.fecha, value: e.unit_price }))}
+                  entries={buckets.map((b) => ({ fecha: b.fecha, value: b.precio, label: b.chartLabel }))}
                   formatShort={(v) =>
                     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v)
                   }
@@ -870,20 +920,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center rounded-md border p-0.5 text-xs">
-                  {(Object.keys(QTY_GROUP_LABELS) as QtyGroupBy[]).map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setQtyGroupBy(g)}
-                      className={`focus-ring rounded px-2 py-1 transition-colors ${
-                        qtyGroupBy === g ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {QTY_GROUP_LABELS[g]}
-                    </button>
-                  ))}
-                </div>
+                <AgrupadoToggle value={qtyGroupBy} onChange={setQtyGroupBy} />
                 <label htmlFor="insumo-qty-select" className="text-xs uppercase tracking-wider text-muted-foreground">
                   Insumo
                 </label>
@@ -902,8 +939,8 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
               </div>
             </div>
             <div className="border-t divide-y text-sm">
-              {reversed.map((bucket, idx, arr) => {
-                const prev = arr[idx + 1]
+              {visibles(reversed, verTodaCantidad).map((bucket, idx) => {
+                const prev = reversed[idx + 1]
                 const changePct = prev && prev.qty > 0 ? ((bucket.qty - prev.qty) / prev.qty) * 100 : null
                 return (
                   <div key={bucket.fecha + idx} className="grid grid-cols-[1fr_auto_120px] items-center gap-3 px-5 py-2">
@@ -928,6 +965,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 )
               })}
             </div>
+            <VerMas total={reversed.length} abierto={verTodaCantidad} onToggle={() => setVerTodaCantidad((v) => !v)} />
             {buckets.length >= 2 && (
               <div className="border-t">
                 <TrendLineChart

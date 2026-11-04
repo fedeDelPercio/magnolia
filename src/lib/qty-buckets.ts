@@ -71,3 +71,49 @@ export function groupQtyByPeriod(
   }
   return Array.from(map.values()).sort((a, b) => a.fecha.localeCompare(b.fecha))
 }
+
+export type PriceBucket = {
+  fecha: string
+  label: string
+  chartLabel?: string | undefined
+  // Precio por unidad: el de la compra, o el promedio del período ponderado por
+  // la cantidad comprada (una compra chica cara no pesa igual que una grande).
+  precio: number
+  compras: number
+}
+
+// Precio promedio por semana o mes, ponderado por cantidad. Si en el período
+// no hay cantidades (> 0), promedio simple. Devuelve buckets ascendentes.
+export function groupPriceByPeriod(
+  entries: { fecha: string; unit_price: number; qty: number }[],
+  groupBy: 'semana' | 'mes',
+): PriceBucket[] {
+  const map = new Map<string, { bucket: PriceBucket; monto: number; qty: number; suma: number }>()
+  for (const e of entries) {
+    const start = groupBy === 'semana' ? weekStartISO(e.fecha) : `${e.fecha.slice(0, 7)}-01`
+    const qty = e.qty > 0 ? e.qty : 0
+    const acc = map.get(start)
+    if (acc) {
+      acc.monto += e.unit_price * qty
+      acc.qty += qty
+      acc.suma += e.unit_price
+      acc.bucket.compras += 1
+    } else {
+      map.set(start, {
+        bucket: {
+          fecha: start,
+          label: groupBy === 'semana' ? `Semana del ${formatDate(start)}` : monthLabel(start),
+          chartLabel: groupBy === 'mes' ? monthShortLabel(start) : undefined,
+          precio: 0,
+          compras: 1,
+        },
+        monto: e.unit_price * qty,
+        qty,
+        suma: e.unit_price,
+      })
+    }
+  }
+  return Array.from(map.values())
+    .map(({ bucket, monto, qty, suma }) => ({ ...bucket, precio: qty > 0 ? monto / qty : suma / bucket.compras }))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+}

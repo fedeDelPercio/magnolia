@@ -34,6 +34,7 @@ import { PagoServicioDialog } from './pago-servicio-dialog'
 import { SaldarPagoServicioDialog } from './saldar-pago-servicio-dialog'
 import { ConceptoServicioDialog } from './concepto-servicio-dialog'
 import { ProveedorDialog } from './proveedor-dialog'
+import { VerMas, visibles } from './ver-mas'
 import type { SaldoProveedor, ConceptoServicio, PagoServicio } from '../queries'
 import type { Tables } from '@/types/database'
 import { hoyISO } from '@/lib/fecha'
@@ -93,6 +94,8 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
   }>({ open: false, editing: null })
   const [pagoDialog, setPagoDialog] = useState(false)
   const [saldarPago, setSaldarPago] = useState<PagoServicio | null>(null)
+  // Pendientes siempre a la vista; de los pagados, los últimos 10 (ver-mas.tsx).
+  const [verTodosPagados, setVerTodosPagados] = useState(false)
 
   // Pendientes = facturas cargadas sin pagar. Van arriba de todo y ordenadas
   // por vencimiento (las sin vencimiento al final) porque son las accionables.
@@ -361,7 +364,7 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
           ) : (
             <div className="divide-y text-sm">
               {/* Pendientes primero: son los que piden acción. */}
-              {[...pendientes, ...pagados].map((p) => {
+              {[...pendientes, ...visibles(pagados, verTodosPagados)].map((p) => {
                 const esPendiente = p.estado === 'pendiente'
                 const vencida = esPendiente && !!p.vencimiento && p.vencimiento < hoy
                 return (
@@ -426,6 +429,12 @@ export function ProveedorServicioDetail({ proveedor, conceptos, pagos }: Props) 
               })}
             </div>
           )}
+          <VerMas
+            total={pagados.length}
+            abierto={verTodosPagados}
+            onToggle={() => setVerTodosPagados((v) => !v)}
+            className="border-t pt-2.5"
+          />
         </div>
       </div>
 
