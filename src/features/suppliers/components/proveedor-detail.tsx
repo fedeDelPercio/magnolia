@@ -1166,7 +1166,18 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                     id="dist-periodo-select"
                     options={[
                       { value: DIST_TODO, label: 'Todo el período' },
-                      ...periodosDist.map((p) => ({ value: p.key, label: `${p.label} · ${formatCurrency(p.total)}` })),
+                      // Etiquetas cortas (el total del período está en la fila de
+                      // resumen); por compra va el monto para distinguir compras
+                      // del mismo día.
+                      ...periodosDist.map((p) => ({
+                        value: p.key,
+                        label:
+                          distGroupBy === 'compra'
+                            ? `${formatDateShort(p.fecha)} · ${formatCurrency(p.total)}`
+                            : distGroupBy === 'semana'
+                              ? `Semana del ${formatDateShort(p.fecha)}`
+                              : p.label,
+                      })),
                     ]}
                     value={esTodo ? DIST_TODO : periodo.key}
                     onValueChange={(v) => {
