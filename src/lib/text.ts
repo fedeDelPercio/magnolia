@@ -15,3 +15,13 @@ export function normalizeSearch(s: string): string {
 export function matchesSearch(haystack: string, needle: string): boolean {
   return normalizeSearch(haystack).includes(normalizeSearch(needle))
 }
+
+// Como matchesSearch, pero por palabras y en cualquier orden: "proveedor total"
+// encuentra "Total proveedor" y "pollo pechuga" encuentra "Pechuga de pollo".
+// Lo usa el SearchableSelect.
+export function matchesAllWords(haystack: string, needle: string): boolean {
+  const h = normalizeSearch(haystack)
+  return normalizeSearch(needle)
+    .split(/\s+/)
+    .every((palabra) => h.includes(palabra))
+}

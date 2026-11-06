@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { groupCostByPeriod, groupPriceByPeriod, groupQtyByPeriod, QTY_GROUP_LABELS, type CostBucket, type PriceBucket, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
 import { computePricing } from '../pricing'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { VerMas, visibles } from './ver-mas'
 import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared, deletePago } from '../actions'
@@ -213,6 +214,10 @@ function buildPriceHistory(compras: CompraWithItems[]): InsumoHistory[] {
 function formatQty(val: number, unit: string): string {
   return `${val.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unit}`
 }
+
+// Opción del selector de costo total que suma todo lo comprado al proveedor
+// (no un insumo). Valor centinela: no choca con nombres de insumos.
+const TOTAL_PROVEEDOR = '__total_proveedor__'
 
 // Etiqueta corta del gráfico de costo total ("$ 35,4 mil", "$ 1,2 M"). Sin
 // notation:'compact' de Intl: el server y el navegador lo formatean distinto
@@ -854,18 +859,15 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 <label htmlFor="insumo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
                   Insumo
                 </label>
-                <select
+                <SearchableSelect
                   id="insumo-select"
+                  options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
                   value={activeHistory.name}
-                  onChange={(e) => setSelectedInsumo(e.target.value)}
-                  className="focus-ring rounded-md border bg-background px-2.5 py-1 text-sm tabular-nums"
-                >
-                  {priceHistory.map((h) => (
-                    <option key={h.name} value={h.name}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(v) => v && setSelectedInsumo(v)}
+                  placeholder="Buscá un insumo"
+                  className="w-56"
+                  triggerClassName="h-8"
+                />
               </div>
             </div>
             <div className="border-t divide-y text-sm">
@@ -942,18 +944,15 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 <label htmlFor="insumo-qty-select" className="text-xs uppercase tracking-wider text-muted-foreground">
                   Insumo
                 </label>
-                <select
+                <SearchableSelect
                   id="insumo-qty-select"
+                  options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
                   value={activeHistory.name}
-                  onChange={(e) => setSelectedInsumoQty(e.target.value)}
-                  className="focus-ring rounded-md border bg-background px-2.5 py-1 text-sm tabular-nums"
-                >
-                  {priceHistory.map((h) => (
-                    <option key={h.name} value={h.name}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(v) => v && setSelectedInsumoQty(v)}
+                  placeholder="Buscá un insumo"
+                  className="w-56"
+                  triggerClassName="h-8"
+                />
               </div>
             </div>
             <div className="border-t divide-y text-sm">
@@ -998,48 +997,60 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
         )
       })()}
 
-      {/* Evolución de costo total — lo gastado en cada insumo (cantidad × precio,
-          con descuento e IVA de la compra), por compra o sumado por semana/mes.
-          Muestra si un insumo pesa más porque subió el precio o porque se
-          compró más. */}
-      {priceHistory.length > 0 && (() => {
-        const activeHistory =
-          priceHistory.find((h) => h.name === selectedInsumoCosto) ?? priceHistory[0]!
+      {/* Evolución de costo total — por defecto "Total proveedor" (el total de
+          cada compra: lo mismo que suma la tarjeta "Total compras"); o un
+          insumo: lo gastado en él (cantidad × precio, con descuento e IVA de la
+          compra). Por compra o sumado por semana/mes. */}
+      {comprasFiltradas.length > 0 && (() => {
+        const insumoElegido =
+          selectedInsumoCosto === null ? undefined : priceHistory.find((h) => h.name === selectedInsumoCosto)
+        // Si el insumo elegido ya no tiene compras en el rango, vuelve al total.
+        const esTotal = insumoElegido === undefined
+        const entries = esTotal
+          ? [...comprasFiltradas]
+              .sort((a, b) => a.fecha.localeCompare(b.fecha))
+              .map((c) => ({ fecha: c.fecha, costo: Number(c.total) || 0, qty: c.compra_items.length }))
+          : insumoElegido.entries
         const buckets: CostBucket[] =
           costoGroupBy === 'compra'
-            ? activeHistory.entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), costo: e.costo, qty: e.qty, compras: 1 }))
-            : groupCostByPeriod(activeHistory.entries, costoGroupBy)
+            ? entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), costo: e.costo, qty: e.qty, compras: 1 }))
+            : groupCostByPeriod(entries, costoGroupBy)
         const reversed = [...buckets].reverse()
         const totalPeriodo = buckets.reduce((sum, b) => sum + b.costo, 0)
+        const periodo = costoGroupBy === 'semana' ? 'semana' : 'mes'
         return (
           <div className="rounded-xl border bg-card overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
               <div>
                 <h2 className="text-base font-semibold">Evolución de costo total</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {costoGroupBy === 'compra'
-                    ? 'Lo gastado en cada compra, con descuento e IVA'
-                    : `Lo gastado por ${costoGroupBy === 'semana' ? 'semana' : 'mes'}, con descuento e IVA`}
+                  {esTotal
+                    ? costoGroupBy === 'compra'
+                      ? 'Todo lo comprado al proveedor, compra por compra (con descuento, IVA y percepciones)'
+                      : `Todo lo comprado al proveedor por ${periodo} (con descuento, IVA y percepciones)`
+                    : costoGroupBy === 'compra'
+                      ? 'Lo gastado en cada compra, con descuento e IVA'
+                      : `Lo gastado por ${periodo}, con descuento e IVA`}
                   {' · '}Total del período: <span className="tabular-nums font-medium text-foreground">{formatCurrency(totalPeriodo)}</span>
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <AgrupadoToggle value={costoGroupBy} onChange={setCostoGroupBy} />
                 <label htmlFor="insumo-costo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Insumo
+                  Ver
                 </label>
-                <select
+                <SearchableSelect
                   id="insumo-costo-select"
-                  value={activeHistory.name}
-                  onChange={(e) => setSelectedInsumoCosto(e.target.value)}
-                  className="focus-ring rounded-md border bg-background px-2.5 py-1 text-sm tabular-nums"
-                >
-                  {priceHistory.map((h) => (
-                    <option key={h.name} value={h.name}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: TOTAL_PROVEEDOR, label: 'Total proveedor' },
+                    ...priceHistory.map((h) => ({ value: h.name, label: h.name })),
+                  ]}
+                  value={esTotal ? TOTAL_PROVEEDOR : insumoElegido.name}
+                  onValueChange={(v) => v && setSelectedInsumoCosto(v === TOTAL_PROVEEDOR ? null : v)}
+                  placeholder="Total proveedor o un insumo"
+                  className="w-56"
+                  triggerClassName="h-8"
+                />
               </div>
             </div>
             <div className="border-t divide-y text-sm">
@@ -1052,7 +1063,9 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                       {bucket.label}
                       <span className="text-xs text-muted-foreground/70">
                         {costoGroupBy !== 'compra' && <> · {bucket.compras} compra{bucket.compras !== 1 ? 's' : ''}</>}
-                        {' · '}{formatQty(bucket.qty, activeHistory.unit)}
+                        {esTotal
+                          ? costoGroupBy === 'compra' && bucket.qty > 0 && <> · {bucket.qty} insumo{bucket.qty !== 1 ? 's' : ''}</>
+                          : <> · {formatQty(bucket.qty, insumoElegido.unit)}</>}
                       </span>
                     </span>
                     <span className="tabular-nums text-right">{formatCurrency(bucket.costo)}</span>
