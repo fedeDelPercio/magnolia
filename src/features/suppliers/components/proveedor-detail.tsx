@@ -856,18 +856,21 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <AgrupadoToggle value={priceGroupBy} onChange={setPriceGroupBy} />
-                <label htmlFor="insumo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Insumo
-                </label>
-                <SearchableSelect
-                  id="insumo-select"
-                  options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
-                  value={activeHistory.name}
-                  onValueChange={(v) => v && setSelectedInsumo(v)}
-                  placeholder="Buscá un insumo"
-                  className="w-56"
-                  triggerClassName="h-8"
-                />
+                {/* label + campo juntos: en celular bajan de línea como una unidad */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="insumo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Insumo
+                  </label>
+                  <SearchableSelect
+                    id="insumo-select"
+                    options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
+                    value={activeHistory.name}
+                    onValueChange={(v) => v && setSelectedInsumo(v)}
+                    placeholder="Buscá un insumo"
+                    className="w-56"
+                    triggerClassName="h-8"
+                  />
+                </div>
               </div>
             </div>
             <div className="border-t divide-y text-sm">
@@ -941,18 +944,21 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <AgrupadoToggle value={qtyGroupBy} onChange={setQtyGroupBy} />
-                <label htmlFor="insumo-qty-select" className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Insumo
-                </label>
-                <SearchableSelect
-                  id="insumo-qty-select"
-                  options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
-                  value={activeHistory.name}
-                  onValueChange={(v) => v && setSelectedInsumoQty(v)}
-                  placeholder="Buscá un insumo"
-                  className="w-56"
-                  triggerClassName="h-8"
-                />
+                {/* label + campo juntos: en celular bajan de línea como una unidad */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="insumo-qty-select" className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Insumo
+                  </label>
+                  <SearchableSelect
+                    id="insumo-qty-select"
+                    options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
+                    value={activeHistory.name}
+                    onValueChange={(v) => v && setSelectedInsumoQty(v)}
+                    placeholder="Buscá un insumo"
+                    className="w-56"
+                    triggerClassName="h-8"
+                  />
+                </div>
               </div>
             </div>
             <div className="border-t divide-y text-sm">
@@ -1036,21 +1042,24 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <AgrupadoToggle value={costoGroupBy} onChange={setCostoGroupBy} />
-                <label htmlFor="insumo-costo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Ver
-                </label>
-                <SearchableSelect
-                  id="insumo-costo-select"
-                  options={[
-                    { value: TOTAL_PROVEEDOR, label: 'Total proveedor' },
-                    ...priceHistory.map((h) => ({ value: h.name, label: h.name })),
-                  ]}
-                  value={esTotal ? TOTAL_PROVEEDOR : insumoElegido.name}
-                  onValueChange={(v) => v && setSelectedInsumoCosto(v === TOTAL_PROVEEDOR ? null : v)}
-                  placeholder="Total proveedor o un insumo"
-                  className="w-56"
-                  triggerClassName="h-8"
-                />
+                {/* label + campo juntos: en celular bajan de línea como una unidad */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="insumo-costo-select" className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Ver
+                  </label>
+                  <SearchableSelect
+                    id="insumo-costo-select"
+                    options={[
+                      { value: TOTAL_PROVEEDOR, label: 'Total proveedor' },
+                      ...priceHistory.map((h) => ({ value: h.name, label: h.name })),
+                    ]}
+                    value={esTotal ? TOTAL_PROVEEDOR : insumoElegido.name}
+                    onValueChange={(v) => v && setSelectedInsumoCosto(v === TOTAL_PROVEEDOR ? null : v)}
+                    placeholder="Total proveedor o un insumo"
+                    className="w-56"
+                    triggerClassName="h-8"
+                  />
+                </div>
               </div>
             </div>
             <div className="border-t divide-y text-sm">
