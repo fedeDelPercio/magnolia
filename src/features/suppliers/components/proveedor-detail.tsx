@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeftIcon, ChevronDownIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, PencilIcon, TrashIcon, CheckCircleIcon, MoreHorizontalIcon, AlertTriangleIcon, CameraIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon, PencilIcon, TrashIcon, CheckCircleIcon, MoreHorizontalIcon, AlertTriangleIcon, CameraIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +12,7 @@ import { formatCurrency, formatDate, formatDateShort } from '@/lib/format'
 import { groupCostByPeriod, groupPriceByPeriod, groupQtyByPeriod, QTY_GROUP_LABELS, type CostBucket, type PriceBucket, type QtyBucket, type QtyGroupBy } from '@/lib/qty-buckets'
 import { computePricing } from '../pricing'
 import { SearchableSelect } from '@/components/ui/searchable-select'
+import { distribucionDelRango, distribucionPorPeriodo } from '../distribucion-costo'
 import { VerMas, visibles } from './ver-mas'
 import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared, deletePago } from '../actions'
@@ -218,6 +219,8 @@ function formatQty(val: number, unit: string): string {
 // Opción del selector de costo total que suma todo lo comprado al proveedor
 // (no un insumo). Valor centinela: no choca con nombres de insumos.
 const TOTAL_PROVEEDOR = '__total_proveedor__'
+// Opción "Todo el período" del selector de la distribución del costo.
+const DIST_TODO = '__todo__'
 
 // Etiqueta corta del gráfico de costo total ("$ 35,4 mil", "$ 1,2 M"). Sin
 // notation:'compact' de Intl: el server y el navegador lo formatean distinto
@@ -316,6 +319,10 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   const [selectedInsumoCosto, setSelectedInsumoCosto] = useState<string | null>(null)
   const [costoGroupBy, setCostoGroupBy] = useState<QtyGroupBy>('compra')
   const [verTodoCosto, setVerTodoCosto] = useState(false)
+  const [distGroupBy, setDistGroupBy] = useState<QtyGroupBy>('mes')
+  // null = el período más reciente.
+  const [distPeriodo, setDistPeriodo] = useState<string | null>(null)
+  const [verTodaDist, setVerTodaDist] = useState(false)
   const [editProveedorOpen, setEditProveedorOpen] = useState(false)
 
   function toggleExpandedCompra(id: string) {
@@ -478,6 +485,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
     [compras, from, to],
   )
   const priceHistory = useMemo(() => buildPriceHistory(comprasFiltradas), [comprasFiltradas])
+  const periodosDist = useMemo(() => distribucionPorPeriodo(comprasFiltradas, distGroupBy), [comprasFiltradas, distGroupBy])
 
   return (
     <div className="space-y-6">
@@ -1103,6 +1111,129 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 />
               </div>
             )}
+          </div>
+        )
+      })()}
+
+      {/* Distribución del costo — en qué insumos se fue lo comprado en una
+          compra, semana o mes (por defecto el más reciente), de mayor a menor.
+          Barras horizontales de un solo tono sobre la misma base: comparan
+          mejor que una torta. Suma el total de las compras (percepciones y
+          cargas sin detalle incluidas; ver distribucion-costo.ts). */}
+      {periodosDist.length > 0 && (() => {
+        const esTodo = distPeriodo === DIST_TODO
+        const actual = esTodo ? -1 : Math.max(0, periodosDist.findIndex((p) => p.key === distPeriodo))
+        const periodo = esTodo ? distribucionDelRango(comprasFiltradas) : periodosDist[actual]!
+        const sumaFilas = periodo.filas.reduce((sum, f) => sum + f.costo, 0) || 1
+        const nInsumos = periodo.filas.filter((f) => f.tipo === 'insumo').length
+        const pctTexto = (v: number) => `${v.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+        const irA = (i: number) => {
+          setDistPeriodo(periodosDist[i]!.key)
+          setVerTodaDist(false)
+        }
+        return (
+          <div className="rounded-xl border bg-card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
+              <div>
+                <h2 className="text-base font-semibold">Distribución del costo</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Qué insumos componen lo comprado, de mayor a menor (con descuento e IVA)
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <AgrupadoToggle
+                  value={distGroupBy}
+                  onChange={(g) => {
+                    setDistGroupBy(g)
+                    setDistPeriodo(null)
+                    setVerTodaDist(false)
+                  }}
+                />
+                <div className="flex items-center gap-1">
+                  <label htmlFor="dist-periodo-select" className="sr-only">
+                    Período
+                  </label>
+                  <button
+                    type="button"
+                    aria-label="Período anterior"
+                    disabled={esTodo || actual >= periodosDist.length - 1}
+                    onClick={() => irA(actual + 1)}
+                    className="focus-ring rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <ChevronLeftIcon className="size-4" />
+                  </button>
+                  <SearchableSelect
+                    id="dist-periodo-select"
+                    options={[
+                      { value: DIST_TODO, label: 'Todo el período' },
+                      ...periodosDist.map((p) => ({ value: p.key, label: `${p.label} · ${formatCurrency(p.total)}` })),
+                    ]}
+                    value={esTodo ? DIST_TODO : periodo.key}
+                    onValueChange={(v) => {
+                      if (!v) return
+                      setDistPeriodo(v)
+                      setVerTodaDist(false)
+                    }}
+                    placeholder="Elegí el período"
+                    className="w-60"
+                    triggerClassName="h-8"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Período siguiente"
+                    disabled={esTodo || actual <= 0}
+                    onClick={() => irA(actual - 1)}
+                    className="focus-ring rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <ChevronRightIcon className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t bg-muted/30 px-5 py-2.5 text-sm">
+              <span className="font-medium">{periodo.label}</span>
+              <span className="text-muted-foreground">
+                <span className="tabular-nums font-semibold text-foreground">{formatCurrency(periodo.total)}</span>
+                {' · '}{periodo.compras} compra{periodo.compras !== 1 ? 's' : ''}
+                {' · '}{nInsumos} insumo{nInsumos !== 1 ? 's' : ''}
+              </span>
+            </div>
+            {periodo.filas.length === 0 ? (
+              <p className="border-t px-5 py-6 text-center text-sm text-muted-foreground">Las compras de este período no tienen monto.</p>
+            ) : (
+              <div className="border-t divide-y text-sm">
+                {visibles(periodo.filas, verTodaDist).map((f, i) => {
+                  const pct = (f.costo / sumaFilas) * 100
+                  const extra = f.tipo !== 'insumo'
+                  return (
+                    <div
+                      key={f.nombre}
+                      title={`${f.nombre}: ${formatCurrency(f.costo)} (${pctTexto(pct)})`}
+                      className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_3.25rem] items-center gap-x-3 px-5 py-2"
+                    >
+                      <span className="text-xs tabular-nums text-muted-foreground">{i + 1}</span>
+                      <div className="min-w-0 space-y-1">
+                        <p className={`truncate ${extra ? 'italic text-muted-foreground' : ''}`}>{f.nombre}</p>
+                        <div aria-hidden className="h-1.5 rounded-full bg-muted">
+                          <div
+                            className={`h-full rounded-full ${extra ? 'bg-foreground/30' : 'bg-foreground/70'}`}
+                            style={{ width: `${Math.max(pct, 0.5)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <span className="tabular-nums text-right">{formatCurrency(f.costo)}</span>
+                      <span className="text-right text-xs tabular-nums text-muted-foreground">{pctTexto(pct)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <VerMas
+              total={periodo.filas.length}
+              abierto={verTodaDist}
+              onToggle={() => setVerTodaDist((v) => !v)}
+              textoMenos="solo los primeros 10"
+            />
           </div>
         )
       })()}

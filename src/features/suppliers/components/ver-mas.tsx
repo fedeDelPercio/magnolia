@@ -12,11 +12,14 @@ export function VerMas({
   abierto,
   onToggle,
   className = 'border-t px-5 py-2.5',
+  textoMenos = `solo las últimas ${LIMITE_LISTA}`,
 }: {
   total: number
   abierto: boolean
   onToggle: () => void
   className?: string
+  // Lo que queda a la vista al cerrar (en un ranking: "solo los primeros 10").
+  textoMenos?: string
 }) {
   if (total <= LIMITE_LISTA) return null
   return (
@@ -27,7 +30,7 @@ export function VerMas({
         aria-expanded={abierto}
         className="focus-ring rounded px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
       >
-        {abierto ? `Ver menos (solo las últimas ${LIMITE_LISTA})` : `Ver más (${total - LIMITE_LISTA} más)`}
+        {abierto ? `Ver menos (${textoMenos})` : `Ver más (${total - LIMITE_LISTA} más)`}
       </button>
     </div>
   )

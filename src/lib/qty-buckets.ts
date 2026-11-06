@@ -137,3 +137,16 @@ export function groupCostByPeriod(
   const costo = new Map(groupQtyByPeriod(entries.map((e) => ({ fecha: e.fecha, qty: e.costo })), groupBy).map((b) => [b.fecha, b.qty]))
   return qty.map((b) => ({ ...b, costo: costo.get(b.fecha) ?? 0 }))
 }
+
+// Período (semana o mes) al que cae una fecha: inicio, etiqueta larga y corta.
+export function periodoDe(
+  fecha: string,
+  groupBy: 'semana' | 'mes',
+): { fecha: string; label: string; chartLabel?: string | undefined } {
+  const start = groupBy === 'semana' ? weekStartISO(fecha) : `${fecha.slice(0, 7)}-01`
+  return {
+    fecha: start,
+    label: groupBy === 'semana' ? `Semana del ${formatDate(start)}` : monthLabel(start),
+    chartLabel: groupBy === 'mes' ? monthShortLabel(start) : undefined,
+  }
+}
