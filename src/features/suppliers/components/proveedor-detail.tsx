@@ -13,6 +13,7 @@ import { groupCostByPeriod, groupPriceByPeriod, groupQtyByPeriod, QTY_GROUP_LABE
 import { computePricing } from '../pricing'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { distribucionDelRango, distribucionPorPeriodo } from '../distribucion-costo'
+import { enLaVentana, enVentana, VENTANA_DEFAULT, VENTANA_LABELS, VENTANA_NOMBRE, type Ventana } from '../ventana'
 import { VerMas, visibles } from './ver-mas'
 import { METODO_LABELS, type PagoMetodo } from '../schemas'
 import { deleteCompra, deleteProveedor, updateCompraStatus, setChequeCleared, deletePago } from '../actions'
@@ -116,6 +117,17 @@ function TrendLineChart({
     value: e.value,
   }))
 
+  // Con muchos puntos (1 año, todo el historial) las etiquetas se pisan: se
+  // rotulan el primero, el último, el máximo y el mínimo, y unas 6 fechas
+  // repartidas en el eje. El resto se lee pasando el mouse por el punto.
+  const muchos = points.length > 12
+  const idxMax = values.indexOf(maxP)
+  const idxMin = values.indexOf(minP)
+  const ultimo = points.length - 1
+  const conValor = (i: number) => !muchos || i === 0 || i === ultimo || i === idxMax || i === idxMin
+  const pasoEje = Math.ceil(ultimo / 6)
+  const conFecha = (i: number) => !muchos || i === ultimo || (i % pasoEje === 0 && ultimo - i >= pasoEje / 2)
+
   const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ')
   const areaPath = `${linePath} L ${points[points.length - 1]!.x.toFixed(2)} ${(padding.top + innerH).toFixed(2)} L ${points[0]!.x.toFixed(2)} ${(padding.top + innerH).toFixed(2)} Z`
 
@@ -156,8 +168,8 @@ function TrendLineChart({
           </g>
         ))}
 
-        {/* etiquetas de valor encima de cada punto */}
-        {points.map((p, i) => (
+        {/* etiquetas de valor encima de los puntos */}
+        {points.map((p, i) => conValor(i) && (
           <text
             key={`v-${i}`}
             x={p.x}
@@ -172,6 +184,7 @@ function TrendLineChart({
 
         {/* labels eje X */}
         {points.map((p, i) => {
+          if (!conFecha(i)) return null
           const isFirst = i === 0
           const isLast = i === points.length - 1
           const anchor = isFirst ? 'start' : isLast ? 'end' : 'middle'
@@ -234,10 +247,20 @@ function formatPesosCorto(v: number): string {
 
 // Por compra / por semana / por mes: lo usan las evoluciones de precios,
 // cantidad comprada y costo total.
-function AgrupadoToggle({ value, onChange }: { value: QtyGroupBy; onChange: (g: QtyGroupBy) => void }) {
+function Segmentado<T extends string>({
+  opciones,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  opciones: Record<T, string>
+  value: T
+  onChange: (v: T) => void
+  ariaLabel: string
+}) {
   return (
-    <div className="flex items-center rounded-md border p-0.5 text-xs">
-      {(Object.keys(QTY_GROUP_LABELS) as QtyGroupBy[]).map((g) => (
+    <div role="group" aria-label={ariaLabel} className="flex items-center rounded-md border p-0.5 text-xs">
+      {(Object.keys(opciones) as T[]).map((g) => (
         <button
           key={g}
           type="button"
@@ -247,11 +270,26 @@ function AgrupadoToggle({ value, onChange }: { value: QtyGroupBy; onChange: (g: 
             value === g ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          {QTY_GROUP_LABELS[g]}
+          {opciones[g]}
         </button>
       ))}
     </div>
   )
+}
+
+function AgrupadoToggle({ value, onChange }: { value: QtyGroupBy; onChange: (g: QtyGroupBy) => void }) {
+  return <Segmentado opciones={QTY_GROUP_LABELS} value={value} onChange={onChange} ariaLabel="Agrupar" />
+}
+
+// 1 mes / 90 días / 1 año / Todo: cuánto hacia atrás mira cada gráfico (ventana.ts).
+function VentanaToggle({ value, onChange }: { value: Ventana; onChange: (v: Ventana) => void }) {
+  return <Segmentado opciones={VENTANA_LABELS} value={value} onChange={onChange} ariaLabel="Tiempo a ver" />
+}
+
+// Aviso dentro de un gráfico cuando no hay compras en el tiempo elegido (el
+// bloque queda a la vista para poder cambiar el filtro).
+function SinDatos({ children }: { children: React.ReactNode }) {
+  return <p className="border-t px-5 py-6 text-center text-sm text-muted-foreground">{children}</p>
 }
 
 function ChequeClearedButton({ pagoId, cleared }: { pagoId: string; cleared: boolean }) {
@@ -323,6 +361,11 @@ export function ProveedorDetail({ proveedor, compras, pagos, insumos, proveedore
   // null = el período más reciente.
   const [distPeriodo, setDistPeriodo] = useState<string | null>(null)
   const [verTodaDist, setVerTodaDist] = useState(false)
+  // Tiempo a ver de cada gráfico, desde hoy (ventana.ts).
+  const [ventanaPrecio, setVentanaPrecio] = useState<Ventana>(VENTANA_DEFAULT)
+  const [ventanaCantidad, setVentanaCantidad] = useState<Ventana>(VENTANA_DEFAULT)
+  const [ventanaCosto, setVentanaCosto] = useState<Ventana>(VENTANA_DEFAULT)
+  const [ventanaDist, setVentanaDist] = useState<Ventana>(VENTANA_DEFAULT)
   const [editProveedorOpen, setEditProveedorOpen] = useState(false)
 
   function toggleExpandedCompra(id: string) {
@@ -478,14 +521,21 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
   const coberturaSaldar = pagoCompraId ? (aging.cobertura.get(pagoCompraId) ?? 0) : 0
   const compraPorId = new Map(compras.map((c) => [c.id, c]))
 
-  // Filtros de tiempo aplican a compras y al historial de precios derivado.
-  // Los pagos y el saldo total se mantienen completos (son acumulados, no de período).
+  // El rango de fechas de arriba filtra la lista de compras. Los pagos y el
+  // saldo total se mantienen completos (son acumulados, no de período).
   const comprasFiltradas = useMemo(
     () => compras.filter((c) => c.fecha >= from && c.fecha < to),
     [compras, from, to],
   )
-  const priceHistory = useMemo(() => buildPriceHistory(comprasFiltradas), [comprasFiltradas])
-  const periodosDist = useMemo(() => distribucionPorPeriodo(comprasFiltradas, distGroupBy), [comprasFiltradas, distGroupBy])
+  // Los gráficos miran cada uno su propio tiempo hacia atrás desde hoy
+  // (1 mes / 90 días / 1 año / todo), sobre todas las compras.
+  const hoy = hoyISO()
+  const historiaPrecio = useMemo(() => buildPriceHistory(enVentana(compras, ventanaPrecio, hoy)), [compras, ventanaPrecio, hoy])
+  const historiaCantidad = useMemo(() => buildPriceHistory(enVentana(compras, ventanaCantidad, hoy)), [compras, ventanaCantidad, hoy])
+  const comprasCosto = useMemo(() => enVentana(compras, ventanaCosto, hoy), [compras, ventanaCosto, hoy])
+  const historiaCosto = useMemo(() => buildPriceHistory(comprasCosto), [comprasCosto])
+  const comprasDist = useMemo(() => enVentana(compras, ventanaDist, hoy), [compras, ventanaDist, hoy])
+  const periodosDist = useMemo(() => distribucionPorPeriodo(comprasDist, distGroupBy), [comprasDist, distGroupBy])
 
   return (
     <div className="space-y-6">
@@ -842,12 +892,16 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
 
       {/* Evolución de precios — un insumo por vez, agrupable por semana o mes
           igual que la cantidad comprada (precio promedio ponderado por cantidad). */}
-      {priceHistory.length > 0 && (() => {
-        // Default: primer insumo alfabético si no hay selección o la seleccionada ya no está en el rango.
-        const activeHistory =
-          priceHistory.find((h) => h.name === selectedInsumo) ?? priceHistory[0]!
-        const buckets: PriceBucket[] =
-          priceGroupBy === 'compra'
+      {compras.length > 0 && (() => {
+        // Sin elección: el primer insumo alfabético. Si el elegido no tuvo
+        // compras en el tiempo elegido, se avisa (no se cambia de insumo).
+        const nombre = selectedInsumo ?? historiaPrecio[0]?.name ?? null
+        const activeHistory = historiaPrecio.find((h) => h.name === nombre)
+        const opciones = historiaPrecio.map((h) => ({ value: h.name, label: h.name }))
+        if (nombre && !activeHistory) opciones.unshift({ value: nombre, label: nombre })
+        const buckets: PriceBucket[] = !activeHistory
+          ? []
+          : priceGroupBy === 'compra'
             ? activeHistory.entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), precio: e.unit_price, compras: 1 }))
             : groupPriceByPeriod(activeHistory.entries, priceGroupBy)
         const reversed = [...buckets].reverse()
@@ -863,6 +917,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <VentanaToggle value={ventanaPrecio} onChange={(v) => { setVentanaPrecio(v); setVerTodoPrecio(false) }} />
                 <AgrupadoToggle value={priceGroupBy} onChange={setPriceGroupBy} />
                 {/* label + campo juntos: en celular bajan de línea como una unidad */}
                 <div className="flex items-center gap-2">
@@ -871,8 +926,8 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                   </label>
                   <SearchableSelect
                     id="insumo-select"
-                    options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
-                    value={activeHistory.name}
+                    options={opciones}
+                    value={nombre ?? ''}
                     onValueChange={(v) => v && setSelectedInsumo(v)}
                     placeholder="Buscá un insumo"
                     className="w-56"
@@ -881,6 +936,11 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </div>
               </div>
             </div>
+            {!activeHistory ? (
+              <SinDatos>
+                {nombre ? `No hubo compras de ${nombre} en ${enLaVentana(ventanaPrecio)}.` : `No hubo compras en ${enLaVentana(ventanaPrecio)}.`}
+              </SinDatos>
+            ) : (<>
             <div className="border-t divide-y text-sm">
               {visibles(reversed, verTodoPrecio).map((bucket, idx) => {
                 // La variación es contra el anterior de la lista completa (la fila 10 también la tiene).
@@ -924,6 +984,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 />
               </div>
             )}
+            </>)}
           </div>
         )
       })()}
@@ -931,11 +992,14 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
       {/* Evolución de cantidad comprada — mismo patrón que precios, pero con la
           cantidad de cada compra, agrupable por semana/mes (suma del período).
           Sirve para renegociar volumen o detectar desvíos. */}
-      {priceHistory.length > 0 && (() => {
-        const activeHistory =
-          priceHistory.find((h) => h.name === selectedInsumoQty) ?? priceHistory[0]!
-        const buckets: QtyBucket[] =
-          qtyGroupBy === 'compra'
+      {compras.length > 0 && (() => {
+        const nombre = selectedInsumoQty ?? historiaCantidad[0]?.name ?? null
+        const activeHistory = historiaCantidad.find((h) => h.name === nombre)
+        const opciones = historiaCantidad.map((h) => ({ value: h.name, label: h.name }))
+        if (nombre && !activeHistory) opciones.unshift({ value: nombre, label: nombre })
+        const buckets: QtyBucket[] = !activeHistory
+          ? []
+          : qtyGroupBy === 'compra'
             ? activeHistory.entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), qty: e.qty, compras: 1 }))
             : groupQtyByPeriod(activeHistory.entries, qtyGroupBy)
         const reversed = [...buckets].reverse()
@@ -951,6 +1015,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <VentanaToggle value={ventanaCantidad} onChange={(v) => { setVentanaCantidad(v); setVerTodaCantidad(false) }} />
                 <AgrupadoToggle value={qtyGroupBy} onChange={setQtyGroupBy} />
                 {/* label + campo juntos: en celular bajan de línea como una unidad */}
                 <div className="flex items-center gap-2">
@@ -959,8 +1024,8 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                   </label>
                   <SearchableSelect
                     id="insumo-qty-select"
-                    options={priceHistory.map((h) => ({ value: h.name, label: h.name }))}
-                    value={activeHistory.name}
+                    options={opciones}
+                    value={nombre ?? ''}
                     onValueChange={(v) => v && setSelectedInsumoQty(v)}
                     placeholder="Buscá un insumo"
                     className="w-56"
@@ -969,6 +1034,11 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </div>
               </div>
             </div>
+            {!activeHistory ? (
+              <SinDatos>
+                {nombre ? `No hubo compras de ${nombre} en ${enLaVentana(ventanaCantidad)}.` : `No hubo compras en ${enLaVentana(ventanaCantidad)}.`}
+              </SinDatos>
+            ) : (<>
             <div className="border-t divide-y text-sm">
               {visibles(reversed, verTodaCantidad).map((bucket, idx) => {
                 const prev = reversed[idx + 1]
@@ -1007,6 +1077,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 />
               </div>
             )}
+            </>)}
           </div>
         )
       })()}
@@ -1015,16 +1086,20 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
           cada compra: lo mismo que suma la tarjeta "Total compras"); o un
           insumo: lo gastado en él (cantidad × precio, con descuento e IVA de la
           compra). Por compra o sumado por semana/mes. */}
-      {comprasFiltradas.length > 0 && (() => {
-        const insumoElegido =
-          selectedInsumoCosto === null ? undefined : priceHistory.find((h) => h.name === selectedInsumoCosto)
-        // Si el insumo elegido ya no tiene compras en el rango, vuelve al total.
-        const esTotal = insumoElegido === undefined
+      {compras.length > 0 && (() => {
+        const esTotal = selectedInsumoCosto === null
+        const insumoElegido = esTotal ? undefined : historiaCosto.find((h) => h.name === selectedInsumoCosto)
         const entries = esTotal
-          ? [...comprasFiltradas]
+          ? [...comprasCosto]
               .sort((a, b) => a.fecha.localeCompare(b.fecha))
               .map((c) => ({ fecha: c.fecha, costo: Number(c.total) || 0, qty: c.compra_items.length }))
-          : insumoElegido.entries
+          : (insumoElegido?.entries ?? [])
+        const opciones = [
+          { value: TOTAL_PROVEEDOR, label: 'Total proveedor' },
+          ...historiaCosto.map((h) => ({ value: h.name, label: h.name })),
+        ]
+        // Insumo elegido sin compras en el tiempo elegido: queda elegido y se avisa.
+        if (selectedInsumoCosto && !insumoElegido) opciones.splice(1, 0, { value: selectedInsumoCosto, label: selectedInsumoCosto })
         const buckets: CostBucket[] =
           costoGroupBy === 'compra'
             ? entries.map((e) => ({ fecha: e.fecha, label: formatDate(e.fecha), costo: e.costo, qty: e.qty, compras: 1 }))
@@ -1049,6 +1124,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <VentanaToggle value={ventanaCosto} onChange={(v) => { setVentanaCosto(v); setVerTodoCosto(false) }} />
                 <AgrupadoToggle value={costoGroupBy} onChange={setCostoGroupBy} />
                 {/* label + campo juntos: en celular bajan de línea como una unidad */}
                 <div className="flex items-center gap-2">
@@ -1057,11 +1133,8 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                   </label>
                   <SearchableSelect
                     id="insumo-costo-select"
-                    options={[
-                      { value: TOTAL_PROVEEDOR, label: 'Total proveedor' },
-                      ...priceHistory.map((h) => ({ value: h.name, label: h.name })),
-                    ]}
-                    value={esTotal ? TOTAL_PROVEEDOR : insumoElegido.name}
+                    options={opciones}
+                    value={selectedInsumoCosto ?? TOTAL_PROVEEDOR}
                     onValueChange={(v) => v && setSelectedInsumoCosto(v === TOTAL_PROVEEDOR ? null : v)}
                     placeholder="Total proveedor o un insumo"
                     className="w-56"
@@ -1070,6 +1143,13 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </div>
               </div>
             </div>
+            {entries.length === 0 ? (
+              <SinDatos>
+                {esTotal
+                  ? `No hubo compras en ${enLaVentana(ventanaCosto)}.`
+                  : `No hubo compras de ${selectedInsumoCosto} en ${enLaVentana(ventanaCosto)}.`}
+              </SinDatos>
+            ) : (<>
             <div className="border-t divide-y text-sm">
               {visibles(reversed, verTodoCosto).map((bucket, idx) => {
                 const prev = reversed[idx + 1]
@@ -1082,7 +1162,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                         {costoGroupBy !== 'compra' && <> · {bucket.compras} compra{bucket.compras !== 1 ? 's' : ''}</>}
                         {esTotal
                           ? costoGroupBy === 'compra' && bucket.qty > 0 && <> · {bucket.qty} insumo{bucket.qty !== 1 ? 's' : ''}</>
-                          : <> · {formatQty(bucket.qty, insumoElegido.unit)}</>}
+                          : <> · {formatQty(bucket.qty, insumoElegido?.unit ?? '')}</>}
                       </span>
                     </span>
                     <span className="tabular-nums text-right">{formatCurrency(bucket.costo)}</span>
@@ -1111,6 +1191,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 />
               </div>
             )}
+            </>)}
           </div>
         )
       })()}
@@ -1120,12 +1201,15 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
           Barras horizontales de un solo tono sobre la misma base: comparan
           mejor que una torta. Suma el total de las compras (percepciones y
           cargas sin detalle incluidas; ver distribucion-costo.ts). */}
-      {periodosDist.length > 0 && (() => {
+      {compras.length > 0 && (() => {
         const esTodo = distPeriodo === DIST_TODO
         const actual = esTodo ? -1 : Math.max(0, periodosDist.findIndex((p) => p.key === distPeriodo))
-        const periodo = esTodo ? distribucionDelRango(comprasFiltradas) : periodosDist[actual]!
-        const sumaFilas = periodo.filas.reduce((sum, f) => sum + f.costo, 0) || 1
-        const nInsumos = periodo.filas.filter((f) => f.tipo === 'insumo').length
+        // undefined = no hubo compras en el tiempo elegido.
+        const periodo = esTodo
+          ? comprasDist.length > 0 ? distribucionDelRango(comprasDist, VENTANA_NOMBRE[ventanaDist]) : undefined
+          : periodosDist[actual]
+        const sumaFilas = (periodo?.filas ?? []).reduce((sum, f) => sum + f.costo, 0) || 1
+        const nInsumos = (periodo?.filas ?? []).filter((f) => f.tipo === 'insumo').length
         const pctTexto = (v: number) => `${v.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
         const irA = (i: number) => {
           setDistPeriodo(periodosDist[i]!.key)
@@ -1141,6 +1225,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <VentanaToggle value={ventanaDist} onChange={(v) => { setVentanaDist(v); setVerTodaDist(false) }} />
                 <AgrupadoToggle
                   value={distGroupBy}
                   onChange={(g) => {
@@ -1165,7 +1250,8 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                   <SearchableSelect
                     id="dist-periodo-select"
                     options={[
-                      { value: DIST_TODO, label: 'Todo el período' },
+                      // Todas las compras del tiempo elegido ("Últimos 90 días").
+                      { value: DIST_TODO, label: VENTANA_NOMBRE[ventanaDist] },
                       // Etiquetas cortas (el total del período está en la fila de
                       // resumen); por compra va el monto para distinguir compras
                       // del mismo día.
@@ -1179,7 +1265,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                               : p.label,
                       })),
                     ]}
-                    value={esTodo ? DIST_TODO : periodo.key}
+                    value={esTodo ? DIST_TODO : (periodo?.key ?? '')}
                     onValueChange={(v) => {
                       if (!v) return
                       setDistPeriodo(v)
@@ -1201,6 +1287,9 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
                 </div>
               </div>
             </div>
+            {!periodo ? (
+              <SinDatos>No hubo compras en {enLaVentana(ventanaDist)}.</SinDatos>
+            ) : (<>
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t bg-muted/30 px-5 py-2.5 text-sm">
               <span className="font-medium">{periodo.label}</span>
               <span className="text-muted-foreground">
@@ -1245,6 +1334,7 @@ Se borra el pago y su egreso en caja. Si estaba asociado a una compra, la compra
               onToggle={() => setVerTodaDist((v) => !v)}
               textoMenos="solo los primeros 10"
             />
+            </>)}
           </div>
         )
       })()}

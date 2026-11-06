@@ -107,9 +107,9 @@ export function distribucionPorPeriodo(
   return [...map.values()].map(cerrar).sort((a, b) => b.fecha.localeCompare(a.fecha))
 }
 
-// Todas las compras juntas (el rango de fechas elegido).
-export function distribucionDelRango(compras: CompraParaDistribucion[]): PeriodoDistribucion {
-  const acc = nuevo('todo', compras[0]?.fecha ?? '', 'Todo el período')
+// Todas las compras juntas (la ventana de tiempo elegida).
+export function distribucionDelRango(compras: CompraParaDistribucion[], label = 'Todo el período'): PeriodoDistribucion {
+  const acc = nuevo('todo', compras[0]?.fecha ?? '', label)
   for (const c of compras) sumarCompra(acc, c)
   return cerrar(acc)
 }
